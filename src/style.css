@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root { color-scheme: light; }
+  :root.dark { color-scheme: dark; }
+  body { @apply min-h-screen text-slate-950 antialiased dark:text-slate-100; }
+  button, input, select { @apply outline-none; }
+}

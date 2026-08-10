@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile-quick-access",
+  "description": "Permite ao Pingo receber atalhos de gasto e carteira no Android/iOS.",
+  "windows": [
+    "main"
+  ],
+  "platforms": [
+    "iOS",
+    "android"
+  ],
+  "permissions": [
+    "core:event:default",
+    "deep-link:default"
+  ]
+}
