@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useFinanceStore } from '../financeStore'
-import type { DebitCard, Transaction } from '../../types/finance'
+import type { DebitCard, Transaction, Vault } from '../../types/finance'
 
 function transaction(overrides: Partial<Transaction> = {}): Transaction {
   return {
@@ -29,11 +29,29 @@ function card(overrides: Partial<DebitCard> = {}): DebitCard {
     colorFrom: '#0F172A',
     colorTo: '#334155',
     pattern: 'soft',
+    backgroundImage: 'none',
     emoji: null,
     isDefault: true,
     isFrozen: false,
     monthlySpendingLimit: '200.00',
     createdAt: '2026-08-09T12:00:00Z',
+    ...overrides,
+  }
+}
+
+function vault(overrides: Partial<Vault> = {}): Vault {
+  return {
+    id: 'vault-1',
+    name: 'Reserva',
+    institution: 'Banco Inter',
+    type: 'piggy_bank',
+    balance: '300.00',
+    targetAmount: '1000.00',
+    annualYieldRate: '12.00',
+    color: '#F97316',
+    emoji: '🐷',
+    createdAt: '2026-08-09T12:00:00Z',
+    updatedAt: '2026-08-09T12:00:00Z',
     ...overrides,
   }
 }
@@ -81,5 +99,21 @@ describe('financeStore', () => {
     expect(store.expensesByDebitCard.get('card-2')).toBe(3550n)
     expect(store.unassignedExpenseCents).toBe(1000n)
     expect(store.balanceCents).toBe(43450n)
+  })
+
+  it('separa saldo disponível do dinheiro reservado em cofres', () => {
+    const store = useFinanceStore()
+    const today = new Date().toISOString().slice(0, 10)
+    store.setTransactions([
+      transaction({ id: 'salary', kind: 'income', amount: '1000.00', categoryId: null, date: today }),
+      transaction({ id: 'expense', amount: '200.00', date: today }),
+    ])
+    store.setVaults([vault()])
+
+    expect(store.balanceCents).toBe(80000n)
+    expect(store.vaultTotalCents).toBe(30000n)
+    expect(store.availableBalanceCents).toBe(50000n)
+    expect(store.currentMonthSavingsCents).toBe(80000n)
+    expect(store.savingsRate).toBe(80)
   })
 })

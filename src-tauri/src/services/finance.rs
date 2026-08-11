@@ -4,7 +4,7 @@ use chrono::{Datelike, NaiveDate};
 use rust_decimal::{Decimal, RoundingStrategy};
 use uuid::Uuid;
 
-use crate::models::{Transaction, TransactionType};
+use crate::models::{RecurrenceType, Transaction, TransactionType};
 
 #[derive(Debug, Clone, Default)]
 pub struct TransactionFilter {
@@ -31,6 +31,70 @@ pub fn monthly_balance(transactions: &[Transaction], year: i32, month: u32) -> D
         TransactionType::Income => balance + transaction.amount,
         TransactionType::Expense => balance - transaction.amount,
     })
+}
+
+pub fn monthly_income_and_expenses(
+    transactions: &[Transaction],
+    year: i32,
+    month: u32,
+) -> (Decimal, Decimal) {
+    transactions
+        .iter()
+        .filter(|transaction| transaction.date.year() == year && transaction.date.month() == month)
+        .fold((Decimal::ZERO, Decimal::ZERO), |(income, expenses), transaction| {
+            match transaction.kind {
+                TransactionType::Income => (income + transaction.amount, expenses),
+                TransactionType::Expense => (income, expenses + transaction.amount),
+            }
+        })
+}
+
+pub fn savings_rate(transactions: &[Transaction], year: i32, month: u32) -> Decimal {
+    let (income, expenses) = monthly_income_and_expenses(transactions, year, month);
+    if income <= Decimal::ZERO {
+        return Decimal::ZERO;
+    }
+    (((income - expenses) / income) * Decimal::from(100u32))
+        .round_dp_with_strategy(2, RoundingStrategy::MidpointAwayFromZero)
+}
+
+pub fn fixed_cost_ratio(transactions: &[Transaction], year: i32, month: u32) -> Decimal {
+    let (income, _) = monthly_income_and_expenses(transactions, year, month);
+    if income <= Decimal::ZERO {
+        return Decimal::ZERO;
+    }
+    let fixed_expenses: Decimal = transactions
+        .iter()
+        .filter(|transaction| {
+            transaction.kind == TransactionType::Expense
+                && transaction.recurrence == RecurrenceType::Fixed
+                && transaction.date.year() == year
+                && transaction.date.month() == month
+        })
+        .map(|transaction| transaction.amount)
+        .sum();
+    ((fixed_expenses / income) * Decimal::from(100u32))
+        .round_dp_with_strategy(2, RoundingStrategy::MidpointAwayFromZero)
+}
+
+pub fn projected_month_expenses(
+    current_expenses: Decimal,
+    elapsed_days: u32,
+    days_in_month: u32,
+) -> Decimal {
+    if current_expenses <= Decimal::ZERO || elapsed_days == 0 || days_in_month == 0 {
+        return Decimal::ZERO;
+    }
+    (current_expenses / Decimal::from(elapsed_days) * Decimal::from(days_in_month))
+        .round_dp_with_strategy(2, RoundingStrategy::MidpointAwayFromZero)
+}
+
+pub fn emergency_fund_months(vault_total: Decimal, average_monthly_expenses: Decimal) -> Decimal {
+    if vault_total <= Decimal::ZERO || average_monthly_expenses <= Decimal::ZERO {
+        return Decimal::ZERO;
+    }
+    (vault_total / average_monthly_expenses)
+        .round_dp_with_strategy(2, RoundingStrategy::MidpointAwayFromZero)
 }
 
 pub fn expenses_by_category(transactions: &[Transaction]) -> BTreeMap<Uuid, Decimal> {
@@ -163,5 +227,27 @@ mod tests {
 
         let percentages = expense_percentages(&totals);
         assert_eq!(percentages[&category], Decimal::ZERO);
+    }
+
+    #[test]
+    fn calculates_savings_and_fixed_cost_rates() {
+        let category = Uuid::new_v4();
+        let mut rent = transaction(TransactionType::Expense, dec!(300), Some(category), 2);
+        rent.recurrence = RecurrenceType::Fixed;
+        let items = vec![
+            transaction(TransactionType::Income, dec!(1000), None, 1),
+            rent,
+            transaction(TransactionType::Expense, dec!(200), Some(category), 3),
+        ];
+
+        assert_eq!(savings_rate(&items, 2026, 8), dec!(50.00));
+        assert_eq!(fixed_cost_ratio(&items, 2026, 8), dec!(30.00));
+    }
+
+    #[test]
+    fn projects_spending_and_reserve_coverage() {
+        assert_eq!(projected_month_expenses(dec!(500), 10, 30), dec!(1500.00));
+        assert_eq!(emergency_fund_months(dec!(6000), dec!(1000)), dec!(6.00));
+        assert_eq!(projected_month_expenses(dec!(500), 0, 30), Decimal::ZERO);
     }
 }

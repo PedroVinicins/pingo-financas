@@ -2,6 +2,9 @@ export type TransactionType = 'income' | 'expense'
 export type RecurrenceType = 'fixed' | 'variable'
 export type CardNetwork = 'visa' | 'mastercard' | 'elo' | 'other'
 export type CardPattern = 'soft' | 'waves' | 'dots' | 'grid' | 'aurora'
+export type CardBackground = 'none' | 'amazonia' | 'praia' | 'cidade' | 'montanhas'
+export type VaultType = 'piggy_bank' | 'box' | 'savings' | 'investment' | 'cash'
+export type VaultMovementType = 'deposit' | 'withdraw'
 
 export interface Category {
   id: string
@@ -21,6 +24,7 @@ export interface DebitCard {
   colorFrom: string
   colorTo: string
   pattern: CardPattern
+  backgroundImage: CardBackground
   emoji: string | null
   isDefault: boolean
   isFrozen: boolean
@@ -37,6 +41,7 @@ export interface NewDebitCardInput {
   colorFrom: string
   colorTo: string
   pattern: CardPattern
+  backgroundImage: CardBackground
   emoji: string | null
   isDefault: boolean
   monthlySpendingLimit: string | null
@@ -47,7 +52,39 @@ export interface UpdateDebitCardStyleInput {
   colorFrom: string
   colorTo: string
   pattern: CardPattern
+  backgroundImage: CardBackground
   emoji: string | null
+}
+
+export interface Vault {
+  id: string
+  name: string
+  institution: string
+  type: VaultType
+  balance: string
+  targetAmount: string | null
+  annualYieldRate: string | null
+  color: string
+  emoji: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface NewVaultInput {
+  name: string
+  institution: string
+  type: VaultType
+  initialBalance: string
+  targetAmount: string | null
+  annualYieldRate: string | null
+  color: string
+  emoji: string | null
+}
+
+export interface MoveVaultMoneyInput {
+  id: string
+  kind: VaultMovementType
+  amount: string
 }
 
 export interface Transaction {
@@ -83,4 +120,5 @@ export interface TransactionFilters {
 export type QuickLaunchAction =
   | { type: 'expense'; cardId?: string }
   | { type: 'wallet'; cardId?: string }
+  | { type: 'vaults' }
   | { type: 'dashboard' }

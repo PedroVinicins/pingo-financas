@@ -5,6 +5,13 @@ import type { DebitCard } from '../types/finance'
 
 const props = defineProps<{ card: DebitCard; compact?: boolean }>()
 
+const photoById = {
+  amazonia: '/card-backgrounds/amazonia.svg',
+  praia: '/card-backgrounds/praia.svg',
+  cidade: '/card-backgrounds/cidade.svg',
+  montanhas: '/card-backgrounds/montanhas.svg',
+} as const
+
 const patternStyle = computed(() => {
   const base = `linear-gradient(135deg, ${props.card.colorFrom}, ${props.card.colorTo})`
   if (props.card.pattern === 'dots') return `${'radial-gradient(circle at 20% 20%, rgba(255,255,255,.22) 0 2px, transparent 2.5px)'}, ${base}`
@@ -12,6 +19,23 @@ const patternStyle = computed(() => {
   if (props.card.pattern === 'waves') return `radial-gradient(ellipse at 15% 110%, transparent 0 36%, rgba(255,255,255,.14) 37% 43%, transparent 44% 55%, rgba(255,255,255,.08) 56% 63%, transparent 64%), ${base}`
   if (props.card.pattern === 'aurora') return `radial-gradient(circle at 20% 20%, rgba(255,255,255,.26), transparent 28%), radial-gradient(circle at 80% 70%, rgba(34,211,238,.28), transparent 32%), ${base}`
   return base
+})
+
+const cardStyle = computed(() => {
+  if (props.card.backgroundImage !== 'none') {
+    return {
+      backgroundColor: props.card.colorFrom,
+      backgroundImage: `linear-gradient(120deg, ${props.card.colorFrom}D9, ${props.card.colorTo}66), url(${photoById[props.card.backgroundImage]})`,
+      backgroundPosition: 'center',
+      backgroundSize: 'cover',
+    }
+  }
+  return {
+    background: patternStyle.value,
+    backgroundSize: props.card.pattern === 'grid'
+      ? '28px 28px, 28px 28px, auto'
+      : props.card.pattern === 'dots' ? '18px 18px, auto' : 'auto',
+  }
 })
 
 function networkLabel() {
@@ -26,7 +50,7 @@ function networkLabel() {
   <article
     class="relative isolate aspect-[1.586/1] w-full overflow-hidden rounded-[1.75rem] p-5 text-white shadow-2xl ring-1 ring-white/20 transition sm:p-6"
     :class="compact ? 'max-w-[320px]' : 'max-w-[360px]'"
-    :style="{ background: patternStyle, backgroundSize: card.pattern === 'grid' ? '28px 28px, 28px 28px, auto' : card.pattern === 'dots' ? '18px 18px, auto' : 'auto' }"
+    :style="cardStyle"
   >
     <div class="absolute -right-12 -top-16 -z-10 size-48 rounded-full bg-white/10 blur-2xl"></div>
     <div class="absolute -bottom-20 -left-16 -z-10 size-56 rounded-full bg-black/15 blur-2xl"></div>

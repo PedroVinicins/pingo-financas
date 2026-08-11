@@ -3,11 +3,14 @@ import { defineStore } from 'pinia'
 import type {
   Category,
   DebitCard,
+  MoveVaultMoneyInput,
   NewDebitCardInput,
   NewTransactionInput,
+  NewVaultInput,
   Transaction,
   TransactionFilters,
   UpdateDebitCardStyleInput,
+  Vault,
 } from '../types/finance'
 import * as repository from '../services/financeRepository'
 
@@ -31,6 +34,7 @@ export const useFinanceStore = defineStore('finance', () => {
   const transactions = ref<Transaction[]>([])
   const categories = ref<Category[]>([])
   const debitCards = ref<DebitCard[]>([])
+  const vaults = ref<Vault[]>([])
   const filters = ref<TransactionFilters>({})
 
   const balanceCents = computed(() => transactions.value.reduce((total, transaction) => {
@@ -46,6 +50,73 @@ export const useFinanceStore = defineStore('finance', () => {
       const amount = decimalToCents(transaction.amount)
       return transaction.kind === 'income' ? total + amount : total - amount
     }, 0n)
+  })
+
+  const currentMonthIncomeCents = computed(() => currentMonthTotal('income'))
+  const currentMonthExpenseCents = computed(() => currentMonthTotal('expense'))
+  const currentMonthSavingsCents = computed(() => currentMonthIncomeCents.value - currentMonthExpenseCents.value)
+  const savingsRate = computed(() => currentMonthIncomeCents.value === 0n
+    ? 0
+    : Number((currentMonthSavingsCents.value * 10_000n) / currentMonthIncomeCents.value) / 100)
+
+  const currentMonthFixedExpenseCents = computed(() => {
+    const now = new Date()
+    return transactions.value.reduce((total, transaction) => {
+      if (transaction.kind !== 'expense' || transaction.recurrence !== 'fixed') return total
+      const date = new Date(`${transaction.date}T12:00:00`)
+      if (date.getFullYear() !== now.getFullYear() || date.getMonth() !== now.getMonth()) return total
+      return total + decimalToCents(transaction.amount)
+    }, 0n)
+  })
+
+  const fixedCostRatio = computed(() => currentMonthIncomeCents.value === 0n
+    ? 0
+    : Number((currentMonthFixedExpenseCents.value * 10_000n) / currentMonthIncomeCents.value) / 100)
+
+  const averageMonthlyExpenseCents = computed(() => {
+    const now = new Date()
+    let total = 0n
+    for (let offset = 0; offset < 3; offset += 1) {
+      const target = new Date(now.getFullYear(), now.getMonth() - offset, 1)
+      total += transactions.value.reduce((monthTotal, transaction) => {
+        if (transaction.kind !== 'expense') return monthTotal
+        const date = new Date(`${transaction.date}T12:00:00`)
+        return date.getFullYear() === target.getFullYear() && date.getMonth() === target.getMonth()
+          ? monthTotal + decimalToCents(transaction.amount)
+          : monthTotal
+      }, 0n)
+    }
+    return total / 3n
+  })
+
+  const projectedMonthExpenseCents = computed(() => {
+    const now = new Date()
+    const elapsedDays = BigInt(Math.max(1, now.getDate()))
+    const daysInMonth = BigInt(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate())
+    return (currentMonthExpenseCents.value * daysInMonth) / elapsedDays
+  })
+
+  const vaultTotalCents = computed(() => vaults.value.reduce(
+    (total, vault) => total + decimalToCents(vault.balance),
+    0n,
+  ))
+  const availableBalanceCents = computed(() => balanceCents.value - vaultTotalCents.value)
+  const dailyBudgetCents = computed(() => {
+    const now = new Date()
+    const daysRemaining = BigInt(Math.max(1, new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() + 1))
+    return availableBalanceCents.value > 0n ? availableBalanceCents.value / daysRemaining : 0n
+  })
+  const emergencyFundMonths = computed(() => averageMonthlyExpenseCents.value > 0n
+    ? Number((vaultTotalCents.value * 100n) / averageMonthlyExpenseCents.value) / 100
+    : 0)
+  const financialHealthScore = computed(() => {
+    const savingsPoints = Math.max(0, Math.min(30, (savingsRate.value / 20) * 30))
+    const fixedPoints = currentMonthIncomeCents.value === 0n
+      ? 0
+      : Math.max(0, Math.min(25, ((100 - fixedCostRatio.value) / 50) * 25))
+    const reservePoints = Math.max(0, Math.min(30, (emergencyFundMonths.value / 6) * 30))
+    const cashPoints = availableBalanceCents.value > 0n ? 15 : 0
+    return Math.round(savingsPoints + fixedPoints + reservePoints + cashPoints)
   })
 
   const filteredTransactions = computed(() => {
@@ -137,17 +208,30 @@ export const useFinanceStore = defineStore('finance', () => {
   function setTransactions(items: Transaction[]) { transactions.value = [...items] }
   function setCategories(items: Category[]) { categories.value = [...items] }
   function setDebitCards(items: DebitCard[]) { debitCards.value = [...items] }
+  function setVaults(items: Vault[]) { vaults.value = [...items] }
   function setFilters(next: TransactionFilters) { filters.value = { ...next } }
 
+  function currentMonthTotal(kind: 'income' | 'expense') {
+    const now = new Date()
+    return transactions.value.reduce((total, transaction) => {
+      if (transaction.kind !== kind) return total
+      const date = new Date(`${transaction.date}T12:00:00`)
+      if (date.getFullYear() !== now.getFullYear() || date.getMonth() !== now.getMonth()) return total
+      return total + decimalToCents(transaction.amount)
+    }, 0n)
+  }
+
   async function initialize(defaultCategories: Category[] = []) {
-    const [storedTransactions, storedCategories, storedDebitCards] = await Promise.all([
+    const [storedTransactions, storedCategories, storedDebitCards, storedVaults] = await Promise.all([
       repository.listTransactions(),
       repository.listCategories(defaultCategories),
       repository.listDebitCards(),
+      repository.listVaults(),
     ])
     setTransactions(storedTransactions)
     setCategories(storedCategories)
     setDebitCards(storedDebitCards)
+    setVaults(storedVaults)
   }
 
   async function createTransaction(input: NewTransactionInput) {
@@ -194,13 +278,45 @@ export const useFinanceStore = defineStore('finance', () => {
     )
   }
 
+  async function createVault(input: NewVaultInput) {
+    const vault = await repository.addVault(input)
+    vaults.value.push(vault)
+    return vault
+  }
+
+  async function moveVaultMoney(input: MoveVaultMoneyInput) {
+    const updated = await repository.moveVaultMoney(input)
+    const index = vaults.value.findIndex((vault) => vault.id === updated.id)
+    if (index >= 0) vaults.value[index] = updated
+    return updated
+  }
+
+  async function removeVault(id: string) {
+    await repository.deleteVault(id)
+    vaults.value = vaults.value.filter((vault) => vault.id !== id)
+  }
+
   return {
     transactions,
     categories,
     debitCards,
+    vaults,
     filters,
     balanceCents,
     currentMonthBalanceCents,
+    currentMonthIncomeCents,
+    currentMonthExpenseCents,
+    currentMonthSavingsCents,
+    currentMonthFixedExpenseCents,
+    savingsRate,
+    fixedCostRatio,
+    averageMonthlyExpenseCents,
+    projectedMonthExpenseCents,
+    vaultTotalCents,
+    availableBalanceCents,
+    dailyBudgetCents,
+    emergencyFundMonths,
+    financialHealthScore,
     filteredTransactions,
     recentTransactions,
     recentExpenses,
@@ -217,6 +333,7 @@ export const useFinanceStore = defineStore('finance', () => {
     setTransactions,
     setCategories,
     setDebitCards,
+    setVaults,
     setFilters,
     initialize,
     createTransaction,
@@ -226,5 +343,8 @@ export const useFinanceStore = defineStore('finance', () => {
     setCardFrozen,
     makeDefaultCard,
     removeDebitCard,
+    createVault,
+    moveVaultMoney,
+    removeVault,
   }
 })

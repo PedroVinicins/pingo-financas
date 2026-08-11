@@ -10,6 +10,7 @@ export function parseQuickLaunchUrl(rawUrl: string): QuickLaunchAction | null {
 
     if (action === 'expense' || action === 'gasto') return { type: 'expense', cardId }
     if (action === 'wallet' || action === 'carteira') return { type: 'wallet', cardId }
+    if (action === 'vaults' || action === 'cofres') return { type: 'vaults' }
     if (action === 'dashboard' || action === 'home' || action === 'resumo') return { type: 'dashboard' }
     return null
   } catch {

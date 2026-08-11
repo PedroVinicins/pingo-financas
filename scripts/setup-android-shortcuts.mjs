@@ -23,6 +23,9 @@ fs.writeFileSync(path.join(xmlDir, 'shortcuts.xml'), `<?xml version="1.0" encodi
   <shortcut android:shortcutId="wallet" android:enabled="true" android:shortcutShortLabel="@string/pingo_shortcut_wallet_short" android:shortcutLongLabel="@string/pingo_shortcut_wallet_long">
     <intent android:action="android.intent.action.VIEW" android:targetPackage="com.pedrosilva.financas" android:data="pingo://wallet" />
   </shortcut>
+  <shortcut android:shortcutId="vaults" android:enabled="true" android:shortcutShortLabel="@string/pingo_shortcut_vaults_short" android:shortcutLongLabel="@string/pingo_shortcut_vaults_long">
+    <intent android:action="android.intent.action.VIEW" android:targetPackage="com.pedrosilva.financas" android:data="pingo://vaults" />
+  </shortcut>
 </shortcuts>
 `)
 
@@ -33,6 +36,8 @@ const resources = [
   ['pingo_shortcut_expense_long', 'Registrar gasto rápido'],
   ['pingo_shortcut_wallet_short', 'Carteira'],
   ['pingo_shortcut_wallet_long', 'Abrir Pingo Wallet'],
+  ['pingo_shortcut_vaults_short', 'Cofres'],
+  ['pingo_shortcut_vaults_long', 'Ver dinheiro guardado'],
 ]
 for (const [name, value] of resources) {
   if (!strings.includes(`name="${name}"`)) strings = strings.replace('</resources>', `  <string name="${name}">${value}</string>\n</resources>`)
@@ -48,4 +53,4 @@ if (!manifest.includes('android.app.shortcuts')) {
   fs.writeFileSync(manifestPath, manifest)
 }
 
-console.log('Atalhos Android configurados: Novo gasto e Carteira.')
+console.log('Atalhos Android configurados: Novo gasto, Carteira e Cofres.')
