@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useFinanceStore } from '../financeStore'
-import type { DebitCard, Transaction, Vault } from '../../types/finance'
+import type { Category, DebitCard, Transaction, Vault } from '../../types/finance'
 
 function transaction(overrides: Partial<Transaction> = {}): Transaction {
   return {
@@ -52,6 +52,18 @@ function vault(overrides: Partial<Vault> = {}): Vault {
     emoji: '🐷',
     createdAt: '2026-08-09T12:00:00Z',
     updatedAt: '2026-08-09T12:00:00Z',
+    ...overrides,
+  }
+}
+
+function category(overrides: Partial<Category> = {}): Category {
+  return {
+    id: 'food',
+    kind: 'expense',
+    name: 'Alimentação',
+    icon: 'utensils',
+    color: '#EA580C',
+    createdAt: '2026-08-09T12:00:00Z',
     ...overrides,
   }
 }
@@ -115,5 +127,20 @@ describe('financeStore', () => {
     expect(store.availableBalanceCents).toBe(50000n)
     expect(store.currentMonthSavingsCents).toBe(80000n)
     expect(store.savingsRate).toBe(80)
+  })
+
+  it('impede usar uma categoria de entrada em uma despesa', async () => {
+    const store = useFinanceStore()
+    store.setCategories([category({ id: 'salary', kind: 'income', name: 'Salário' })])
+
+    await expect(store.createTransaction({
+      kind: 'expense',
+      amount: '10.00',
+      date: '2026-08-11',
+      categoryId: 'salary',
+      debitCardId: null,
+      description: 'Teste',
+      recurrence: 'variable',
+    })).rejects.toThrow(/categoria válida/i)
   })
 })

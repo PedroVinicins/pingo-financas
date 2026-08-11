@@ -2,6 +2,8 @@
 import { reactive, ref } from 'vue'
 import { Landmark, ShieldCheck, X } from 'lucide-vue-next'
 import type { NewVaultInput, VaultType } from '../types/finance'
+import { localizedDecimalToStorage } from '../services/localizedNumber'
+import LocalizedNumberInput from './LocalizedNumberInput.vue'
 
 const emit = defineEmits<{ close: []; save: [input: NewVaultInput] }>()
 const error = ref('')
@@ -19,8 +21,12 @@ const form = reactive({
 const colors = ['#F97316', '#8B5CF6', '#0EA5E9', '#10B981', '#F43F5E', '#0F172A']
 
 function decimal(value: string, allowZero = false) {
-  const normalized = value.trim().replace(',', '.')
-  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return null
+  let normalized: string
+  try {
+    normalized = localizedDecimalToStorage(value)
+  } catch {
+    return null
+  }
   if (allowZero ? Number(normalized) < 0 : Number(normalized) <= 0) return null
   return normalized
 }
@@ -56,9 +62,9 @@ function submit() {
         <label class="grid gap-1.5 text-sm font-semibold sm:col-span-2">Nome do cofre<input v-model="form.name" maxlength="50" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" placeholder="Ex.: Reserva de emergência" /></label>
         <label class="grid gap-1.5 text-sm font-semibold">Banco / instituição<input v-model="form.institution" maxlength="60" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" placeholder="Ex.: Nubank" /></label>
         <label class="grid gap-1.5 text-sm font-semibold">Tipo<select v-model="form.type" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700"><option value="piggy_bank">Porquinho</option><option value="box">Caixinha</option><option value="savings">Poupança</option><option value="investment">Investimento</option><option value="cash">Dinheiro físico</option></select></label>
-        <label class="grid gap-1.5 text-sm font-semibold">Saldo guardado<input v-model="form.initialBalance" inputmode="decimal" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" placeholder="0,00" /></label>
-        <label class="grid gap-1.5 text-sm font-semibold">Meta <span class="font-normal text-slate-400">(opcional)</span><input v-model="form.targetAmount" inputmode="decimal" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" placeholder="3.000,00" /></label>
-        <label class="grid gap-1.5 text-sm font-semibold sm:col-span-2">Rentabilidade estimada ao ano <span class="font-normal text-slate-400">(opcional)</span><input v-model="form.annualYieldRate" inputmode="decimal" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" placeholder="Ex.: 12,00%" /></label>
+        <label class="grid gap-1.5 text-sm font-semibold">Saldo guardado<LocalizedNumberInput v-model="form.initialBalance" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" placeholder="0,00" /></label>
+        <label class="grid gap-1.5 text-sm font-semibold">Meta <span class="font-normal text-slate-400">(opcional)</span><LocalizedNumberInput v-model="form.targetAmount" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" placeholder="3.000,00" /></label>
+        <label class="grid gap-1.5 text-sm font-semibold sm:col-span-2">Rentabilidade estimada ao ano <span class="font-normal text-slate-400">(opcional)</span><LocalizedNumberInput v-model="form.annualYieldRate" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" placeholder="Ex.: 12,00%" /></label>
       </div>
 
       <div class="mt-5 flex items-center gap-3"><Landmark :size="18" /><p class="text-sm font-black">Cor e ícone</p></div>

@@ -2,6 +2,8 @@
 import { computed, reactive } from 'vue'
 import { ShieldCheck, X } from 'lucide-vue-next'
 import type { CardBackground, CardNetwork, CardPattern, NewDebitCardInput } from '../types/finance'
+import { localizedDecimalToStorage } from '../services/localizedNumber'
+import LocalizedNumberInput from './LocalizedNumberInput.vue'
 
 const props = defineProps<{ existingCardsCount: number }>()
 const emit = defineEmits<{
@@ -46,8 +48,15 @@ function submit() {
   if (!form.name.trim() || !form.issuer.trim() || !form.holderName.trim()) return
   if (!/^\d{4}$/.test(lastFour)) return
 
-  const limit = form.monthlySpendingLimit.trim().replace(',', '.')
-  if (limit && (!/^\d+(\.\d{1,2})?$/.test(limit) || Number(limit) <= 0)) return
+  let limit = ''
+  if (form.monthlySpendingLimit.trim()) {
+    try {
+      limit = localizedDecimalToStorage(form.monthlySpendingLimit)
+    } catch {
+      return
+    }
+    if (Number(limit) <= 0) return
+  }
 
   emit('save', {
     name: form.name.trim(),
@@ -112,7 +121,7 @@ function submit() {
         </label>
         <label class="grid gap-1.5 text-sm font-semibold sm:col-span-2">
           Limite mensal de controle <span class="font-normal text-slate-400">(opcional)</span>
-          <input v-model="form.monthlySpendingLimit" inputmode="decimal" placeholder="Ex.: 250,00" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" />
+          <LocalizedNumberInput v-model="form.monthlySpendingLimit" placeholder="Ex.: 250,00" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" />
         </label>
       </div>
 

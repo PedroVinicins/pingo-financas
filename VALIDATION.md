@@ -1,49 +1,41 @@
-# Validação do projeto — Pingo v0.3
+# Validação do projeto — Pingo v0.4.1
 
 ## Validado neste ambiente
 
-- migrations SQLite `0001_init.sql`, `0002_debit_cards.sql` e `0003_card_personalization.sql` executadas em banco limpo;
-- colunas `pattern` e `emoji` adicionadas a `debit_cards`;
-- `ON DELETE SET NULL` continua preservando transações ao remover cartão;
-- serviços TypeScript de persistência e deep links passaram por `tsc --strict` com shims dos módulos Tauri;
-- script `setup-android-shortcuts.mjs` foi executado contra uma estrutura Android simulada e adicionou corretamente:
-  - metadata `android.app.shortcuts`;
-  - `res/xml/shortcuts.xml`;
-  - strings de `Novo gasto` e `Carteira`;
-- componentes Vue foram verificados estruturalmente com parser HTML para detectar markup básico quebrado;
-- `node --check` validou o script de atalhos Android.
+- `npm test`: 13 testes aprovados;
+- `npm run build`: TypeScript e build de produção aprovados;
+- migrations SQLite `0001` até `0005` executadas em sequência em um banco limpo;
+- migration `0005_category_kinds.sql` preserva categorias anteriores como despesas;
+- banco validado com 8 categorias de despesa e 7 categorias de entrada;
+- máscara monetária validada para milhar, vírgula e duas casas decimais;
+- store impede uma despesa de usar categoria de entrada;
+- plugin oficial de notificações do Tauri configurado no Rust, JavaScript e capabilities mobile/desktop.
 
-## Testes adicionados
+## Testes automatizados
 
-- `src/services/__tests__/quickLaunch.spec.ts`
-  - `pingo://expense`;
-  - cartão pré-selecionado por query string;
-  - fallback web via `?quick=expense`.
-- testes existentes da store continuam cobrindo saldo único e separação de gastos por cartão.
-- testes Rust do modelo de cartão agora cobrem textura/sticker e limites de dados do cartão.
+- saldo único e separação de gastos por cartão;
+- saldo disponível e valores guardados em cofres;
+- rejeição de valores zerados;
+- categorias incompatíveis com o tipo da transação;
+- deep links do Gasto rápido;
+- formatação e persistência de valores no padrão brasileiro.
 
-## Limitações do ambiente de geração
+## Validação necessária no Fedora/Android
 
-Não foi possível executar `cargo test` porque este ambiente não possui `cargo/rustc`.
-
-Também não foi possível executar `npm install`, `npm run build` ou Vitest porque o registry NPM disponível neste ambiente retorna 404 para pacotes oficiais do Tauri, incluindo `@tauri-apps/api`. Isso é uma limitação do registry interno do ambiente, não do projeto.
-
-Na sua máquina execute:
+O ambiente de geração não possui `cargo` nem Android SDK. Antes de distribuir o APK, execute:
 
 ```bash
 npm install
-npm run build
 npm test
+npm run build
 
 cd src-tauri
 cargo test
 cargo check
-```
+cd ..
 
-Para Android:
-
-```bash
-npm run tauri android init
 npm run android:shortcuts
 npm run android:dev
 ```
+
+No primeiro uso, abra o sino no topo e toque em **Ativar lembretes** para o Android solicitar a permissão de notificações.
