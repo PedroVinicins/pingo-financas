@@ -44,6 +44,39 @@ pub enum CardPattern {
     Aurora,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CardBackground {
+    None,
+    Amazonia,
+    Praia,
+    Cidade,
+    Montanhas,
+}
+
+impl CardBackground {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Amazonia => "amazonia",
+            Self::Praia => "praia",
+            Self::Cidade => "cidade",
+            Self::Montanhas => "montanhas",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "none" => Some(Self::None),
+            "amazonia" => Some(Self::Amazonia),
+            "praia" => Some(Self::Praia),
+            "cidade" => Some(Self::Cidade),
+            "montanhas" => Some(Self::Montanhas),
+            _ => None,
+        }
+    }
+}
+
 impl CardPattern {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -79,6 +112,7 @@ pub struct DebitCard {
     pub color_from: String,
     pub color_to: String,
     pub pattern: CardPattern,
+    pub background_image: CardBackground,
     pub emoji: Option<String>,
     pub is_default: bool,
     pub is_frozen: bool,
@@ -98,6 +132,7 @@ pub struct NewDebitCard {
     pub color_from: String,
     pub color_to: String,
     pub pattern: CardPattern,
+    pub background_image: CardBackground,
     pub emoji: Option<String>,
     pub is_default: bool,
     #[serde(with = "rust_decimal::serde::str_option")]
@@ -111,6 +146,7 @@ pub struct UpdateDebitCardStyle {
     pub color_from: String,
     pub color_to: String,
     pub pattern: CardPattern,
+    pub background_image: CardBackground,
     pub emoji: Option<String>,
 }
 
@@ -146,6 +182,7 @@ impl DebitCard {
             color_from: input.color_from.to_ascii_uppercase(),
             color_to: input.color_to.to_ascii_uppercase(),
             pattern: input.pattern,
+            background_image: input.background_image,
             emoji: clean_emoji(input.emoji)?,
             is_default: input.is_default,
             is_frozen: false,
@@ -215,6 +252,7 @@ mod tests {
             color_from: "#F97316".into(),
             color_to: "#EA580C".into(),
             pattern: CardPattern::Waves,
+            background_image: CardBackground::Amazonia,
             emoji: Some("🍊".into()),
             is_default: true,
             monthly_spending_limit: Some(dec!(250.00)),
@@ -239,6 +277,7 @@ mod tests {
     fn accepts_fun_personalization_without_sensitive_data() {
         let card = DebitCard::new(input()).unwrap();
         assert_eq!(card.pattern, CardPattern::Waves);
+        assert_eq!(card.background_image, CardBackground::Amazonia);
         assert_eq!(card.emoji.as_deref(), Some("🍊"));
     }
 }

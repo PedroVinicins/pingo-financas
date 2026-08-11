@@ -28,6 +28,10 @@ pub fn run() {
             commands::set_debit_card_frozen,
             commands::set_default_debit_card,
             commands::delete_debit_card,
+            commands::list_vaults,
+            commands::add_vault,
+            commands::move_vault_money,
+            commands::delete_vault,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar a aplicação Tauri");

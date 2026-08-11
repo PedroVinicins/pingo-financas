@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, reactive } from 'vue'
-import { Palette, X } from 'lucide-vue-next'
+import { Image, Palette, X } from 'lucide-vue-next'
 import DebitCardVisual from './DebitCardVisual.vue'
-import type { CardPattern, DebitCard, UpdateDebitCardStyleInput } from '../types/finance'
+import type { CardBackground, CardPattern, DebitCard, UpdateDebitCardStyleInput } from '../types/finance'
 
 const props = defineProps<{ card: DebitCard }>()
 const emit = defineEmits<{ close: []; save: [input: UpdateDebitCardStyleInput] }>()
@@ -14,12 +14,17 @@ const palettes = [
 const patterns: { id: CardPattern; label: string }[] = [
   { id: 'soft', label: 'Suave' }, { id: 'waves', label: 'Ondas' }, { id: 'dots', label: 'Pontos' }, { id: 'grid', label: 'Grade' }, { id: 'aurora', label: 'Aurora' },
 ]
+const backgrounds: { id: CardBackground; label: string }[] = [
+  { id: 'none', label: 'Sem foto' }, { id: 'amazonia', label: 'Amazônia' },
+  { id: 'praia', label: 'Praia' }, { id: 'cidade', label: 'Cidade' },
+  { id: 'montanhas', label: 'Montanhas' },
+]
 const emojis = ['', '💸', '🍊', '🎮', '🚀', '🌴', '🧠', '💜', '⚡', '🐸']
-const form = reactive({ colorFrom: props.card.colorFrom, colorTo: props.card.colorTo, pattern: props.card.pattern, emoji: props.card.emoji ?? '' })
+const form = reactive({ colorFrom: props.card.colorFrom, colorTo: props.card.colorTo, pattern: props.card.pattern, backgroundImage: props.card.backgroundImage, emoji: props.card.emoji ?? '' })
 const preview = computed<DebitCard>(() => ({ ...props.card, ...form, emoji: form.emoji || null }))
 
 function usePalette(from: string, to: string) { form.colorFrom = from; form.colorTo = to }
-function submit() { emit('save', { id: props.card.id, colorFrom: form.colorFrom, colorTo: form.colorTo, pattern: form.pattern, emoji: form.emoji || null }) }
+function submit() { emit('save', { id: props.card.id, colorFrom: form.colorFrom, colorTo: form.colorTo, pattern: form.pattern, backgroundImage: form.backgroundImage, emoji: form.emoji || null }) }
 </script>
 
 <template>
@@ -35,6 +40,14 @@ function submit() { emit('save', { id: props.card.id, colorFrom: form.colorFrom,
 
       <p class="mt-5 text-sm font-black">Textura</p>
       <div class="mt-2 flex flex-wrap gap-2"><button v-for="pattern in patterns" :key="pattern.id" type="button" class="rounded-xl border px-3 py-2 text-xs font-bold" :class="form.pattern === pattern.id ? 'border-slate-950 bg-slate-950 text-white dark:border-white dark:bg-white dark:text-slate-950' : 'border-slate-200 dark:border-slate-700'" @click="form.pattern = pattern.id">{{ pattern.label }}</button></div>
+
+      <p class="mt-5 flex items-center gap-2 text-sm font-black"><Image :size="16" /> Foto de fundo</p>
+      <div class="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
+        <button v-for="background in backgrounds" :key="background.id" type="button" class="overflow-hidden rounded-xl border text-[11px] font-bold" :class="form.backgroundImage === background.id ? 'border-violet-500 ring-2 ring-violet-200' : 'border-slate-200 dark:border-slate-700'" @click="form.backgroundImage = background.id">
+          <span class="block h-12 bg-slate-100 bg-cover bg-center dark:bg-slate-800" :style="background.id === 'none' ? {} : { backgroundImage: `url(/card-backgrounds/${background.id}.svg)` }"></span>
+          <span class="block px-1 py-2">{{ background.label }}</span>
+        </button>
+      </div>
 
       <p class="mt-5 text-sm font-black">Sticker</p>
       <div class="mt-2 grid grid-cols-5 gap-2"><button v-for="emoji in emojis" :key="emoji || 'none'" type="button" class="grid h-12 place-items-center rounded-2xl border text-xl" :class="form.emoji === emoji ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/40' : 'border-slate-200 dark:border-slate-700'" @click="form.emoji = emoji">{{ emoji || '—' }}</button></div>

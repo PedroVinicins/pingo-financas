@@ -7,8 +7,8 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::models::{
-    CardNetwork, CardPattern, Category, DebitCard, RecurrenceType, Transaction, TransactionType,
-    UpdateDebitCardStyle,
+    CardBackground, CardNetwork, CardPattern, Category, DebitCard, RecurrenceType, Transaction,
+    TransactionType, UpdateDebitCardStyle, Vault, VaultType,
 };
 
 #[derive(Debug, Error)]
@@ -103,9 +103,9 @@ impl<'a> FinanceRepository<'a> {
 
         sqlx::query(
             r#"INSERT INTO debit_cards
-               (id, name, issuer, holder_name, last_four, network, color_from, color_to, pattern, emoji,
+               (id, name, issuer, holder_name, last_four, network, color_from, color_to, pattern, background_image, emoji,
                 is_default, is_frozen, monthly_spending_limit, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
         )
         .bind(card.id.to_string())
         .bind(&card.name)
@@ -116,6 +116,7 @@ impl<'a> FinanceRepository<'a> {
         .bind(&card.color_from)
         .bind(&card.color_to)
         .bind(card.pattern.as_str())
+        .bind(card.background_image.as_str())
         .bind(&card.emoji)
         .bind(card.is_default)
         .bind(card.is_frozen)
@@ -130,7 +131,7 @@ impl<'a> FinanceRepository<'a> {
 
     pub async fn list_debit_cards(&self) -> Result<Vec<DebitCard>, DbError> {
         let rows = sqlx::query(
-            r#"SELECT id, name, issuer, holder_name, last_four, network, color_from, color_to, pattern, emoji,
+            r#"SELECT id, name, issuer, holder_name, last_four, network, color_from, color_to, pattern, background_image, emoji,
                       is_default, is_frozen, monthly_spending_limit, created_at
                FROM debit_cards
                ORDER BY is_default DESC, created_at ASC"#,
@@ -143,11 +144,12 @@ impl<'a> FinanceRepository<'a> {
 
     pub async fn update_debit_card_style(&self, input: &UpdateDebitCardStyle) -> Result<(), DbError> {
         sqlx::query(
-            "UPDATE debit_cards SET color_from = ?, color_to = ?, pattern = ?, emoji = ? WHERE id = ?",
+            "UPDATE debit_cards SET color_from = ?, color_to = ?, pattern = ?, background_image = ?, emoji = ? WHERE id = ?",
         )
         .bind(input.color_from.to_ascii_uppercase())
         .bind(input.color_to.to_ascii_uppercase())
         .bind(input.pattern.as_str())
+        .bind(input.background_image.as_str())
         .bind(&input.emoji)
         .bind(input.id.to_string())
         .execute(self.pool)
@@ -195,6 +197,69 @@ impl<'a> FinanceRepository<'a> {
             .map(|row| row.try_get::<bool, _>("is_frozen"))
             .transpose()?
             .unwrap_or(false))
+    }
+
+    pub async fn insert_vault(&self, vault: &Vault) -> Result<(), DbError> {
+        sqlx::query(
+            r#"INSERT INTO vaults
+               (id, name, institution, type, balance, target_amount, annual_yield_rate, color, emoji, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+        )
+        .bind(vault.id.to_string())
+        .bind(&vault.name)
+        .bind(&vault.institution)
+        .bind(vault.r#type.as_str())
+        .bind(vault.balance.to_string())
+        .bind(vault.target_amount.map(|value| value.to_string()))
+        .bind(vault.annual_yield_rate.map(|value| value.to_string()))
+        .bind(&vault.color)
+        .bind(&vault.emoji)
+        .bind(vault.created_at.to_rfc3339())
+        .bind(vault.updated_at.to_rfc3339())
+        .execute(self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn list_vaults(&self) -> Result<Vec<Vault>, DbError> {
+        let rows = sqlx::query(
+            r#"SELECT id, name, institution, type, balance, target_amount, annual_yield_rate,
+                      color, emoji, created_at, updated_at
+               FROM vaults ORDER BY updated_at DESC"#,
+        )
+        .fetch_all(self.pool)
+        .await?;
+        rows.into_iter().map(row_to_vault).collect()
+    }
+
+    pub async fn get_vault(&self, id: Uuid) -> Result<Option<Vault>, DbError> {
+        let row = sqlx::query(
+            r#"SELECT id, name, institution, type, balance, target_amount, annual_yield_rate,
+                      color, emoji, created_at, updated_at
+               FROM vaults WHERE id = ?"#,
+        )
+        .bind(id.to_string())
+        .fetch_optional(self.pool)
+        .await?;
+        row.map(row_to_vault).transpose()
+    }
+
+    pub async fn update_vault_balance(&self, vault: &Vault) -> Result<(), DbError> {
+        sqlx::query("UPDATE vaults SET balance = ?, updated_at = ? WHERE id = ?")
+            .bind(vault.balance.to_string())
+            .bind(vault.updated_at.to_rfc3339())
+            .bind(vault.id.to_string())
+            .execute(self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn delete_vault(&self, id: Uuid) -> Result<(), DbError> {
+        sqlx::query("DELETE FROM vaults WHERE id = ?")
+            .bind(id.to_string())
+            .execute(self.pool)
+            .await?;
+        Ok(())
     }
 }
 
@@ -253,6 +318,7 @@ fn row_to_debit_card(row: sqlx::sqlite::SqliteRow) -> Result<DebitCard, DbError>
     let id: String = row.try_get("id")?;
     let network: String = row.try_get("network")?;
     let pattern: String = row.try_get("pattern")?;
+    let background_image: String = row.try_get("background_image")?;
     let limit: Option<String> = row.try_get("monthly_spending_limit")?;
     let created_at: String = row.try_get("created_at")?;
 
@@ -266,6 +332,8 @@ fn row_to_debit_card(row: sqlx::sqlite::SqliteRow) -> Result<DebitCard, DbError>
         color_from: row.try_get("color_from")?,
         color_to: row.try_get("color_to")?,
         pattern: CardPattern::parse(&pattern).ok_or_else(|| DbError::InvalidData(pattern.clone()))?,
+        background_image: CardBackground::parse(&background_image)
+            .ok_or_else(|| DbError::InvalidData(background_image.clone()))?,
         emoji: row.try_get("emoji")?,
         is_default: row.try_get("is_default")?,
         is_frozen: row.try_get("is_frozen")?,
@@ -275,6 +343,30 @@ fn row_to_debit_card(row: sqlx::sqlite::SqliteRow) -> Result<DebitCard, DbError>
         created_at: DateTime::parse_from_rfc3339(&created_at)
             .map_err(invalid)?
             .with_timezone(&Utc),
+    })
+}
+
+fn row_to_vault(row: sqlx::sqlite::SqliteRow) -> Result<Vault, DbError> {
+    let id: String = row.try_get("id")?;
+    let vault_type: String = row.try_get("type")?;
+    let balance: String = row.try_get("balance")?;
+    let target_amount: Option<String> = row.try_get("target_amount")?;
+    let annual_yield_rate: Option<String> = row.try_get("annual_yield_rate")?;
+    let created_at: String = row.try_get("created_at")?;
+    let updated_at: String = row.try_get("updated_at")?;
+
+    Ok(Vault {
+        id: Uuid::parse_str(&id).map_err(invalid)?,
+        name: row.try_get("name")?,
+        institution: row.try_get("institution")?,
+        r#type: VaultType::parse(&vault_type).ok_or_else(|| DbError::InvalidData(vault_type.clone()))?,
+        balance: Decimal::from_str(&balance).map_err(invalid)?,
+        target_amount: target_amount.map(|value| Decimal::from_str(&value).map_err(invalid)).transpose()?,
+        annual_yield_rate: annual_yield_rate.map(|value| Decimal::from_str(&value).map_err(invalid)).transpose()?,
+        color: row.try_get("color")?,
+        emoji: row.try_get("emoji")?,
+        created_at: DateTime::parse_from_rfc3339(&created_at).map_err(invalid)?.with_timezone(&Utc),
+        updated_at: DateTime::parse_from_rfc3339(&updated_at).map_err(invalid)?.with_timezone(&Utc),
     })
 }
 

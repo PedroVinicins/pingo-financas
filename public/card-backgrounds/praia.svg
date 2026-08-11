@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 454">
+  <defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="#70c9ec"/><stop offset="1" stop-color="#d7f2ed"/></linearGradient><linearGradient id="sea" x2="0" y2="1"><stop stop-color="#17a8be"/><stop offset="1" stop-color="#075985"/></linearGradient></defs>
+  <path fill="url(#sky)" d="M0 0h720v210H0z"/><circle cx="560" cy="92" r="55" fill="#fff4b5"/><path fill="url(#sea)" d="M0 190h720v264H0z"/>
+  <path fill="#f4d7a1" d="M0 345c142-57 254-3 387-44 105-33 208 0 333 15v138H0z"/>
+  <path fill="none" stroke="#fff" stroke-width="13" opacity=".7" d="M0 314c134-45 241 5 371-34 126-38 224 8 349 20"/>
+  <path fill="#195b48" d="M78 355c17-83 8-147-21-207l13-6c31 56 45 125 36 214z"/><g fill="#216e57"><ellipse cx="51" cy="138" rx="55" ry="17" transform="rotate(-26 51 138)"/><ellipse cx="100" cy="129" rx="62" ry="17" transform="rotate(20 100 129)"/><ellipse cx="76" cy="104" rx="54" ry="15" transform="rotate(-66 76 104)"/></g>
+</svg>

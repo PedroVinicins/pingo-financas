@@ -14,4 +14,9 @@ describe('quick launch', () => {
   it('aceita fallback web', () => {
     expect(parseQuickLaunchUrl('https://localhost/?quick=expense&card=123')).toEqual({ type: 'expense', cardId: '123' })
   })
+
+  it('abre a área de cofres pelo atalho mobile', () => {
+    expect(parseQuickLaunchUrl('pingo://vaults')).toEqual({ type: 'vaults' })
+    expect(parseQuickLaunchUrl('https://localhost/?view=cofres')).toEqual({ type: 'vaults' })
+  })
 })

@@ -4,8 +4,8 @@ use uuid::Uuid;
 use crate::{
     db::{AppState, FinanceRepository},
     models::{
-        clean_emoji, validate_style, Category, DebitCard, NewCategory, NewDebitCard, NewTransaction,
-        Transaction, UpdateDebitCardStyle,
+        clean_emoji, validate_style, Category, DebitCard, MoveVaultMoney, NewCategory, NewDebitCard,
+        NewTransaction, NewVault, Transaction, UpdateDebitCardStyle, Vault,
     },
 };
 
@@ -138,6 +138,51 @@ pub async fn set_default_debit_card(state: State<'_, AppState>, id: Uuid) -> Res
 pub async fn delete_debit_card(state: State<'_, AppState>, id: Uuid) -> Result<(), String> {
     FinanceRepository::new(&state.pool)
         .delete_debit_card(id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn list_vaults(state: State<'_, AppState>) -> Result<Vec<Vault>, String> {
+    FinanceRepository::new(&state.pool)
+        .list_vaults()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn add_vault(state: State<'_, AppState>, input: NewVault) -> Result<Vault, String> {
+    let vault = Vault::new(input).map_err(|error| error.to_string())?;
+    FinanceRepository::new(&state.pool)
+        .insert_vault(&vault)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(vault)
+}
+
+#[tauri::command]
+pub async fn move_vault_money(
+    state: State<'_, AppState>,
+    input: MoveVaultMoney,
+) -> Result<Vault, String> {
+    let repository = FinanceRepository::new(&state.pool);
+    let mut vault = repository
+        .get_vault(input.id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "cofre não encontrado".to_string())?;
+    vault.apply_movement(&input).map_err(|error| error.to_string())?;
+    repository
+        .update_vault_balance(&vault)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(vault)
+}
+
+#[tauri::command]
+pub async fn delete_vault(state: State<'_, AppState>, id: Uuid) -> Result<(), String> {
+    FinanceRepository::new(&state.pool)
+        .delete_vault(id)
         .await
         .map_err(|error| error.to_string())
 }

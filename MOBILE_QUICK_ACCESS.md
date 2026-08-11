@@ -22,6 +22,7 @@ pingo://expense?card=<UUID_DO_CARTAO>
 pingo://wallet
 pingo://wallet?card=<UUID_DO_CARTAO>
 pingo://dashboard
+pingo://vaults
 ```
 
 Isso permite abrir diretamente uma ação do Pingo a partir de atalhos do sistema, automações e launchers compatíveis.
@@ -35,10 +36,11 @@ npm run tauri android init
 npm run android:shortcuts
 ```
 
-O script adiciona dois atalhos estáticos ao launcher:
+O script adiciona três atalhos estáticos ao launcher:
 
 - **Novo gasto** → `pingo://expense`
 - **Carteira** → `pingo://wallet`
+- **Cofres** → `pingo://vaults`
 
 Depois, execute:
 

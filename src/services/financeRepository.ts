@@ -1,16 +1,20 @@
 import type {
   Category,
   DebitCard,
+  MoveVaultMoneyInput,
   NewDebitCardInput,
   NewTransactionInput,
+  NewVaultInput,
   Transaction,
   UpdateDebitCardStyleInput,
+  Vault,
 } from '../types/finance'
 
 // Mantidos para preservar dados de quem já usou as versões 0.1/0.2 no navegador.
 const TRANSACTIONS_KEY = 'cashew-clone:transactions'
 const CATEGORIES_KEY = 'cashew-clone:categories'
 const DEBIT_CARDS_KEY = 'cashew-clone:debit-cards'
+const VAULTS_KEY = 'pingo:vaults'
 
 export function isTauriRuntime() {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
@@ -34,6 +38,7 @@ function normalizeCard(card: DebitCard): DebitCard {
   return {
     ...card,
     pattern: card.pattern ?? 'soft',
+    backgroundImage: card.backgroundImage ?? 'none',
     emoji: card.emoji ?? null,
   }
 }
@@ -113,6 +118,7 @@ export async function updateDebitCardStyle(input: UpdateDebitCardStyleInput): Pr
   card.colorFrom = input.colorFrom
   card.colorTo = input.colorTo
   card.pattern = input.pattern
+  card.backgroundImage = input.backgroundImage
   card.emoji = input.emoji?.trim() || null
   writeLocal(DEBIT_CARDS_KEY, cards)
   return { ...card }
@@ -152,4 +158,70 @@ export async function deleteDebitCard(id: string): Promise<void> {
     transaction.debitCardId === id ? { ...transaction, debitCardId: null } : transaction,
   )
   writeLocal(TRANSACTIONS_KEY, transactions)
+}
+
+export async function listVaults(): Promise<Vault[]> {
+  if (isTauriRuntime()) return tauriInvoke<Vault[]>('list_vaults')
+  return readLocal<Vault[]>(VAULTS_KEY, [])
+}
+
+export async function addVault(input: NewVaultInput): Promise<Vault> {
+  if (isTauriRuntime()) return tauriInvoke<Vault>('add_vault', { input })
+
+  const now = new Date().toISOString()
+  const vault: Vault = {
+    id: crypto.randomUUID(),
+    name: input.name.trim(),
+    institution: input.institution.trim(),
+    type: input.type,
+    balance: input.initialBalance,
+    targetAmount: input.targetAmount,
+    annualYieldRate: input.annualYieldRate,
+    color: input.color,
+    emoji: input.emoji?.trim() || null,
+    createdAt: now,
+    updatedAt: now,
+  }
+  const vaults = await listVaults()
+  vaults.push(vault)
+  writeLocal(VAULTS_KEY, vaults)
+  return vault
+}
+
+export async function moveVaultMoney(input: MoveVaultMoneyInput): Promise<Vault> {
+  if (isTauriRuntime()) return tauriInvoke<Vault>('move_vault_money', { input })
+
+  const vaults = await listVaults()
+  const vault = vaults.find((item) => item.id === input.id)
+  if (!vault) throw new Error('Cofre não encontrado')
+
+  const current = moneyToCents(vault.balance)
+  const amount = moneyToCents(input.amount)
+  if (amount <= 0n) throw new Error('O valor deve ser maior que zero')
+  const next = input.kind === 'deposit' ? current + amount : current - amount
+  if (next < 0n) throw new Error('O cofre não tem saldo suficiente')
+
+  vault.balance = centsToMoney(next)
+  vault.updatedAt = new Date().toISOString()
+  writeLocal(VAULTS_KEY, vaults)
+  return { ...vault }
+}
+
+export async function deleteVault(id: string): Promise<void> {
+  if (isTauriRuntime()) {
+    await tauriInvoke<void>('delete_vault', { id })
+    return
+  }
+  writeLocal(VAULTS_KEY, (await listVaults()).filter((vault) => vault.id !== id))
+}
+
+function moneyToCents(value: string): bigint {
+  const normalized = value.trim().replace(',', '.')
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) throw new Error('Valor monetário inválido')
+  const [whole, fraction = ''] = normalized.split('.')
+  return BigInt(whole) * 100n + BigInt((fraction + '00').slice(0, 2))
+}
+
+function centsToMoney(value: bigint): string {
+  return `${value / 100n}.${(value % 100n).toString().padStart(2, '0')}`
 }

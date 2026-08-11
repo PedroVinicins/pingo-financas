@@ -6,7 +6,39 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
-## Destaques da versão 0.3
+## Destaques da versão 0.4
+
+### Pingo Cofres
+
+- organize Porquinho do Inter, Caixinha do Nubank, poupança, investimentos e dinheiro físico;
+- registre saldo inicial, depósitos e retiradas;
+- defina meta, cor, ícone e rentabilidade anual estimada;
+- acompanhe progresso, rendimento projetado e meses de cobertura da reserva;
+- veja o saldo livre separado do dinheiro reservado;
+- todos os registros funcionam no SQLite do Tauri e no fallback `localStorage` do navegador.
+
+O Pingo apenas acompanha os valores informados: ele não acessa nem movimenta contas bancárias.
+
+### Novos cálculos financeiros
+
+- taxa de economia mensal;
+- comprometimento da renda com despesas fixas;
+- média de despesas dos últimos três meses;
+- projeção de gastos até o fim do mês;
+- orçamento diário baseado no saldo livre e nos dias restantes;
+- cobertura da reserva de emergência;
+- indicador de saúde financeira de 0 a 100.
+
+### Cartões com fotos
+
+Além das paletas, texturas e stickers, cada cartão pode usar um dos fundos visuais locais:
+
+- Amazônia;
+- praia;
+- cidade;
+- montanhas.
+
+As imagens ficam dentro do app e continuam disponíveis sem internet.
 
 ### Gasto rápido
 
@@ -27,9 +59,10 @@ pingo://expense
 pingo://expense?card=<id>
 pingo://wallet
 pingo://dashboard
+pingo://vaults
 ```
 
-Há também um script para instalar atalhos estáticos do Android (`Novo gasto` e `Carteira`) depois do `tauri android init`.
+Há também um script para instalar atalhos estáticos do Android (`Novo gasto`, `Carteira` e `Cofres`) depois do `tauri android init`.
 
 Veja [MOBILE_QUICK_ACCESS.md](./MOBILE_QUICK_ACCESS.md).
 
@@ -48,6 +81,7 @@ Cada cartão pode ter:
 - limite mensal pessoal;
 - paleta de cores;
 - textura (`soft`, `waves`, `dots`, `grid`, `aurora`);
+- imagem de fundo;
 - sticker/emoji;
 - histórico separado;
 - gasto mensal;
@@ -135,6 +169,7 @@ O SQLite é inicializado no diretório de dados da aplicação. As migrations at
 0001_init.sql
 0002_debit_cards.sql
 0003_card_personalization.sql
+0004_vaults_and_card_backgrounds.sql
 ```
 
 Valores monetários são persistidos como texto e tratados com `rust_decimal` no core Rust. No frontend, cálculos reativos usam centavos em `bigint`.
@@ -158,5 +193,5 @@ pingo/
     ├── services/
     ├── stores/
     ├── types/
-    └── views/
+    └── views/                 # resumo, carteira e cofres
 ```

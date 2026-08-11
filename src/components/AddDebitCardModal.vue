@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive } from 'vue'
 import { ShieldCheck, X } from 'lucide-vue-next'
-import type { CardNetwork, CardPattern, NewDebitCardInput } from '../types/finance'
+import type { CardBackground, CardNetwork, CardPattern, NewDebitCardInput } from '../types/finance'
 
 const props = defineProps<{ existingCardsCount: number }>()
 const emit = defineEmits<{
@@ -17,6 +17,14 @@ const palettes = [
   { name: 'Violeta', from: '#7C3AED', to: '#4C1D95' },
 ]
 
+const backgrounds: { id: CardBackground; label: string }[] = [
+  { id: 'none', label: 'Sem foto' },
+  { id: 'amazonia', label: 'Amazônia' },
+  { id: 'praia', label: 'Praia' },
+  { id: 'cidade', label: 'Cidade' },
+  { id: 'montanhas', label: 'Montanhas' },
+]
+
 const form = reactive({
   name: 'Cartão principal',
   issuer: '',
@@ -26,6 +34,7 @@ const form = reactive({
   palette: 0,
   monthlySpendingLimit: '',
   pattern: 'soft' as CardPattern,
+  backgroundImage: 'none' as CardBackground,
   emoji: '',
   isDefault: props.existingCardsCount === 0,
 })
@@ -49,6 +58,7 @@ function submit() {
     colorFrom: selectedPalette.value.from,
     colorTo: selectedPalette.value.to,
     pattern: form.pattern,
+    backgroundImage: form.backgroundImage,
     emoji: form.emoji || null,
     isDefault: form.isDefault,
     monthlySpendingLimit: limit || null,
@@ -104,6 +114,26 @@ function submit() {
           Limite mensal de controle <span class="font-normal text-slate-400">(opcional)</span>
           <input v-model="form.monthlySpendingLimit" inputmode="decimal" placeholder="Ex.: 250,00" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" />
         </label>
+      </div>
+
+      <div class="mt-5">
+        <p class="text-sm font-semibold">Foto de fundo</p>
+        <div class="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
+          <button
+            v-for="background in backgrounds"
+            :key="background.id"
+            type="button"
+            class="overflow-hidden rounded-xl border text-[11px] font-bold"
+            :class="form.backgroundImage === background.id ? 'border-emerald-500 ring-2 ring-emerald-200' : 'border-slate-200 dark:border-slate-700'"
+            @click="form.backgroundImage = background.id"
+          >
+            <span
+              class="block h-12 bg-slate-100 bg-cover bg-center dark:bg-slate-800"
+              :style="background.id === 'none' ? {} : { backgroundImage: `url(/card-backgrounds/${background.id}.svg)` }"
+            ></span>
+            <span class="block px-1 py-2">{{ background.label }}</span>
+          </button>
+        </div>
       </div>
 
       <div class="mt-5">
