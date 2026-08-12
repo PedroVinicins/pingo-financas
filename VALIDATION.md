@@ -1,9 +1,10 @@
-# Validação do projeto — Pingo v0.4.1
+# Validação do projeto — Pingo v0.6.0
 
 ## Validado neste ambiente
 
-- `npm test`: 13 testes aprovados;
+- `npm test`: 23 testes aprovados;
 - `npm run build`: TypeScript e build de produção aprovados;
+- `npm audit`: nenhuma vulnerabilidade conhecida nas dependências npm;
 - migrations SQLite `0001` até `0005` executadas em sequência em um banco limpo;
 - migration `0005_category_kinds.sql` preserva categorias anteriores como despesas;
 - banco validado com 8 categorias de despesa e 7 categorias de entrada;
@@ -18,14 +19,26 @@
 - rejeição de valores zerados;
 - categorias incompatíveis com o tipo da transação;
 - deep links do Gasto rápido;
-- formatação e persistência de valores no padrão brasileiro.
+- formatação e persistência de valores no padrão brasileiro;
+- vencimento real das recorrências e prazo automático de três dias;
+- criação do Piloto Mensal dentro do formulário de transações;
+- transferência inicial da conta principal para um porquinho;
+- proteção contra saldo negativo em lançamentos e transferências.
+
+## Integração contínua
+
+O workflow `.github/workflows/ci.yml` executa automaticamente em pushes e Pull Requests:
+
+- `npm ci`, testes e build do frontend;
+- `cargo check --locked` e `cargo test --locked` no core Tauri;
+- instalação das dependências Linux recomendadas pelo Tauri 2.
 
 ## Validação necessária no Fedora/Android
 
 O ambiente de geração não possui `cargo` nem Android SDK. Antes de distribuir o APK, execute:
 
 ```bash
-npm install
+npm ci
 npm test
 npm run build
 

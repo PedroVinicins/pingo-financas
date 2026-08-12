@@ -1,5 +1,7 @@
 # Pingo
 
+[![CI](https://github.com/PedroVinicins/pingo-financas/actions/workflows/ci.yml/badge.svg)](https://github.com/PedroVinicins/pingo-financas/actions/workflows/ci.yml)
+
 **Pingo** é um gerenciador de finanças pessoais mobile-first em Rust + Tauri + Vue 3.
 
 > Registre um gasto enquanto ele ainda está fresco na cabeça.
@@ -55,7 +57,7 @@ A proposta é unir a velocidade de um app de carteira no celular com ferramentas
 - defina meta, cor, ícone e rentabilidade anual estimada;
 - acompanhe progresso, rendimento projetado e meses de cobertura da reserva;
 - veja o saldo livre separado do dinheiro reservado;
-- todos os registros funcionam no SQLite do Tauri e no fallback `localStorage` do navegador.
+- transações, categorias, cartões e cofres funcionam no SQLite do Tauri e possuem fallback Web.
 
 O Pingo apenas acompanha os valores informados: ele não acessa nem movimenta contas bancárias.
 
@@ -203,6 +205,8 @@ cargo test
 
 ## Persistência
 
+No Tauri, transações, categorias, cartões e cofres são persistidos no SQLite. Enquanto a migração completa não é concluída, preferências da conta, histórico auxiliar dos cofres, reservas automáticas e recorrências mensais ficam no armazenamento local da WebView. No navegador, todos os dados usam `localStorage`.
+
 O SQLite é inicializado no diretório de dados da aplicação. As migrations atuais são:
 
 ```text
@@ -214,6 +218,14 @@ O SQLite é inicializado no diretório de dados da aplicação. As migrations at
 ```
 
 Valores monetários são persistidos como texto e tratados com `rust_decimal` no core Rust. No frontend, cálculos reativos usam centavos em `bigint`.
+
+## Segurança, privacidade e contribuição
+
+- [Política de privacidade](./PRIVACY.md)
+- [Política de segurança](./SECURITY.md)
+- [Como contribuir](./CONTRIBUTING.md)
+
+O projeto ainda não possui uma licença de código aberto definida. Até uma licença ser escolhida, o código continua protegido pelos direitos autorais do autor.
 
 ## Arquitetura
 
@@ -234,5 +246,5 @@ pingo/
     ├── services/
     ├── stores/
     ├── types/
-    └── views/                 # resumo, carteira e cofres
+    └── views/                 # resumo, gastos, carteira e cofres
 ```

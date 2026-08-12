@@ -7,7 +7,10 @@
 - cria a aba Gastos com despesas do mês, economia, meta de 20%, categorias e contas no radar;
 - reúne economias do mês e valores dos porquinhos em uma leitura mais visual;
 - amplia as mensagens bem-humoradas do Pingo conforme gastos, saldo e desempenho financeiro;
-- melhora a navegação mobile para acessar Resumo, Gastos, Gasto rápido, Carteira e Cofres.
+- melhora a navegação mobile para acessar Resumo, Gastos, Gasto rápido, Carteira e Cofres;
+- adiciona CI para validar frontend e Rust em cada Pull Request;
+- adiciona Dependabot, templates e documentos de segurança, privacidade e contribuição;
+- remove arquivos temporários do TypeScript do versionamento.
 
 ## 0.5.1 — Vencimentos no dia certo
 

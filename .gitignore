@@ -1,22 +1,14 @@
+# Node
 node_modules/
 dist/
 .vite/
 coverage/
 *.log
-.DS_Store
-
-src-tauri/target/
-src-tauri/gen/
-*.sqlite3
-*.sqlite3-shm
-*.sqlite3-wal
-
-# Node
-node_modules/
-dist/
+*.tsbuildinfo
 
 # Rust / Tauri
 src-tauri/target/
+src-tauri/gen/
 
 # Environment
 .env
@@ -34,3 +26,6 @@ Thumbs.db
 *.db
 *.db-shm
 *.db-wal
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
