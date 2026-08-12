@@ -489,6 +489,9 @@ export const useFinanceStore = defineStore('finance', () => {
         throw cause
       }
     }
+    pingoMessage.value = rule.kind === 'expense'
+      ? `Piloto ligado para “${rule.description}”. Quando o boleto acordar, eu te aviso. 🤖`
+      : `Salário “${rule.description}” entrou no radar. Quando chegar o dia, eu grito: PINGOU! 💸`
     return rule
   }
   async function settleRecurringRule(id: string, automatic = false) {
@@ -514,6 +517,9 @@ export const useFinanceStore = defineStore('finance', () => {
     const index = recurringRules.value.findIndex((item) => item.id === id)
     if (index >= 0) recurringRules.value[index] = updated
     if (automatic) pingoMessage.value = `Você demorou 3 dias, então o Pingo registrou “${rule.description}”. Tudo sem deixar o saldo negativo.`
+    else pingoMessage.value = rule.kind === 'income'
+      ? `Opa, pingou “${rule.description}”! Agora respira antes de abrir as promoções. 😅`
+      : `“${rule.description}” paga. Um boleto a menos encarando você enquanto dorme. 😴`
     return transaction
   }
   async function processRecurringRules() {

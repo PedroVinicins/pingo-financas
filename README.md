@@ -6,6 +6,15 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
+## Destaques da versão 0.6.0
+
+- Piloto Mensal integrado ao formulário de transações;
+- nova aba Gastos & economias com meta mensal e análise por categoria;
+- visão exclusiva das despesas recentes e compromissos recorrentes;
+- leitura conjunta do que foi economizado e do saldo nos porquinhos;
+- novas reações e comentários divertidos do Pingo;
+- navegação mobile ampliada sem perder o atalho central de Gasto rápido.
+
 ## Correções da versão 0.5.1
 
 - confirmação de conta e salário disponível somente no vencimento ou depois dele;

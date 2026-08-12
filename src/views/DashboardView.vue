@@ -5,7 +5,7 @@ import {
   ShieldCheck, Sparkles, TrendingDown,
 } from 'lucide-vue-next'
 import { useFinanceStore, centsToDecimal } from '../stores/financeStore'
-import type { NewTransactionInput, Transaction } from '../types/finance'
+import type { NewRecurringRuleInput, NewTransactionInput, Transaction } from '../types/finance'
 import SummaryCard from '../components/SummaryCard.vue'
 import TransactionList from '../components/TransactionList.vue'
 import AddTransactionModal from '../components/AddTransactionModal.vue'
@@ -51,6 +51,12 @@ async function save(input: NewTransactionInput) {
     editingTransaction.value = null
   } catch (cause) { window.alert(cause instanceof Error ? cause.message : 'Não foi possível salvar.') }
 }
+async function saveRecurring(input: NewRecurringRuleInput) {
+  try {
+    await store.createRecurringRule(input)
+    showModal.value = false
+  } catch (cause) { window.alert(cause instanceof Error ? cause.message : 'Não foi possível ligar o Piloto Mensal.') }
+}
 function edit(transaction: Transaction) { editingTransaction.value = transaction; showModal.value = true }
 function editBalance(amount: string) { store.setAvailableBalance(amount); showBalanceEditor.value = false }
 </script>
@@ -84,6 +90,6 @@ function editBalance(amount: string) { store.setAvailableBalance(amount); showBa
     <section class="mt-5 rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-6"><div class="mb-2 flex items-center justify-between gap-3"><div><p class="text-sm font-medium text-slate-500">Histórico editável</p><h3 class="text-xl font-black">{{ showAllHistory ? 'Todas as transações' : 'Transações recentes' }}</h3></div><button class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-black dark:border-slate-700" @click="showAllHistory = !showAllHistory">{{ showAllHistory ? 'Mostrar recentes' : 'Ver histórico completo' }}</button></div><TransactionList :transactions="historyTransactions" :categories="store.categories" :cards="store.debitCards" @edit="edit" /></section>
   </main>
 
-  <AddTransactionModal v-if="showModal" :categories="store.categories" :cards="store.debitCards" :transaction="editingTransaction" @close="showModal = false; editingTransaction = null" @save="save" />
+  <AddTransactionModal v-if="showModal" :categories="store.categories" :cards="store.debitCards" :transaction="editingTransaction" @close="showModal = false; editingTransaction = null" @save="save" @save-recurring="saveRecurring" />
   <EditBalanceModal v-if="showBalanceEditor" :current-balance="centsToDecimal(store.availableBalanceCents)" @close="showBalanceEditor = false" @save="editBalance" />
 </template>
