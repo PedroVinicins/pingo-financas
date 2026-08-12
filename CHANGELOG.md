@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0 — Radar do Pingo
+
+- integra o Piloto Mensal ao fluxo principal de Adicionar transação;
+- separa lançamentos únicos de contas e rendas recorrentes sem alterar o saldo antes da confirmação;
+- cria a aba Gastos com despesas do mês, economia, meta de 20%, categorias e contas no radar;
+- reúne economias do mês e valores dos porquinhos em uma leitura mais visual;
+- amplia as mensagens bem-humoradas do Pingo conforme gastos, saldo e desempenho financeiro;
+- melhora a navegação mobile para acessar Resumo, Gastos, Gasto rápido, Carteira e Cofres.
+
 ## 0.5.1 — Vencimentos no dia certo
 
 - corrige as recorrências para liberar a confirmação de conta e salário somente no vencimento ou depois dele;
