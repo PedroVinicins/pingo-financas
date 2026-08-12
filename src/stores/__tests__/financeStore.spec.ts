@@ -69,7 +69,10 @@ function category(overrides: Partial<Category> = {}): Category {
 }
 
 describe('financeStore', () => {
-  beforeEach(() => setActivePinia(createPinia()))
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+  })
 
   it('adiciona e remove transações mantendo o saldo reativo', () => {
     const store = useFinanceStore()
@@ -142,5 +145,64 @@ describe('financeStore', () => {
       description: 'Teste',
       recurrence: 'variable',
     })).rejects.toThrow(/categoria válida/i)
+  })
+
+  it('transfere entre conta e porquinho sem alterar o patrimônio total', async () => {
+    const store = useFinanceStore()
+    const storedVault = vault({ balance: '300.00' })
+    localStorage.setItem('pingo:vaults', JSON.stringify([storedVault]))
+    store.setTransactions([transaction({ id: 'salary', kind: 'income', amount: '1000.00' })])
+    store.setVaults([storedVault])
+
+    await store.moveVaultMoney({ id: storedVault.id, kind: 'deposit', amount: '200.00' })
+
+    expect(store.balanceCents).toBe(100000n)
+    expect(store.vaultTotalCents).toBe(50000n)
+    expect(store.availableBalanceCents).toBe(50000n)
+    expect(store.getMovementsForVault(storedVault.id)).toHaveLength(1)
+  })
+
+  it('não permite que uma nova despesa deixe a conta negativa', async () => {
+    const store = useFinanceStore()
+    const expenseCategory = category()
+    store.setCategories([expenseCategory])
+    store.setTransactions([transaction({ id: 'salary', kind: 'income', amount: '100.00', categoryId: null })])
+
+    await expect(store.createTransaction({
+      kind: 'expense', amount: '100.01', date: '2026-08-12', categoryId: expenseCategory.id,
+      debitCardId: null, description: 'Compra impossível', recurrence: 'variable',
+    })).rejects.toThrow(/não deixa sua conta ficar negativa/i)
+  })
+
+  it('edita o saldo disponível sem apagar transações ou cofres', () => {
+    const store = useFinanceStore()
+    store.setTransactions([transaction({ id: 'salary', kind: 'income', amount: '1000.00', categoryId: null })])
+    store.setVaults([vault({ balance: '300.00' })])
+
+    store.setAvailableBalance('250.00')
+
+    expect(store.availableBalanceCents).toBe(25000n)
+    expect(store.vaultTotalCents).toBe(30000n)
+    expect(store.balanceCents).toBe(55000n)
+    expect(store.transactions).toHaveLength(1)
+  })
+
+  it('mantém conta fixa pendente até a confirmação do usuário', async () => {
+    const store = useFinanceStore()
+    const expenseCategory = category()
+    localStorage.setItem('cashew-clone:categories', JSON.stringify([expenseCategory]))
+    store.setCategories([expenseCategory])
+    store.setAvailableBalance('100.00')
+    const rule = await store.createRecurringRule({
+      kind: 'expense', amount: '50.00', dayOfMonth: 1, categoryId: expenseCategory.id,
+      debitCardId: null, description: 'Assinatura', reminderEnabled: false,
+    })
+
+    expect(store.availableBalanceCents).toBe(10000n)
+    expect(store.transactions).toHaveLength(0)
+
+    await store.settleRecurringRule(rule.id)
+    expect(store.availableBalanceCents).toBe(5000n)
+    expect(store.transactions).toHaveLength(1)
   })
 })

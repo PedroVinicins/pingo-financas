@@ -20,6 +20,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::list_transactions,
             commands::add_transaction,
+            commands::update_transaction,
             commands::delete_transaction,
             commands::list_categories,
             commands::add_category,
@@ -32,6 +33,7 @@ pub fn run() {
             commands::list_vaults,
             commands::add_vault,
             commands::move_vault_money,
+            commands::update_vault,
             commands::delete_vault,
         ])
         .run(tauri::generate_context!())

@@ -60,6 +60,35 @@ impl<'a> FinanceRepository<'a> {
         rows.into_iter().map(row_to_transaction).collect()
     }
 
+    pub async fn get_transaction(&self, id: Uuid) -> Result<Option<Transaction>, DbError> {
+        let row = sqlx::query(
+            r#"SELECT id, kind, amount, date, category_id, debit_card_id, description, recurrence, created_at
+               FROM transactions WHERE id = ?"#,
+        )
+        .bind(id.to_string())
+        .fetch_optional(self.pool)
+        .await?;
+        row.map(row_to_transaction).transpose()
+    }
+
+    pub async fn update_transaction(&self, transaction: &Transaction) -> Result<(), DbError> {
+        sqlx::query(
+            r#"UPDATE transactions SET kind = ?, amount = ?, date = ?, category_id = ?, debit_card_id = ?,
+               description = ?, recurrence = ? WHERE id = ?"#,
+        )
+        .bind(transaction.kind.as_str())
+        .bind(transaction.amount.to_string())
+        .bind(transaction.date.format("%Y-%m-%d").to_string())
+        .bind(transaction.category_id.map(|id| id.to_string()))
+        .bind(transaction.debit_card_id.map(|id| id.to_string()))
+        .bind(&transaction.description)
+        .bind(transaction.recurrence.as_str())
+        .bind(transaction.id.to_string())
+        .execute(self.pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn delete_transaction(&self, id: Uuid) -> Result<(), DbError> {
         sqlx::query("DELETE FROM transactions WHERE id = ?")
             .bind(id.to_string())
@@ -265,6 +294,24 @@ impl<'a> FinanceRepository<'a> {
             .bind(vault.id.to_string())
             .execute(self.pool)
             .await?;
+        Ok(())
+    }
+
+    pub async fn update_vault(&self, vault: &Vault) -> Result<(), DbError> {
+        sqlx::query(
+            r#"UPDATE vaults SET name = ?, institution = ?, target_amount = ?, annual_yield_rate = ?,
+               color = ?, emoji = ?, updated_at = ? WHERE id = ?"#,
+        )
+        .bind(&vault.name)
+        .bind(&vault.institution)
+        .bind(vault.target_amount.map(|value| value.to_string()))
+        .bind(vault.annual_yield_rate.map(|value| value.to_string()))
+        .bind(&vault.color)
+        .bind(&vault.emoji)
+        .bind(vault.updated_at.to_rfc3339())
+        .bind(vault.id.to_string())
+        .execute(self.pool)
+        .await?;
         Ok(())
     }
 

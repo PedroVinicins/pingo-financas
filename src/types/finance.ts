@@ -5,6 +5,8 @@ export type CardPattern = 'soft' | 'waves' | 'dots' | 'grid' | 'aurora'
 export type CardBackground = 'none' | 'amazonia' | 'praia' | 'cidade' | 'montanhas'
 export type VaultType = 'piggy_bank' | 'box' | 'savings' | 'investment' | 'cash'
 export type VaultMovementType = 'deposit' | 'withdraw'
+export type VaultMovementSource = 'manual' | 'automatic'
+export type AutomaticReserveMode = 'fixed' | 'percentage'
 
 export interface Category {
   id: string
@@ -95,6 +97,32 @@ export interface MoveVaultMoneyInput {
   amount: string
 }
 
+export interface VaultMovement {
+  id: string
+  vaultId: string
+  kind: VaultMovementType
+  amount: string
+  source: VaultMovementSource
+  occurredAt: string
+}
+
+export interface UpdateVaultInput {
+  id: string
+  name: string
+  institution: string
+  targetAmount: string | null
+  annualYieldRate: string | null
+  color: string
+  emoji: string | null
+}
+
+export interface AutomaticReserveRule {
+  vaultId: string
+  enabled: boolean
+  mode: AutomaticReserveMode
+  value: string
+}
+
 export interface Transaction {
   id: string
   kind: TransactionType
@@ -115,6 +143,42 @@ export interface NewTransactionInput {
   debitCardId: string | null
   description: string
   recurrence: RecurrenceType
+}
+
+export interface UpdateTransactionInput extends NewTransactionInput {
+  id: string
+}
+
+export interface AccountSettings {
+  openingBalanceAdjustment: string
+  balanceHidden: boolean
+  migratedAt: string
+}
+
+export interface RecurringRule {
+  id: string
+  kind: TransactionType
+  amount: string
+  dayOfMonth: number
+  categoryId: string
+  debitCardId: string | null
+  description: string
+  reminderEnabled: boolean
+  autoProcessAfterDays: number
+  active: boolean
+  lastProcessedPeriod: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface NewRecurringRuleInput {
+  kind: TransactionType
+  amount: string
+  dayOfMonth: number
+  categoryId: string
+  debitCardId: string | null
+  description: string
+  reminderEnabled: boolean
 }
 
 export interface TransactionFilters {

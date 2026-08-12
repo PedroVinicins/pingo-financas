@@ -88,6 +88,20 @@ pub struct MoveVaultMoney {
     pub amount: Decimal,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateVault {
+    pub id: Uuid,
+    pub name: String,
+    pub institution: String,
+    #[serde(with = "rust_decimal::serde::str_option")]
+    pub target_amount: Option<Decimal>,
+    #[serde(with = "rust_decimal::serde::str_option")]
+    pub annual_yield_rate: Option<Decimal>,
+    pub color: String,
+    pub emoji: Option<String>,
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum VaultError {
     #[error("o nome do cofre não pode ficar vazio")]
@@ -141,6 +155,28 @@ impl Vault {
             return Err(VaultError::InsufficientBalance);
         }
         self.balance = next;
+        self.updated_at = Utc::now();
+        Ok(())
+    }
+
+    pub fn apply_update(&mut self, input: UpdateVault) -> Result<(), VaultError> {
+        let validation = NewVault {
+            name: input.name.clone(),
+            institution: input.institution.clone(),
+            r#type: self.r#type,
+            initial_balance: self.balance,
+            target_amount: input.target_amount,
+            annual_yield_rate: input.annual_yield_rate,
+            color: input.color.clone(),
+            emoji: input.emoji.clone(),
+        };
+        validate_new_vault(&validation)?;
+        self.name = input.name.trim().to_owned();
+        self.institution = input.institution.trim().to_owned();
+        self.target_amount = input.target_amount;
+        self.annual_yield_rate = input.annual_yield_rate;
+        self.color = input.color.to_ascii_uppercase();
+        self.emoji = clean_emoji(input.emoji)?;
         self.updated_at = Utc::now();
         Ok(())
     }
