@@ -70,9 +70,10 @@ impl<'a> FinanceRepository<'a> {
 
     pub async fn insert_category(&self, category: &Category) -> Result<(), DbError> {
         sqlx::query(
-            "INSERT INTO categories (id, name, icon, color, created_at) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO categories (id, kind, name, icon, color, created_at) VALUES (?, ?, ?, ?, ?, ?)",
         )
         .bind(category.id.to_string())
+        .bind(category.kind.as_str())
         .bind(&category.name)
         .bind(&category.icon)
         .bind(&category.color)
@@ -84,12 +85,25 @@ impl<'a> FinanceRepository<'a> {
 
     pub async fn list_categories(&self) -> Result<Vec<Category>, DbError> {
         let rows = sqlx::query(
-            "SELECT id, name, icon, color, created_at FROM categories ORDER BY name COLLATE NOCASE",
+            "SELECT id, kind, name, icon, color, created_at FROM categories ORDER BY kind, name COLLATE NOCASE",
         )
         .fetch_all(self.pool)
         .await?;
 
         rows.into_iter().map(row_to_category).collect()
+    }
+
+    pub async fn category_kind(&self, id: Uuid) -> Result<Option<TransactionType>, DbError> {
+        let row = sqlx::query("SELECT kind FROM categories WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_optional(self.pool)
+            .await?;
+
+        row.map(|row| {
+            let kind: String = row.try_get("kind")?;
+            TransactionType::parse(&kind).ok_or_else(|| DbError::InvalidData(kind))
+        })
+        .transpose()
     }
 
     pub async fn insert_debit_card(&self, card: &DebitCard) -> Result<(), DbError> {
@@ -295,6 +309,7 @@ fn row_to_transaction(row: sqlx::sqlite::SqliteRow) -> Result<Transaction, DbErr
 
 fn row_to_category(row: sqlx::sqlite::SqliteRow) -> Result<Category, DbError> {
     let id: String = row.try_get("id")?;
+    let kind: String = row.try_get("kind")?;
     let created_at: String = row.try_get("created_at")?;
 
     let created_at = DateTime::parse_from_rfc3339(&created_at)
@@ -307,6 +322,7 @@ fn row_to_category(row: sqlx::sqlite::SqliteRow) -> Result<Category, DbError> {
 
     Ok(Category {
         id: Uuid::parse_str(&id).map_err(invalid)?,
+        kind: TransactionType::parse(&kind).ok_or_else(|| DbError::InvalidData(kind.clone()))?,
         name: row.try_get("name")?,
         icon: row.try_get("icon")?,
         color: row.try_get("color")?,

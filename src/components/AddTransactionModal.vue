@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { reactive, watch } from 'vue'
-import { X } from 'lucide-vue-next'
+import { computed, reactive, ref, watch } from 'vue'
+import { Plus, X } from 'lucide-vue-next'
+import { useFinanceStore } from '../stores/financeStore'
+import { localizedDecimalToStorage } from '../services/localizedNumber'
+import LocalizedNumberInput from './LocalizedNumberInput.vue'
 import type {
   Category,
   DebitCard,
@@ -10,32 +13,65 @@ import type {
 } from '../types/finance'
 
 const props = defineProps<{ categories: Category[]; cards: DebitCard[] }>()
+const store = useFinanceStore()
 const emit = defineEmits<{
   close: []
   save: [input: NewTransactionInput]
 }>()
 
 const defaultCardId = props.cards.find((card) => card.isDefault && !card.isFrozen)?.id ?? ''
+const defaultExpenseCategoryId = props.categories.find((category) => category.kind === 'expense')?.id ?? ''
 
 const form = reactive({
   kind: 'expense' as TransactionType,
   amount: '',
   date: new Date().toISOString().slice(0, 10),
-  categoryId: '',
+  categoryId: defaultExpenseCategoryId,
   debitCardId: defaultCardId,
   description: '',
   recurrence: 'variable' as RecurrenceType,
 })
 
+const showNewCategory = ref(false)
+const categoryError = ref('')
+const categoryDraft = reactive({ name: '', color: '#10B981' })
+const filteredCategories = computed(() => props.categories.filter((category) => category.kind === form.kind))
+const descriptionPlaceholder = computed(() => form.kind === 'income' ? 'Ex.: Salário de agosto' : 'Ex.: Mercado')
+
 watch(() => form.kind, (kind) => {
   if (kind === 'income') form.debitCardId = ''
+  form.categoryId = props.categories.find((category) => category.kind === kind)?.id ?? ''
+  showNewCategory.value = false
+  categoryError.value = ''
 })
 
+async function createCategory() {
+  categoryError.value = ''
+  try {
+    const category = await store.createCategory({
+      kind: form.kind,
+      name: categoryDraft.name,
+      icon: form.kind === 'income' ? 'circle-dollar-sign' : 'tag',
+      color: categoryDraft.color,
+    })
+    form.categoryId = category.id
+    categoryDraft.name = ''
+    showNewCategory.value = false
+  } catch (error) {
+    categoryError.value = error instanceof Error ? error.message : 'Não foi possível criar a categoria'
+  }
+}
+
 function submit() {
-  const amount = form.amount.trim().replace(',', '.')
-  if (!/^\d+(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0) return
+  let amount: string
+  try {
+    amount = localizedDecimalToStorage(form.amount)
+  } catch {
+    return
+  }
+  if (Number(amount) <= 0) return
   if (!form.description.trim()) return
-  if (form.kind === 'expense' && !form.categoryId) return
+  if (!form.categoryId) return
 
   const selectedCard = props.cards.find((card) => card.id === form.debitCardId)
   if (selectedCard?.isFrozen) return
@@ -73,7 +109,7 @@ function submit() {
       <div class="mt-5 grid gap-4 sm:grid-cols-2">
         <label class="grid gap-1.5 text-sm font-semibold">
           Valor
-          <input v-model="form.amount" inputmode="decimal" placeholder="0,00" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" />
+          <LocalizedNumberInput v-model="form.amount" placeholder="0,00" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" />
         </label>
         <label class="grid gap-1.5 text-sm font-semibold">
           Data
@@ -81,15 +117,20 @@ function submit() {
         </label>
         <label class="grid gap-1.5 text-sm font-semibold sm:col-span-2">
           Descrição
-          <input v-model="form.description" maxlength="160" placeholder="Ex.: Mercado" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" />
+          <input v-model="form.description" maxlength="160" :placeholder="descriptionPlaceholder" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" />
         </label>
-        <label class="grid gap-1.5 text-sm font-semibold">
-          Categoria
+        <div class="grid gap-1.5 text-sm font-semibold">
+          <div class="flex items-center justify-between gap-2">
+            <span>Categoria de {{ form.kind === 'income' ? 'entrada' : 'despesa' }}</span>
+            <button type="button" class="inline-flex items-center gap-1 text-xs font-black text-emerald-600" @click="showNewCategory = !showNewCategory">
+              <Plus :size="14" /> Nova
+            </button>
+          </div>
           <select v-model="form.categoryId" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700">
-            <option value="">Sem categoria</option>
-            <option v-for="category in props.categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+            <option value="" disabled>Selecione</option>
+            <option v-for="category in filteredCategories" :key="category.id" :value="category.id">{{ category.name }}</option>
           </select>
-        </label>
+        </div>
         <label class="grid gap-1.5 text-sm font-semibold">
           Natureza
           <select v-model="form.recurrence" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700">
@@ -107,6 +148,18 @@ function submit() {
           </select>
           <span class="text-xs font-normal text-slate-500">O cartão apenas identifica a compra; o valor sai do mesmo saldo da conta.</span>
         </label>
+        <div v-if="showNewCategory" class="grid gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/30 sm:col-span-2">
+          <div>
+            <p class="font-black">Nova categoria de {{ form.kind === 'income' ? 'entrada' : 'despesa' }}</p>
+            <p class="text-xs font-normal text-slate-500">Ela ficará disponível nos próximos lançamentos.</p>
+          </div>
+          <div class="grid grid-cols-[1fr_auto] gap-2">
+            <input v-model="categoryDraft.name" maxlength="40" :placeholder="form.kind === 'income' ? 'Ex.: Comissão' : 'Ex.: Academia'" class="min-w-0 rounded-xl border border-emerald-200 bg-white px-3 py-2.5 dark:border-emerald-900 dark:bg-slate-900" @keyup.enter.prevent="createCategory" />
+            <input v-model="categoryDraft.color" type="color" class="h-11 w-12 rounded-xl border border-emerald-200 bg-white p-1 dark:border-emerald-900 dark:bg-slate-900" aria-label="Cor da categoria" />
+          </div>
+          <p v-if="categoryError" class="text-xs font-bold text-rose-600">{{ categoryError }}</p>
+          <button type="button" class="rounded-xl bg-emerald-500 px-3 py-2.5 text-sm font-black text-white" @click="createCategory">Adicionar categoria</button>
+        </div>
       </div>
 
       <button class="mt-6 w-full rounded-2xl bg-slate-950 px-4 py-3 font-bold text-white hover:bg-slate-800 dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400">

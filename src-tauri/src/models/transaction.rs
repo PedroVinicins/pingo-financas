@@ -88,8 +88,8 @@ pub enum TransactionError {
     EmptyDescription,
     #[error("a descrição deve ter no máximo 160 caracteres")]
     DescriptionTooLong,
-    #[error("despesas precisam de uma categoria")]
-    ExpenseCategoryRequired,
+    #[error("transações precisam de uma categoria")]
+    CategoryRequired,
     #[error("um cartão de débito só pode ser associado a uma despesa")]
     DebitCardOnlyForExpense,
 }
@@ -124,8 +124,8 @@ pub fn validate_new_transaction(input: &NewTransaction) -> Result<(), Transactio
     if description.chars().count() > 160 {
         return Err(TransactionError::DescriptionTooLong);
     }
-    if input.kind == TransactionType::Expense && input.category_id.is_none() {
-        return Err(TransactionError::ExpenseCategoryRequired);
+    if input.category_id.is_none() {
+        return Err(TransactionError::CategoryRequired);
     }
     if input.kind == TransactionType::Income && input.debit_card_id.is_some() {
         return Err(TransactionError::DebitCardOnlyForExpense);

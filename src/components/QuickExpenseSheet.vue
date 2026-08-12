@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
-import { Banknote, Check, ChevronDown, CreditCard, X, Zap } from 'lucide-vue-next'
+import { Banknote, Check, ChevronDown, CreditCard, Plus, X, Zap } from 'lucide-vue-next'
 import type { Category, DebitCard, NewTransactionInput } from '../types/finance'
+import { useFinanceStore } from '../stores/financeStore'
+import { localizedDecimalToStorage } from '../services/localizedNumber'
+import LocalizedNumberInput from './LocalizedNumberInput.vue'
 
 const props = defineProps<{
   categories: Category[]
@@ -11,10 +14,12 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ close: []; save: [input: NewTransactionInput] }>()
-const amountInput = ref<HTMLInputElement | null>(null)
+const store = useFinanceStore()
+const amountInput = ref<InstanceType<typeof LocalizedNumberInput> | null>(null)
+const expenseCategories = computed(() => props.categories.filter((item) => item.kind === 'expense'))
 const defaultCategory = props.recentCategoryIds?.[0]
-  ?? props.categories.find((item) => item.name.toLowerCase().includes('alimenta'))?.id
-  ?? props.categories[0]?.id
+  ?? props.categories.find((item) => item.kind === 'expense' && item.name.toLowerCase().includes('alimenta'))?.id
+  ?? props.categories.find((item) => item.kind === 'expense')?.id
   ?? ''
 const defaultCard = props.initialCardId && props.cards.some((item) => item.id === props.initialCardId && !item.isFrozen)
   ? props.initialCardId
@@ -27,10 +32,16 @@ const form = reactive({
   description: '',
   showDetails: false,
 })
+const showNewCategory = ref(false)
+const categoryError = ref('')
+const categoryDraft = reactive({ name: '', color: '#10B981' })
 
 const quickCategories = computed(() => {
-  const ids = [...(props.recentCategoryIds ?? []), ...props.categories.map((item) => item.id)]
-  return [...new Set(ids)].map((id) => props.categories.find((item) => item.id === id)).filter(Boolean).slice(0, 5) as Category[]
+  const ids = [...(props.recentCategoryIds ?? []), ...expenseCategories.value.map((item) => item.id)]
+  return [...new Set(ids)]
+    .map((id) => expenseCategories.value.find((item) => item.id === id))
+    .filter(Boolean)
+    .slice(0, 5) as Category[]
 })
 
 const selectableCards = computed(() => props.cards.filter((card) => !card.isFrozen))
@@ -46,8 +57,13 @@ function setAmount(value: string) {
 }
 
 function submit() {
-  const amount = form.amount.trim().replace(',', '.')
-  if (!/^\d+(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0 || !form.categoryId) return
+  let amount: string
+  try {
+    amount = localizedDecimalToStorage(form.amount)
+  } catch {
+    return
+  }
+  if (Number(amount) <= 0 || !form.categoryId) return
   const category = props.categories.find((item) => item.id === form.categoryId)
 
   emit('save', {
@@ -59,6 +75,23 @@ function submit() {
     description: form.description.trim() || category?.name || 'Compra rápida',
     recurrence: 'variable',
   })
+}
+
+async function createCategory() {
+  categoryError.value = ''
+  try {
+    const category = await store.createCategory({
+      kind: 'expense',
+      name: categoryDraft.name,
+      icon: 'tag',
+      color: categoryDraft.color,
+    })
+    form.categoryId = category.id
+    categoryDraft.name = ''
+    showNewCategory.value = false
+  } catch (error) {
+    categoryError.value = error instanceof Error ? error.message : 'Não foi possível criar a categoria'
+  }
 }
 </script>
 
@@ -76,7 +109,7 @@ function submit() {
 
       <div class="mt-5 rounded-[1.5rem] bg-slate-100 p-4 dark:bg-slate-950">
         <div class="flex items-center gap-2 text-slate-400"><span class="text-xl font-black">R$</span>
-          <input ref="amountInput" v-model="form.amount" inputmode="decimal" autocomplete="off" placeholder="0,00" class="min-w-0 flex-1 bg-transparent text-4xl font-black tracking-tight placeholder:text-slate-300 dark:placeholder:text-slate-700" />
+          <LocalizedNumberInput ref="amountInput" v-model="form.amount" placeholder="0,00" class="min-w-0 flex-1 bg-transparent text-4xl font-black tracking-tight placeholder:text-slate-300 dark:placeholder:text-slate-700" />
         </div>
         <div class="mt-3 grid grid-cols-4 gap-2">
           <button v-for="value in ['5,00','10,00','20,00','50,00']" :key="value" type="button" class="rounded-xl bg-white py-2 text-xs font-black shadow-sm dark:bg-slate-800" @click="setAmount(value)">R$ {{ value.replace(',00','') }}</button>
@@ -89,6 +122,13 @@ function submit() {
           <button v-for="category in quickCategories" :key="category.id" type="button" class="shrink-0 rounded-2xl border px-3.5 py-2.5 text-sm font-bold transition" :class="form.categoryId === category.id ? 'border-slate-950 bg-slate-950 text-white dark:border-white dark:bg-white dark:text-slate-950' : 'border-slate-200 dark:border-slate-700'" @click="form.categoryId = category.id">
             {{ category.name }}
           </button>
+          <button type="button" class="inline-flex shrink-0 items-center gap-1 rounded-2xl border border-dashed border-emerald-400 px-3.5 py-2.5 text-sm font-black text-emerald-600" @click="showNewCategory = !showNewCategory"><Plus :size="16" /> Nova</button>
+        </div>
+        <div v-if="showNewCategory" class="mt-2 grid grid-cols-[1fr_auto_auto] gap-2 rounded-2xl bg-emerald-50 p-2 dark:bg-emerald-950/30">
+          <input v-model="categoryDraft.name" maxlength="40" placeholder="Ex.: Academia" class="min-w-0 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm dark:border-emerald-900 dark:bg-slate-900" @keyup.enter.prevent="createCategory" />
+          <input v-model="categoryDraft.color" type="color" class="h-10 w-11 rounded-xl border border-emerald-200 bg-white p-1 dark:border-emerald-900 dark:bg-slate-900" aria-label="Cor da categoria" />
+          <button type="button" class="rounded-xl bg-emerald-500 px-3 text-sm font-black text-white" aria-label="Salvar categoria" @click="createCategory"><Check :size="18" /></button>
+          <p v-if="categoryError" class="col-span-3 px-1 text-xs font-bold text-rose-600">{{ categoryError }}</p>
         </div>
       </div>
 

@@ -6,6 +6,16 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
+## Correções da versão 0.4.1
+
+- categorias de entrada e despesa agora são separadas;
+- novas entradas oferecem Salário, Freelance, Trabalho extra, Vendas, Benefícios, Rendimentos e Outras entradas;
+- novas categorias podem ser criadas sem sair do lançamento;
+- campos monetários aplicam automaticamente o padrão brasileiro (`1.234,56`);
+- o Gasto rápido ganhou um botão maior na navegação inferior;
+- alertas financeiros podem ser configurados pelo sino no topo;
+- no Android, os lembretes são agendados pelo sistema; na Web, são exibidos enquanto o navegador estiver aberto.
+
 ## Destaques da versão 0.4
 
 ### Pingo Cofres
@@ -170,6 +180,7 @@ O SQLite é inicializado no diretório de dados da aplicação. As migrations at
 0002_debit_cards.sql
 0003_card_personalization.sql
 0004_vaults_and_card_backgrounds.sql
+0005_category_kinds.sql
 ```
 
 Valores monetários são persistidos como texto e tratados com `rust_decimal` no core Rust. No frontend, cálculos reativos usam centavos em `bigint`.

@@ -8,10 +8,18 @@ export type VaultMovementType = 'deposit' | 'withdraw'
 
 export interface Category {
   id: string
+  kind: TransactionType
   name: string
   icon: string
   color: string
   createdAt: string
+}
+
+export interface NewCategoryInput {
+  kind: TransactionType
+  name: string
+  icon: string
+  color: string
 }
 
 export interface DebitCard {

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.1 — Categorias, valores e lembretes
+
+- separa categorias de entrada e despesa em todos os lançamentos;
+- adiciona categorias de entrada como Salário, Freelance, Trabalho extra, Vendas e Rendimentos;
+- permite criar categorias personalizadas no lançamento completo e no Gasto rápido;
+- migra categorias existentes com segurança para o tipo `expense`;
+- impede salvar uma transação com categoria incompatível;
+- formata valores automaticamente no padrão brasileiro, com ponto de milhar e vírgula decimal;
+- amplia e destaca o botão Gasto rápido na área de alcance do polegar;
+- adiciona alertas configuráveis diários, a cada três dias ou semanais;
+- agenda notificações nativas no Android e mostra lembretes enquanto a versão Web estiver aberta;
+- atualiza o app para a versão 0.4.1.
+
 ## 0.4.0 — Cofres e inteligência financeira
 
 - adiciona a aba Cofres com metas, movimentações e rendimento estimado;

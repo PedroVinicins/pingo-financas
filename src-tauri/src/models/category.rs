@@ -3,10 +3,13 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+use super::transaction::TransactionType;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Category {
     pub id: Uuid,
+    pub kind: TransactionType,
     pub name: String,
     pub icon: String,
     pub color: String,
@@ -16,6 +19,7 @@ pub struct Category {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewCategory {
+    pub kind: TransactionType,
     pub name: String,
     pub icon: String,
     pub color: String,
@@ -41,6 +45,7 @@ impl Category {
 
         Ok(Self {
             id: Uuid::new_v4(),
+            kind: input.kind,
             name: name.to_owned(),
             icon: input.icon.trim().to_owned(),
             color: input.color.to_ascii_uppercase(),
@@ -62,6 +67,7 @@ mod tests {
     #[test]
     fn rejects_invalid_color() {
         let result = Category::new(NewCategory {
+            kind: TransactionType::Expense,
             name: "Casa".into(),
             icon: "house".into(),
             color: "green".into(),

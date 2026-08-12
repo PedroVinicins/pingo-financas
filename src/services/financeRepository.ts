@@ -2,6 +2,7 @@ import type {
   Category,
   DebitCard,
   MoveVaultMoneyInput,
+  NewCategoryInput,
   NewDebitCardInput,
   NewTransactionInput,
   NewVaultInput,
@@ -43,6 +44,13 @@ function normalizeCard(card: DebitCard): DebitCard {
   }
 }
 
+function normalizeCategory(category: Category): Category {
+  return {
+    ...category,
+    kind: category.kind ?? 'expense',
+  }
+}
+
 export async function listTransactions(): Promise<Transaction[]> {
   if (isTauriRuntime()) return tauriInvoke<Transaction[]>('list_transactions')
   return readLocal<Transaction[]>(TRANSACTIONS_KEY, [])
@@ -50,6 +58,12 @@ export async function listTransactions(): Promise<Transaction[]> {
 
 export async function addTransaction(input: NewTransactionInput): Promise<Transaction> {
   if (isTauriRuntime()) return tauriInvoke<Transaction>('add_transaction', { input })
+
+  if (!input.categoryId) throw new Error('Selecione uma categoria')
+  const category = (await listCategories([])).find((item) => item.id === input.categoryId)
+  if (!category || category.kind !== input.kind) {
+    throw new Error('A categoria não corresponde ao tipo da transação')
+  }
 
   if (input.debitCardId) {
     const card = (await listDebitCards()).find((item) => item.id === input.debitCardId)
@@ -78,10 +92,44 @@ export async function deleteTransaction(id: string): Promise<void> {
 export async function listCategories(fallback: Category[]): Promise<Category[]> {
   if (isTauriRuntime()) return tauriInvoke<Category[]>('list_categories')
 
-  const categories = readLocal<Category[]>(CATEGORIES_KEY, [])
-  if (categories.length) return categories
-  writeLocal(CATEGORIES_KEY, fallback)
-  return fallback
+  const stored = readLocal<Category[]>(CATEGORIES_KEY, []).map(normalizeCategory)
+  const categories = [...stored]
+
+  for (const defaultCategory of fallback) {
+    const alreadyExists = categories.some((category) =>
+      category.kind === defaultCategory.kind
+      && category.name.localeCompare(defaultCategory.name, 'pt-BR', { sensitivity: 'base' }) === 0,
+    )
+    if (!alreadyExists) categories.push(defaultCategory)
+  }
+
+  writeLocal(CATEGORIES_KEY, categories)
+  return categories
+}
+
+export async function addCategory(input: NewCategoryInput): Promise<Category> {
+  if (isTauriRuntime()) return tauriInvoke<Category>('add_category', { input })
+
+  const name = input.name.trim()
+  if (!name) throw new Error('Informe o nome da categoria')
+
+  const categories = await listCategories([])
+  const duplicate = categories.some((category) =>
+    category.kind === input.kind
+    && category.name.localeCompare(name, 'pt-BR', { sensitivity: 'base' }) === 0,
+  )
+  if (duplicate) throw new Error('Essa categoria já existe')
+
+  const category: Category = {
+    ...input,
+    id: crypto.randomUUID(),
+    name,
+    color: input.color.toUpperCase(),
+    createdAt: new Date().toISOString(),
+  }
+  categories.push(category)
+  writeLocal(CATEGORIES_KEY, categories)
+  return category
 }
 
 export async function listDebitCards(): Promise<DebitCard[]> {

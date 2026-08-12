@@ -22,8 +22,21 @@ pub async fn add_transaction(
     state: State<'_, AppState>,
     input: NewTransaction,
 ) -> Result<Transaction, String> {
+    let repository = FinanceRepository::new(&state.pool);
+    let category_id = input
+        .category_id
+        .ok_or_else(|| "selecione uma categoria".to_string())?;
+    let category_kind = repository
+        .category_kind(category_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "categoria não encontrada".to_string())?;
+    if category_kind != input.kind {
+        return Err("a categoria não corresponde ao tipo da transação".into());
+    }
+
     if let Some(card_id) = input.debit_card_id {
-        let frozen = FinanceRepository::new(&state.pool)
+        let frozen = repository
             .debit_card_is_frozen(card_id)
             .await
             .map_err(|error| error.to_string())?;
@@ -33,7 +46,7 @@ pub async fn add_transaction(
     }
 
     let transaction = Transaction::new(input).map_err(|error| error.to_string())?;
-    FinanceRepository::new(&state.pool)
+    repository
         .insert_transaction(&transaction)
         .await
         .map_err(|error| error.to_string())?;

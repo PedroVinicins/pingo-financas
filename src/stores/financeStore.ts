@@ -4,6 +4,7 @@ import type {
   Category,
   DebitCard,
   MoveVaultMoneyInput,
+  NewCategoryInput,
   NewDebitCardInput,
   NewTransactionInput,
   NewVaultInput,
@@ -235,9 +236,20 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   async function createTransaction(input: NewTransactionInput) {
+    const category = categories.value.find((item) => item.id === input.categoryId)
+    if (!category || category.kind !== input.kind) {
+      throw new Error('Selecione uma categoria válida para esta transação')
+    }
     const transaction = await repository.addTransaction(input)
     addTransaction(transaction)
     return transaction
+  }
+
+  async function createCategory(input: NewCategoryInput) {
+    const category = await repository.addCategory(input)
+    categories.value.push(category)
+    categories.value.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+    return category
   }
 
   async function deleteTransaction(id: string) {
@@ -337,6 +349,7 @@ export const useFinanceStore = defineStore('finance', () => {
     setFilters,
     initialize,
     createTransaction,
+    createCategory,
     deleteTransaction,
     createDebitCard,
     updateCardStyle,
