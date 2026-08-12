@@ -1,6 +1,6 @@
 [package]
 name = "cashew-clone"
-version = "0.5.0"
+version = "0.5.1"
 description = "Pingo — gerenciador de finanças pessoais mobile-first em Tauri, Rust e Vue"
 authors = ["Pedro Silva"]
 edition = "2021"

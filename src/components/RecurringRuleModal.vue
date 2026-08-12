@@ -11,13 +11,14 @@ const error = ref('')
 const form = reactive({
   kind: 'expense' as TransactionType,
   amount: '',
-  dayOfMonth: Math.min(28, new Date().getDate()),
+  dayOfMonth: 0,
   categoryId: props.categories.find((item) => item.kind === 'expense')?.id ?? '',
   debitCardId: '',
   description: '',
   reminderEnabled: true,
 })
 const filteredCategories = computed(() => props.categories.filter((item) => item.kind === form.kind))
+const dayOptions = Array.from({ length: 31 }, (_, index) => index + 1)
 const reminderLabel = computed(() => form.kind === 'expense'
   ? 'Se pinga, me lembre de pagar!'
   : 'Me avise: “Opa, já pingou seu salário?”')
@@ -31,8 +32,8 @@ function submit() {
   error.value = ''
   let amount: string
   try { amount = localizedDecimalToStorage(form.amount) } catch { error.value = 'Informe um valor válido.'; return }
-  if (Number(amount) <= 0 || !form.description.trim() || !form.categoryId) {
-    error.value = 'Preencha valor, descrição e categoria.'
+  if (Number(amount) <= 0 || !form.description.trim() || !form.categoryId || form.dayOfMonth < 1) {
+    error.value = 'Preencha valor, dia do mês, descrição e categoria.'
     return
   }
   emit('save', {
@@ -57,12 +58,12 @@ function submit() {
       <div class="mt-5 grid gap-4 sm:grid-cols-2">
         <label class="grid gap-1.5 text-sm font-bold sm:col-span-2">Nome<input v-model="form.description" maxlength="160" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" :placeholder="form.kind === 'income' ? 'Ex.: Salário da Saga' : 'Ex.: Netflix ou recarga do celular'" /></label>
         <label class="grid gap-1.5 text-sm font-bold">Valor<LocalizedNumberInput v-model="form.amount" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" placeholder="0,00" /></label>
-        <label class="grid gap-1.5 text-sm font-bold">Dia do mês<input v-model.number="form.dayOfMonth" type="number" min="1" max="31" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" /></label>
+        <label class="grid gap-1.5 text-sm font-bold">Dia do mês<select v-model.number="form.dayOfMonth" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700"><option :value="0" disabled>Escolha o dia</option><option v-for="day in dayOptions" :key="day" :value="day">Dia {{ day }}</option></select></label>
         <label class="grid gap-1.5 text-sm font-bold">Categoria<select v-model="form.categoryId" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700"><option value="" disabled>Selecione</option><option v-for="category in filteredCategories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label>
         <label v-if="form.kind === 'expense'" class="grid gap-1.5 text-sm font-bold">Meio de pagamento<select v-model="form.debitCardId" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700"><option value="">Saldo / PIX</option><option v-for="card in cards" :key="card.id" :value="card.id" :disabled="card.isFrozen">{{ card.name }} •••• {{ card.lastFour }}</option></select></label>
       </div>
 
-      <label class="mt-5 flex cursor-pointer items-start gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-4 dark:border-violet-900 dark:bg-violet-950/30"><input v-model="form.reminderEnabled" type="checkbox" class="mt-1 size-4 accent-violet-600" /><BellRing :size="20" class="shrink-0 text-violet-600" /><span><strong class="block text-sm">{{ reminderLabel }}</strong><span class="mt-1 block text-xs text-slate-500">Despesas só saem do saldo quando você confirmar. Após 3 dias, o Pingo lança automaticamente se houver saldo.</span></span></label>
+      <label class="mt-5 flex cursor-pointer items-start gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-4 dark:border-violet-900 dark:bg-violet-950/30"><input v-model="form.reminderEnabled" type="checkbox" class="mt-1 size-4 accent-violet-600" /><BellRing :size="20" class="shrink-0 text-violet-600" /><span><strong class="block text-sm">{{ reminderLabel }}</strong><span class="mt-1 block text-xs text-slate-500">A confirmação só aparece no dia escolhido ou depois dele. Os 3 dias começam a contar somente após o vencimento.</span></span></label>
       <p v-if="error" class="mt-3 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-950/40">{{ error }}</p>
       <button class="mt-5 w-full rounded-2xl bg-violet-500 py-3.5 font-black text-white">Criar recorrência mensal</button>
     </form>

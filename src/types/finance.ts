@@ -167,6 +167,7 @@ export interface RecurringRule {
   autoProcessAfterDays: number
   active: boolean
   lastProcessedPeriod: string | null
+  nextDueDate: string
   createdAt: string
   updatedAt: string
 }
