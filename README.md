@@ -6,6 +6,13 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
+## Correções da versão 0.5.1
+
+- confirmação de conta e salário disponível somente no vencimento ou depois dele;
+- prazo automático de três dias contado a partir da data escolhida;
+- próximo vencimento preservado corretamente entre os meses;
+- transferência da conta principal disponível já na criação de um porquinho.
+
 ## Destaques da versão 0.5.0
 
 - patrimônio consolidado com conta principal + porquinhos;

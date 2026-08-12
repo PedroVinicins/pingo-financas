@@ -55,7 +55,7 @@ async function remove(vault: Vault) { if (window.confirm(`Remover “${vault.nam
   </main>
 
   <button class="fixed bottom-28 right-4 z-30 grid size-14 place-items-center rounded-2xl bg-amber-400 text-slate-950 shadow-xl sm:hidden" aria-label="Adicionar cofre" @click="showAdd = true"><Plus :size="25" /></button>
-  <AddVaultModal v-if="showAdd" @close="showAdd = false" @save="addVault" />
+  <AddVaultModal v-if="showAdd" :available-balance="money(store.availableBalanceCents)" @close="showAdd = false" @save="addVault" />
   <VaultMoveSheet v-if="movingVault" :vault="movingVault" :initial-kind="movementKind" :available-balance="money(store.availableBalanceCents)" @close="movingVault = null" @save="saveMovement" />
   <VaultCustomizeSheet v-if="customizingVault" :vault="customizingVault" :automatic-rule="store.getAutomaticReserveRule(customizingVault.id)" @close="customizingVault = null" @save="saveCustomization" />
 </template>

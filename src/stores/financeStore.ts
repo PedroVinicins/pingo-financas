@@ -28,6 +28,12 @@ import {
   scheduleRecurringRuleNotification,
 } from '../services/notifications'
 import { pingoMessageForTransaction } from '../services/pingoMessages'
+import {
+  daysAfterRecurringDueDate,
+  followingRecurringDueDate,
+  isRecurringRuleDue,
+  localDateKey,
+} from '../services/recurringDates'
 
 export function decimalToCents(value: string): bigint {
   const normalized = value.trim().replace(',', '.')
@@ -55,15 +61,6 @@ export function centsToDecimal(value: bigint): string {
 function transactionEffect(transaction: Pick<Transaction, 'kind' | 'amount'>) {
   const amount = decimalToCents(transaction.amount)
   return transaction.kind === 'income' ? amount : -amount
-}
-
-function periodKey(date = new Date()) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-}
-
-function ruleDueDate(rule: RecurringRule, reference = new Date()) {
-  const lastDay = new Date(reference.getFullYear(), reference.getMonth() + 1, 0).getDate()
-  return new Date(reference.getFullYear(), reference.getMonth(), Math.min(rule.dayOfMonth, lastDay), 12, 0, 0)
 }
 
 export const useFinanceStore = defineStore('finance', () => {
@@ -234,13 +231,10 @@ export const useFinanceStore = defineStore('finance', () => {
     rule.active && rule.kind === 'expense' ? total + decimalToCents(rule.amount) : total, 0n))
   const expectedMonthlyIncomeCents = computed(() => recurringRules.value.reduce((total, rule) =>
     rule.active && rule.kind === 'income' ? total + decimalToCents(rule.amount) : total, 0n))
-  const dueRecurringRules = computed(() => recurringRules.value.filter((rule) => {
-    if (!rule.active || rule.lastProcessedPeriod === periodKey(clock.value)) return false
-    return clock.value.getTime() >= ruleDueDate(rule, clock.value).getTime()
-  }))
+  const dueRecurringRules = computed(() => recurringRules.value.filter((rule) =>
+    isRecurringRuleDue(rule, clock.value)))
   const upcomingRecurringRules = computed(() => recurringRules.value.filter((rule) =>
     rule.active
-    && rule.lastProcessedPeriod !== periodKey(clock.value)
     && !dueRecurringRules.value.some((item) => item.id === rule.id)))
 
   function categoryTotals(currentMonthOnly: boolean) {
@@ -478,7 +472,9 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   async function createRecurringRule(input: NewRecurringRuleInput) {
-    if (input.dayOfMonth < 1 || input.dayOfMonth > 31) throw new Error('Escolha um dia entre 1 e 31')
+    if (!Number.isInteger(input.dayOfMonth) || input.dayOfMonth < 1 || input.dayOfMonth > 31) {
+      throw new Error('Escolha um dia entre 1 e 31')
+    }
     const category = categories.value.find((item) => item.id === input.categoryId)
     if (!category || category.kind !== input.kind) throw new Error('Selecione uma categoria válida')
     const rule = repository.addRecurringRule(input)
@@ -496,19 +492,24 @@ export const useFinanceStore = defineStore('finance', () => {
     return rule
   }
   async function settleRecurringRule(id: string, automatic = false) {
+    clock.value = new Date()
     const rule = recurringRules.value.find((item) => item.id === id)
     if (!rule) throw new Error('Renda ou despesa fixa não encontrada')
-    if (rule.lastProcessedPeriod === periodKey(clock.value)) return null
+    if (!isRecurringRuleDue(rule, clock.value)) {
+      throw new Error(`A confirmação ficará disponível em ${rule.nextDueDate.split('-').reverse().join('/')}.`)
+    }
+    const processedDueDate = rule.nextDueDate
     const transaction = await createTransaction({
       kind: rule.kind,
       amount: rule.amount,
-      date: new Date().toISOString().slice(0, 10),
+      date: localDateKey(clock.value),
       categoryId: rule.categoryId,
       debitCardId: rule.kind === 'expense' ? rule.debitCardId : null,
       description: rule.description,
       recurrence: 'fixed',
     })
-    rule.lastProcessedPeriod = periodKey(clock.value)
+    rule.lastProcessedPeriod = processedDueDate.slice(0, 7)
+    rule.nextDueDate = followingRecurringDueDate(rule.dayOfMonth, processedDueDate)
     const updated = repository.updateRecurringRule(rule)
     const index = recurringRules.value.findIndex((item) => item.id === id)
     if (index >= 0) recurringRules.value[index] = updated
@@ -519,7 +520,7 @@ export const useFinanceStore = defineStore('finance', () => {
     clock.value = new Date()
     for (const rule of dueRecurringRules.value) {
       if (rule.kind !== 'expense') continue
-      const elapsedDays = Math.floor((clock.value.getTime() - ruleDueDate(rule, clock.value).getTime()) / 86_400_000)
+      const elapsedDays = daysAfterRecurringDueDate(rule.nextDueDate, clock.value)
       if (elapsedDays < rule.autoProcessAfterDays || decimalToCents(rule.amount) > availableBalanceCents.value) continue
       await settleRecurringRule(rule.id, true).catch(() => undefined)
     }

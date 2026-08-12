@@ -18,6 +18,7 @@ import type {
   VaultMovement,
   VaultMovementSource,
 } from '../types/finance'
+import { firstRecurringDueDate, followingRecurringDueDate } from './recurringDates'
 
 // Mantidos para preservar dados de quem já usou as versões 0.1/0.2 no navegador.
 const TRANSACTIONS_KEY = 'cashew-clone:transactions'
@@ -367,7 +368,17 @@ export function removeAutomaticReserveRule(vaultId: string) {
 
 export function listRecurringRules(): RecurringRule[] {
   return readLocal<RecurringRule[]>(RECURRING_RULES_KEY, [])
-    .map((rule) => ({ ...rule, autoProcessAfterDays: rule.autoProcessAfterDays ?? 3 }))
+    .map((rule) => {
+      let nextDueDate = rule.nextDueDate
+      if (!nextDueDate) {
+        nextDueDate = firstRecurringDueDate(rule.dayOfMonth, new Date(rule.createdAt))
+        if (rule.lastProcessedPeriod) {
+          const processedDueDate = `${rule.lastProcessedPeriod}-${String(Math.min(rule.dayOfMonth, 28)).padStart(2, '0')}`
+          nextDueDate = followingRecurringDueDate(rule.dayOfMonth, processedDueDate)
+        }
+      }
+      return { ...rule, nextDueDate, autoProcessAfterDays: rule.autoProcessAfterDays ?? 3 }
+    })
     .sort((a, b) => a.dayOfMonth - b.dayOfMonth || a.description.localeCompare(b.description, 'pt-BR'))
 }
 
@@ -379,6 +390,7 @@ export function addRecurringRule(input: NewRecurringRuleInput): RecurringRule {
     autoProcessAfterDays: 3,
     active: true,
     lastProcessedPeriod: null,
+    nextDueDate: firstRecurringDueDate(input.dayOfMonth),
     createdAt: now,
     updatedAt: now,
   }

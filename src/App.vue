@@ -63,7 +63,7 @@ onBeforeUnmount(() => {
       <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4">
         <div class="flex min-w-0 items-center gap-3">
           <div class="grid size-10 shrink-0 place-items-center rounded-2xl bg-emerald-400 text-lg font-black text-slate-950">P</div>
-          <div class="min-w-0"><div class="flex items-center gap-2"><p class="text-sm font-black tracking-tight">Pingo</p><span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">v0.5.0</span></div><h1 class="truncate text-xs font-semibold text-slate-500 sm:text-sm">{{ pageTitle }}</h1></div>
+          <div class="min-w-0"><div class="flex items-center gap-2"><p class="text-sm font-black tracking-tight">Pingo</p><span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">v0.5.1</span></div><h1 class="truncate text-xs font-semibold text-slate-500 sm:text-sm">{{ pageTitle }}</h1></div>
         </div>
 
         <nav class="hidden items-center rounded-2xl bg-slate-100 p-1 dark:bg-slate-900 sm:flex">

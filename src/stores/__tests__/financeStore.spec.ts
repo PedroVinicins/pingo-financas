@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useFinanceStore } from '../financeStore'
 import type { Category, DebitCard, Transaction, Vault } from '../../types/finance'
@@ -70,9 +70,12 @@ function category(overrides: Partial<Category> = {}): Category {
 
 describe('financeStore', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 7, 12, 10, 0, 0))
     localStorage.clear()
     setActivePinia(createPinia())
   })
+  afterEach(() => vi.useRealTimers())
 
   it('adiciona e remove transações mantendo o saldo reativo', () => {
     const store = useFinanceStore()
@@ -194,7 +197,7 @@ describe('financeStore', () => {
     store.setCategories([expenseCategory])
     store.setAvailableBalance('100.00')
     const rule = await store.createRecurringRule({
-      kind: 'expense', amount: '50.00', dayOfMonth: 1, categoryId: expenseCategory.id,
+      kind: 'expense', amount: '50.00', dayOfMonth: 12, categoryId: expenseCategory.id,
       debitCardId: null, description: 'Assinatura', reminderEnabled: false,
     })
 
@@ -204,5 +207,93 @@ describe('financeStore', () => {
     await store.settleRecurringRule(rule.id)
     expect(store.availableBalanceCents).toBe(5000n)
     expect(store.transactions).toHaveLength(1)
+    expect(store.recurringRules[0]?.nextDueDate).toBe('2026-09-12')
+  })
+
+  it('não mostra confirmação antes do dia da conta ou do salário', async () => {
+    const store = useFinanceStore()
+    const expenseCategory = category()
+    const incomeCategory = category({ id: 'salary', kind: 'income', name: 'Salário' })
+    store.setCategories([expenseCategory, incomeCategory])
+
+    await store.createRecurringRule({
+      kind: 'expense', amount: '50.00', dayOfMonth: 20, categoryId: expenseCategory.id,
+      debitCardId: null, description: 'Internet', reminderEnabled: false,
+    })
+    await store.createRecurringRule({
+      kind: 'income', amount: '700.00', dayOfMonth: 20, categoryId: incomeCategory.id,
+      debitCardId: null, description: 'Salário', reminderEnabled: false,
+    })
+
+    expect(store.dueRecurringRules).toHaveLength(0)
+    expect(store.upcomingRecurringRules).toHaveLength(2)
+  })
+
+  it('recorrência criada depois do dia escolhido começa no próximo mês', async () => {
+    const store = useFinanceStore()
+    const expenseCategory = category()
+    store.setCategories([expenseCategory])
+
+    const rule = await store.createRecurringRule({
+      kind: 'expense', amount: '50.00', dayOfMonth: 5, categoryId: expenseCategory.id,
+      debitCardId: null, description: 'Assinatura', reminderEnabled: false,
+    })
+
+    expect(rule.nextDueDate).toBe('2026-09-05')
+    expect(store.dueRecurringRules).toHaveLength(0)
+    await expect(store.settleRecurringRule(rule.id)).rejects.toThrow(/confirmação ficará disponível/i)
+  })
+
+  it('libera confirmação no dia selecionado tanto para conta quanto para salário', async () => {
+    const store = useFinanceStore()
+    const expenseCategory = category()
+    const incomeCategory = category({ id: 'salary', kind: 'income', name: 'Salário' })
+    store.setCategories([expenseCategory, incomeCategory])
+
+    await store.createRecurringRule({
+      kind: 'expense', amount: '50.00', dayOfMonth: 12, categoryId: expenseCategory.id,
+      debitCardId: null, description: 'Internet', reminderEnabled: false,
+    })
+    await store.createRecurringRule({
+      kind: 'income', amount: '700.00', dayOfMonth: 12, categoryId: incomeCategory.id,
+      debitCardId: null, description: 'Salário', reminderEnabled: false,
+    })
+
+    expect(store.dueRecurringRules.map((rule) => rule.description)).toEqual(['Internet', 'Salário'])
+  })
+
+  it('conta os três dias somente depois do vencimento', async () => {
+    const store = useFinanceStore()
+    const expenseCategory = category()
+    localStorage.setItem('cashew-clone:categories', JSON.stringify([expenseCategory]))
+    store.setCategories([expenseCategory])
+    store.setAvailableBalance('100.00')
+    await store.createRecurringRule({
+      kind: 'expense', amount: '50.00', dayOfMonth: 13, categoryId: expenseCategory.id,
+      debitCardId: null, description: 'Internet', reminderEnabled: false,
+    })
+
+    vi.setSystemTime(new Date(2026, 7, 15, 23, 59, 0))
+    await store.processRecurringRules()
+    expect(store.transactions).toHaveLength(0)
+
+    vi.setSystemTime(new Date(2026, 7, 16, 0, 1, 0))
+    await store.processRecurringRules()
+    expect(store.transactions).toHaveLength(1)
+    expect(store.availableBalanceCents).toBe(5000n)
+  })
+
+  it('cria porquinho transferindo o valor inicial da conta', async () => {
+    const store = useFinanceStore()
+    store.setAvailableBalance('200.00')
+
+    const created = await store.createVault({
+      name: 'Viagem', institution: 'Inter', type: 'piggy_bank', initialBalance: '80.00',
+      targetAmount: null, annualYieldRate: null, color: '#F97316', emoji: '🐷',
+    })
+
+    expect(store.availableBalanceCents).toBe(12000n)
+    expect(store.vaultTotalCents).toBe(8000n)
+    expect(store.getMovementsForVault(created.id)[0]?.kind).toBe('deposit')
   })
 })

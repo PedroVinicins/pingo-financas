@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1 — Vencimentos no dia certo
+
+- corrige as recorrências para liberar a confirmação de conta e salário somente no vencimento ou depois dele;
+- começa a contar os três dias do lançamento automático somente após a data escolhida pelo usuário;
+- guarda o próximo vencimento real, inclusive quando a recorrência é criada depois do dia selecionado;
+- adiciona uma escolha explícita para transferir dinheiro da conta ao criar um porquinho ou começar com ele vazio;
+
 ## 0.5.0 — Pingo no controle
 
 - transforma depósitos e retiradas dos cofres em transferências entre conta principal e porquinho;
