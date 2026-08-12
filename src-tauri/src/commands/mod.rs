@@ -5,7 +5,7 @@ use crate::{
     db::{AppState, FinanceRepository},
     models::{
         clean_emoji, validate_style, Category, DebitCard, MoveVaultMoney, NewCategory, NewDebitCard,
-        NewTransaction, NewVault, Transaction, UpdateDebitCardStyle, Vault,
+        NewTransaction, NewVault, Transaction, UpdateDebitCardStyle, UpdateVault, Vault,
     },
 };
 
@@ -59,6 +59,39 @@ pub async fn delete_transaction(state: State<'_, AppState>, id: Uuid) -> Result<
         .delete_transaction(id)
         .await
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn update_transaction(
+    state: State<'_, AppState>,
+    id: Uuid,
+    input: NewTransaction,
+) -> Result<Transaction, String> {
+    let repository = FinanceRepository::new(&state.pool);
+    let category_id = input.category_id.ok_or_else(|| "selecione uma categoria".to_string())?;
+    let category_kind = repository
+        .category_kind(category_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "categoria não encontrada".to_string())?;
+    if category_kind != input.kind {
+        return Err("a categoria não corresponde ao tipo da transação".into());
+    }
+    if let Some(card_id) = input.debit_card_id {
+        if repository.debit_card_is_frozen(card_id).await.map_err(|error| error.to_string())? {
+            return Err("este cartão está congelado".into());
+        }
+    }
+    let current = repository
+        .get_transaction(id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "transação não encontrada".to_string())?;
+    let mut transaction = Transaction::new(input).map_err(|error| error.to_string())?;
+    transaction.id = id;
+    transaction.created_at = current.created_at;
+    repository.update_transaction(&transaction).await.map_err(|error| error.to_string())?;
+    Ok(transaction)
 }
 
 #[tauri::command]
@@ -189,6 +222,19 @@ pub async fn move_vault_money(
         .update_vault_balance(&vault)
         .await
         .map_err(|error| error.to_string())?;
+    Ok(vault)
+}
+
+#[tauri::command]
+pub async fn update_vault(state: State<'_, AppState>, input: UpdateVault) -> Result<Vault, String> {
+    let repository = FinanceRepository::new(&state.pool);
+    let mut vault = repository
+        .get_vault(input.id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "cofre não encontrado".to_string())?;
+    vault.apply_update(input).map_err(|error| error.to_string())?;
+    repository.update_vault(&vault).await.map_err(|error| error.to_string())?;
     Ok(vault)
 }
 

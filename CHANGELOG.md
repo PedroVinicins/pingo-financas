@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0 — Pingo no controle
+
+- transforma depósitos e retiradas dos cofres em transferências entre conta principal e porquinho;
+- adiciona histórico de transferências manuais e reservas automáticas;
+- permite personalizar nome, instituição, meta, rendimento, cor e emoji de cada porquinho;
+- adiciona reserva automática por valor fixo ou percentual sempre que uma entrada é confirmada;
+- mostra patrimônio total, saldo na conta e total guardado no resumo;
+- adiciona opção de esconder todos os valores e editar o saldo real sem apagar o histórico;
+- permite corrigir valor, data, categoria, descrição e meio de pagamento de compras antigas;
+- impede qualquer nova despesa, edição ou lançamento automático de deixar a conta negativa;
+- adiciona salário, renda, conta, assinatura e recarga mensal com lembrete no dia escolhido;
+- mantém contas recorrentes pendentes até o botão “Essa dívida eu já paguei”;
+- após três dias sem resposta, registra a despesa automaticamente somente quando há saldo;
+- mantém salários pendentes até a confirmação “Opa, já pingou!”;
+- adiciona gastos por categoria, média diária, projeção, maior categoria e compromissos fixos;
+- adiciona mensagens bem-humoradas do Pingo após entradas, gastos e transferências.
+
 ## 0.4.1 — Categorias, valores e lembretes
 
 - separa categorias de entrada e despesa em todos os lançamentos;

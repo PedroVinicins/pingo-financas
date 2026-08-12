@@ -1,14 +1,22 @@
 import type {
+  AccountSettings,
+  AutomaticReserveRule,
   Category,
   DebitCard,
   MoveVaultMoneyInput,
   NewCategoryInput,
   NewDebitCardInput,
+  NewRecurringRuleInput,
   NewTransactionInput,
   NewVaultInput,
+  RecurringRule,
   Transaction,
+  UpdateTransactionInput,
   UpdateDebitCardStyleInput,
+  UpdateVaultInput,
   Vault,
+  VaultMovement,
+  VaultMovementSource,
 } from '../types/finance'
 
 // Mantidos para preservar dados de quem já usou as versões 0.1/0.2 no navegador.
@@ -16,6 +24,10 @@ const TRANSACTIONS_KEY = 'cashew-clone:transactions'
 const CATEGORIES_KEY = 'cashew-clone:categories'
 const DEBIT_CARDS_KEY = 'cashew-clone:debit-cards'
 const VAULTS_KEY = 'pingo:vaults'
+const VAULT_MOVEMENTS_KEY = 'pingo:vault-movements'
+const AUTOMATIC_RESERVE_KEY = 'pingo:automatic-reserve-rules'
+const ACCOUNT_SETTINGS_KEY = 'pingo:account-settings'
+const RECURRING_RULES_KEY = 'pingo:recurring-rules'
 
 export function isTauriRuntime() {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
@@ -79,6 +91,34 @@ export async function addTransaction(input: NewTransactionInput): Promise<Transa
   transactions.push(transaction)
   writeLocal(TRANSACTIONS_KEY, transactions)
   return transaction
+}
+
+export async function updateTransaction(input: UpdateTransactionInput): Promise<Transaction> {
+  if (isTauriRuntime()) return tauriInvoke<Transaction>('update_transaction', { id: input.id, input })
+
+  if (!input.categoryId) throw new Error('Selecione uma categoria')
+  const category = (await listCategories([])).find((item) => item.id === input.categoryId)
+  if (!category || category.kind !== input.kind) {
+    throw new Error('A categoria não corresponde ao tipo da transação')
+  }
+
+  if (input.debitCardId) {
+    const card = (await listDebitCards()).find((item) => item.id === input.debitCardId)
+    if (card?.isFrozen) throw new Error('Este cartão está congelado')
+  }
+
+  const transactions = await listTransactions()
+  const index = transactions.findIndex((item) => item.id === input.id)
+  if (index < 0) throw new Error('Transação não encontrada')
+  const updated: Transaction = {
+    ...transactions[index],
+    ...input,
+    categoryId: input.categoryId,
+    debitCardId: input.kind === 'income' ? null : input.debitCardId,
+  }
+  transactions[index] = updated
+  writeLocal(TRANSACTIONS_KEY, transactions)
+  return updated
 }
 
 export async function deleteTransaction(id: string): Promise<void> {
@@ -255,12 +295,111 @@ export async function moveVaultMoney(input: MoveVaultMoneyInput): Promise<Vault>
   return { ...vault }
 }
 
+export async function updateVault(input: UpdateVaultInput): Promise<Vault> {
+  if (isTauriRuntime()) return tauriInvoke<Vault>('update_vault', { input })
+
+  const vaults = await listVaults()
+  const vault = vaults.find((item) => item.id === input.id)
+  if (!vault) throw new Error('Cofre não encontrado')
+  vault.name = input.name.trim()
+  vault.institution = input.institution.trim()
+  vault.targetAmount = input.targetAmount
+  vault.annualYieldRate = input.annualYieldRate
+  vault.color = input.color.toUpperCase()
+  vault.emoji = input.emoji?.trim() || null
+  vault.updatedAt = new Date().toISOString()
+  writeLocal(VAULTS_KEY, vaults)
+  return { ...vault }
+}
+
 export async function deleteVault(id: string): Promise<void> {
   if (isTauriRuntime()) {
     await tauriInvoke<void>('delete_vault', { id })
     return
   }
   writeLocal(VAULTS_KEY, (await listVaults()).filter((vault) => vault.id !== id))
+}
+
+export function loadAccountSettings(): AccountSettings | null {
+  return readLocal<AccountSettings | null>(ACCOUNT_SETTINGS_KEY, null)
+}
+
+export function saveAccountSettings(settings: AccountSettings) {
+  writeLocal(ACCOUNT_SETTINGS_KEY, settings)
+}
+
+export function listVaultMovements(): VaultMovement[] {
+  return readLocal<VaultMovement[]>(VAULT_MOVEMENTS_KEY, [])
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+}
+
+export function addVaultMovement(
+  input: MoveVaultMoneyInput,
+  source: VaultMovementSource = 'manual',
+): VaultMovement {
+  const movement: VaultMovement = {
+    id: crypto.randomUUID(),
+    vaultId: input.id,
+    kind: input.kind,
+    amount: input.amount,
+    source,
+    occurredAt: new Date().toISOString(),
+  }
+  const movements = listVaultMovements()
+  movements.unshift(movement)
+  writeLocal(VAULT_MOVEMENTS_KEY, movements.slice(0, 500))
+  return movement
+}
+
+export function listAutomaticReserveRules(): AutomaticReserveRule[] {
+  return readLocal<AutomaticReserveRule[]>(AUTOMATIC_RESERVE_KEY, [])
+}
+
+export function saveAutomaticReserveRule(rule: AutomaticReserveRule) {
+  const rules = listAutomaticReserveRules().filter((item) => item.vaultId !== rule.vaultId)
+  rules.push(rule)
+  writeLocal(AUTOMATIC_RESERVE_KEY, rules)
+}
+
+export function removeAutomaticReserveRule(vaultId: string) {
+  writeLocal(AUTOMATIC_RESERVE_KEY, listAutomaticReserveRules().filter((item) => item.vaultId !== vaultId))
+}
+
+export function listRecurringRules(): RecurringRule[] {
+  return readLocal<RecurringRule[]>(RECURRING_RULES_KEY, [])
+    .map((rule) => ({ ...rule, autoProcessAfterDays: rule.autoProcessAfterDays ?? 3 }))
+    .sort((a, b) => a.dayOfMonth - b.dayOfMonth || a.description.localeCompare(b.description, 'pt-BR'))
+}
+
+export function addRecurringRule(input: NewRecurringRuleInput): RecurringRule {
+  const now = new Date().toISOString()
+  const rule: RecurringRule = {
+    ...input,
+    id: crypto.randomUUID(),
+    autoProcessAfterDays: 3,
+    active: true,
+    lastProcessedPeriod: null,
+    createdAt: now,
+    updatedAt: now,
+  }
+  const rules = listRecurringRules()
+  rules.push(rule)
+  writeLocal(RECURRING_RULES_KEY, rules)
+  return rule
+}
+
+export function updateRecurringRule(rule: RecurringRule): RecurringRule {
+  const rules = listRecurringRules()
+  const index = rules.findIndex((item) => item.id === rule.id)
+  if (index < 0) throw new Error('Renda ou despesa fixa não encontrada')
+  const updated = { ...rule, updatedAt: new Date().toISOString() }
+  rules[index] = updated
+  writeLocal(RECURRING_RULES_KEY, rules)
+  return updated
+}
+
+export function deleteRecurringRule(id: string) {
+  writeLocal(RECURRING_RULES_KEY, listRecurringRules().filter((item) => item.id !== id))
 }
 
 function moneyToCents(value: string): bigint {

@@ -11,4 +11,4 @@ pub use debit_card::{
 pub use transaction::{
     NewTransaction, RecurrenceType, Transaction, TransactionError, TransactionType,
 };
-pub use vault::{MoveVaultMoney, NewVault, Vault, VaultError, VaultMovementType, VaultType};
+pub use vault::{MoveVaultMoney, NewVault, UpdateVault, Vault, VaultError, VaultMovementType, VaultType};

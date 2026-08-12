@@ -6,6 +6,20 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
+## Destaques da versão 0.5.0
+
+- patrimônio consolidado com conta principal + porquinhos;
+- botão para esconder valores e editor seguro do saldo real;
+- histórico de compras editável;
+- saldo protegido contra valores negativos;
+- transferências conta ↔ porquinho com histórico;
+- personalização completa e reserva automática por cofre;
+- salário, rendas, assinaturas, recargas e contas mensais;
+- lembretes mensais com confirmação antes de alterar o saldo;
+- lançamento automático de contas atrasadas após três dias, somente se houver saldo;
+- estatísticas de compromissos fixos, média diária e destino das despesas;
+- mensagens divertidas do Pingo durante o uso.
+
 ## Correções da versão 0.4.1
 
 - categorias de entrada e despesa agora são separadas;
