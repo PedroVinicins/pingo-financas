@@ -7,6 +7,7 @@ export type VaultType = 'piggy_bank' | 'box' | 'savings' | 'investment' | 'cash'
 export type VaultMovementType = 'deposit' | 'withdraw'
 export type VaultMovementSource = 'manual' | 'automatic'
 export type AutomaticReserveMode = 'fixed' | 'percentage'
+export type FeedbackTone = 'success' | 'error' | 'info'
 
 export interface Category {
   id: string
@@ -182,7 +183,19 @@ export interface NewRecurringRuleInput {
   reminderEnabled: boolean
 }
 
+export interface RecurringSettlement {
+  transaction: Transaction
+  rule: RecurringRule
+}
+
+export interface AppFeedback {
+  id: number
+  tone: FeedbackTone
+  message: string
+}
+
 export interface TransactionFilters {
+  query?: string
   year?: number
   month?: number
   kind?: TransactionType

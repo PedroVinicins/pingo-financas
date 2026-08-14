@@ -4,6 +4,7 @@ import { Banknote, Check, ChevronDown, CreditCard, Plus, X, Zap } from 'lucide-v
 import type { Category, DebitCard, NewTransactionInput } from '../types/finance'
 import { useFinanceStore } from '../stores/financeStore'
 import { localizedDecimalToStorage } from '../services/localizedNumber'
+import { localDateKey } from '../services/recurringDates'
 import LocalizedNumberInput from './LocalizedNumberInput.vue'
 
 const props = defineProps<{
@@ -34,6 +35,7 @@ const form = reactive({
 })
 const showNewCategory = ref(false)
 const categoryError = ref('')
+const formError = ref('')
 const categoryDraft = reactive({ name: '', color: '#10B981' })
 
 const quickCategories = computed(() => {
@@ -57,19 +59,22 @@ function setAmount(value: string) {
 }
 
 function submit() {
+  formError.value = ''
   let amount: string
   try {
     amount = localizedDecimalToStorage(form.amount)
   } catch {
+    formError.value = 'Digite um valor válido.'
     return
   }
-  if (Number(amount) <= 0 || !form.categoryId) return
+  if (Number(amount) <= 0) { formError.value = 'O valor precisa ser maior que zero.'; return }
+  if (!form.categoryId) { formError.value = 'Escolha uma categoria.'; return }
   const category = props.categories.find((item) => item.id === form.categoryId)
 
   emit('save', {
     kind: 'expense',
     amount,
-    date: new Date().toISOString().slice(0, 10),
+    date: localDateKey(new Date()),
     categoryId: form.categoryId,
     debitCardId: form.debitCardId || null,
     description: form.description.trim() || category?.name || 'Compra rápida',
@@ -144,6 +149,8 @@ async function createCategory() {
         <span>{{ form.description ? form.description : 'Adicionar descrição (opcional)' }}</span><ChevronDown :size="17" :class="form.showDetails ? 'rotate-180' : ''" />
       </button>
       <input v-if="form.showDetails" v-model="form.description" maxlength="160" placeholder="Ex.: doce na saída da escola" class="mt-2 w-full rounded-2xl border border-slate-200 bg-transparent px-4 py-3 text-sm dark:border-slate-700" />
+
+      <p v-if="formError" class="mt-3 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-950/35 dark:text-rose-300" role="alert">{{ formError }}</p>
 
       <button class="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-4 py-4 text-base font-black text-slate-950 active:scale-[0.99]">
         <Check :size="20" stroke-width="3" /> Registrar gasto

@@ -39,7 +39,7 @@ body:
     id: version
     attributes:
       label: Versão do Pingo
-      placeholder: v0.6.0
+      placeholder: v0.7.0
 
   - type: textarea
     id: evidence

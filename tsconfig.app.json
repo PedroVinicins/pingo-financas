@@ -15,7 +15,8 @@
       "DOM.Iterable"
     ],
     "types": [
-      "vitest/globals"
+      "vitest/globals",
+      "vite/client"
     ],
     "composite": true,
     "noEmit": true,

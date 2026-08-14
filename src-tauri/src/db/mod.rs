@@ -1,6 +1,9 @@
 mod repository;
 
-use sqlx::{sqlite::{SqliteConnectOptions, SqlitePoolOptions}, SqlitePool};
+use sqlx::{
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+    SqlitePool,
+};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 

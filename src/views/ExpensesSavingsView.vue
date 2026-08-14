@@ -6,12 +6,15 @@ import {
 } from 'lucide-vue-next'
 import AddTransactionModal from '../components/AddTransactionModal.vue'
 import TransactionList from '../components/TransactionList.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { centsToDecimal, decimalToCents, useFinanceStore } from '../stores/financeStore'
 import type { NewRecurringRuleInput, NewTransactionInput, Transaction } from '../types/finance'
 
 const store = useFinanceStore()
 const showModal = ref(false)
 const editingTransaction = ref<Transaction | null>(null)
+const deletingTransaction = ref<Transaction | null>(null)
+const deleting = ref(false)
 
 function money(value: bigint) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -66,15 +69,27 @@ async function save(input: NewTransactionInput) {
     else await store.createTransaction(input)
     showModal.value = false
     editingTransaction.value = null
-  } catch (cause) { window.alert(cause instanceof Error ? cause.message : 'Não foi possível salvar.') }
+  } catch (cause) { store.reportError(cause, 'Não foi possível salvar.') }
 }
 async function saveRecurring(input: NewRecurringRuleInput) {
   try {
     await store.createRecurringRule(input)
     showModal.value = false
-  } catch (cause) { window.alert(cause instanceof Error ? cause.message : 'Não foi possível ligar o Piloto Mensal.') }
+  } catch (cause) { store.reportError(cause, 'Não foi possível ligar o Piloto Mensal.') }
 }
 function edit(transaction: Transaction) { editingTransaction.value = transaction; showModal.value = true }
+async function confirmDelete() {
+  if (!deletingTransaction.value) return
+  deleting.value = true
+  try {
+    await store.deleteTransaction(deletingTransaction.value.id)
+    showModal.value = false
+    editingTransaction.value = null
+    deletingTransaction.value = null
+    store.showFeedback('Despesa excluída e indicadores atualizados.', 'success')
+  } catch (cause) { store.reportError(cause, 'Não foi possível excluir a transação.') }
+  finally { deleting.value = false }
+}
 function dueDate(value: string) { return value.split('-').reverse().join('/') }
 </script>
 
@@ -141,10 +156,11 @@ function dueDate(value: string) { return value.split('-').reverse().join('/') }
 
     <section class="mt-5 rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-6">
       <div class="mb-2 flex items-start justify-between gap-3"><div><p class="text-sm font-bold text-slate-500">Só despesas</p><h3 class="text-xl font-black">Gastos recentes do mês</h3></div><div class="grid size-11 place-items-center rounded-2xl bg-slate-100 text-slate-600 dark:bg-slate-800"><ReceiptText :size="20" /></div></div>
-      <TransactionList :transactions="currentExpenses.slice(0, 8)" :categories="store.categories" :cards="store.debitCards" @edit="edit" />
+      <TransactionList :transactions="currentExpenses.slice(0, 8)" :categories="store.categories" :cards="store.debitCards" editable @edit="edit" />
     </section>
   </main>
 
   <button class="fixed bottom-28 right-4 z-30 grid size-14 place-items-center rounded-2xl bg-rose-500 text-white shadow-xl sm:hidden" aria-label="Registrar despesa" @click="showModal = true"><Plus :size="25" /></button>
-  <AddTransactionModal v-if="showModal" :categories="store.categories" :cards="store.debitCards" :transaction="editingTransaction" @close="showModal = false; editingTransaction = null" @save="save" @save-recurring="saveRecurring" />
+  <AddTransactionModal v-if="showModal" :categories="store.categories" :cards="store.debitCards" :transaction="editingTransaction" @close="showModal = false; editingTransaction = null" @save="save" @save-recurring="saveRecurring" @delete="deletingTransaction = $event" />
+  <ConfirmDialog v-if="deletingTransaction" title="Excluir transação?" :message="`“${deletingTransaction.description}” será removida e os indicadores do mês serão recalculados.`" confirm-label="Excluir transação" :busy="deleting" @cancel="deletingTransaction = null" @confirm="confirmDelete" />
 </template>

@@ -1,29 +1,34 @@
-# Validação do projeto — Pingo v0.6.0
+# Validação do projeto — Pingo v0.7.0
 
 ## Validado neste ambiente
 
-- `npm test`: 23 testes aprovados;
+- `npm test`: 28 testes aprovados;
 - `npm run build`: TypeScript e build de produção aprovados;
 - `npm audit`: nenhuma vulnerabilidade conhecida nas dependências npm;
-- migrations SQLite `0001` até `0005` executadas em sequência em um banco limpo;
-- migration `0005_category_kinds.sql` preserva categorias anteriores como despesas;
+- `cargo fmt --all -- --check` e `cargo check --locked`: aprovados;
+- `cargo test --locked`: 22 testes aprovados (19 no core e 3 de integração);
+- migrations SQLite `0001` até `0007` executadas em sequência em um banco limpo;
+- `PRAGMA foreign_key_check` não encontrou inconsistências;
 - banco validado com 8 categorias de despesa e 7 categorias de entrada;
-- máscara monetária validada para milhar, vírgula e duas casas decimais;
-- store impede uma despesa de usar categoria de entrada;
-- plugin oficial de notificações do Tauri configurado no Rust, JavaScript e capabilities mobile/desktop.
+- as quatro novas tabelas de estado persistente foram criadas corretamente;
+- PWA incluído na build Web com manifest, ícone e service worker;
+- layouts conferidos em viewport mobile (390 × 844) e desktop (1440 × 1000);
+- APK Android ARM64 debug gerado com pacote `com.pedrosilva.financas.debug`, `versionName` 0.7.0, `versionCode` 7000 e `minSdk` 24;
+- APK limpo contém somente a biblioteca nativa `libpingo_financas_lib.so`.
 
 ## Testes automatizados
 
-- saldo único e separação de gastos por cartão;
-- saldo disponível e valores guardados em cofres;
-- rejeição de valores zerados;
-- categorias incompatíveis com o tipo da transação;
+- saldo único, saldo disponível e separação de gastos por cartão;
+- persistência SQLite de ajustes, cofres, movimentos, reservas e recorrências;
+- atomicidade entre entradas e reservas automáticas;
+- rejeição de valores zerados, saldo negativo e limite mensal excedido;
+- categorias únicas por tipo e incompatibilidade entre categoria e transação;
 - deep links do Gasto rápido;
 - formatação e persistência de valores no padrão brasileiro;
 - vencimento real das recorrências e prazo automático de três dias;
 - criação do Piloto Mensal dentro do formulário de transações;
 - transferência inicial da conta principal para um porquinho;
-- proteção contra saldo negativo em lançamentos e transferências.
+- busca no histórico por descrição, categoria e cartão.
 
 ## Integração contínua
 
@@ -33,22 +38,18 @@ O workflow `.github/workflows/ci.yml` executa automaticamente em pushes e Pull R
 - `cargo check --locked` e `cargo test --locked` no core Tauri;
 - instalação das dependências Linux recomendadas pelo Tauri 2.
 
-## Validação necessária no Fedora/Android
-
-O ambiente de geração não possui `cargo` nem Android SDK. Antes de distribuir o APK, execute:
+## Como repetir a validação
 
 ```bash
 npm ci
-npm test
-npm run build
-
-cd src-tauri
-cargo test
-cargo check
-cd ..
+npm run validate
+npm audit --audit-level=high
 
 npm run android:shortcuts
-npm run android:dev
+export JAVA_HOME=/caminho/para/o/jdk-17
+npm run android:build -- --debug --apk --target aarch64 --ci
 ```
+
+O Gradle ainda emite avisos de APIs descontinuadas em código gerado pelo Tauri e seus plugins; eles não impediram a compilação.
 
 No primeiro uso, abra o sino no topo e toque em **Ativar lembretes** para o Android solicitar a permissão de notificações.

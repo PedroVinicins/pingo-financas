@@ -35,6 +35,18 @@ pub fn run() {
             commands::move_vault_money,
             commands::update_vault,
             commands::delete_vault,
+            commands::get_account_settings,
+            commands::save_account_settings,
+            commands::list_vault_movements,
+            commands::list_automatic_reserve_rules,
+            commands::save_automatic_reserve_rule,
+            commands::remove_automatic_reserve_rule,
+            commands::list_recurring_rules,
+            commands::add_recurring_rule,
+            commands::update_recurring_rule,
+            commands::settle_recurring_rule,
+            commands::delete_recurring_rule,
+            commands::import_legacy_app_data,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar a aplicação Tauri");

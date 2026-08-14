@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type {
   AccountSettings,
+  AppFeedback,
   AutomaticReserveRule,
   Category,
   DebitCard,
@@ -30,7 +31,6 @@ import {
 import { pingoMessageForTransaction } from '../services/pingoMessages'
 import {
   daysAfterRecurringDueDate,
-  followingRecurringDueDate,
   isRecurringRuleDue,
   localDateKey,
 } from '../services/recurringDates'
@@ -79,6 +79,12 @@ export const useFinanceStore = defineStore('finance', () => {
   })
   const clock = ref(new Date())
   const pingoMessage = ref('')
+  const initialized = ref(false)
+  const isInitializing = ref(false)
+  const initializationError = ref('')
+  const feedback = ref<AppFeedback | null>(null)
+  let feedbackSequence = 0
+  let feedbackTimer: number | undefined
 
   const transactionNetCents = computed(() => transactions.value.reduce(
     (total, transaction) => total + transactionEffect(transaction), 0n,
@@ -164,6 +170,8 @@ export const useFinanceStore = defineStore('finance', () => {
     return Math.round(savingsPoints + fixedPoints + reservePoints + cashPoints)
   })
 
+  const sortedTransactions = computed(() => [...transactions.value]
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)))
   const filteredTransactions = computed(() => {
     const result = transactions.value.filter((transaction) => {
       const date = new Date(`${transaction.date}T12:00:00`)
@@ -172,12 +180,22 @@ export const useFinanceStore = defineStore('finance', () => {
       if (filters.value.kind && transaction.kind !== filters.value.kind) return false
       if (filters.value.categoryId && transaction.categoryId !== filters.value.categoryId) return false
       if (filters.value.debitCardId && transaction.debitCardId !== filters.value.debitCardId) return false
+      if (filters.value.query?.trim()) {
+        const query = filters.value.query.trim().toLocaleLowerCase('pt-BR')
+        const category = categories.value.find((item) => item.id === transaction.categoryId)?.name ?? ''
+        const card = debitCards.value.find((item) => item.id === transaction.debitCardId)
+        const searchable = [transaction.description, category, card?.name, card?.issuer]
+          .filter(Boolean).join(' ').toLocaleLowerCase('pt-BR')
+        if (!searchable.includes(query)) return false
+      }
       return true
     })
     return [...result].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
   })
   const recentTransactions = computed(() => filteredTransactions.value.slice(0, 8))
-  const recentExpenses = computed(() => filteredTransactions.value.filter((item) => item.kind === 'expense').slice(0, 5))
+  const recentExpenses = computed(() => sortedTransactions.value.filter((item) => item.kind === 'expense').slice(0, 5))
+  const hasActiveFilters = computed(() => Object.values(filters.value)
+    .some((value) => value !== undefined && value !== ''))
   const recentExpenseCategoryIds = computed(() => {
     const result: string[] = []
     for (const transaction of recentExpenses.value) {
@@ -290,32 +308,66 @@ export const useFinanceStore = defineStore('finance', () => {
   function setVaults(items: Vault[]) { vaults.value = [...items] }
   function setFilters(next: TransactionFilters) { filters.value = { ...next } }
   function dismissPingoMessage() { pingoMessage.value = '' }
+  function clearFeedback() {
+    feedback.value = null
+    if (feedbackTimer !== undefined) window.clearTimeout(feedbackTimer)
+    feedbackTimer = undefined
+  }
+  function showFeedback(message: string, tone: AppFeedback['tone'] = 'info', duration = 4_500) {
+    clearFeedback()
+    feedback.value = { id: ++feedbackSequence, tone, message }
+    if (duration > 0) feedbackTimer = window.setTimeout(clearFeedback, duration)
+  }
+  function reportError(cause: unknown, fallback = 'Não foi possível concluir esta ação.') {
+    const message = cause instanceof Error ? cause.message : fallback
+    showFeedback(message, 'error', 6_000)
+    return message
+  }
 
   async function initialize(defaultCategories: Category[] = []) {
-    const [storedTransactions, storedCategories, storedDebitCards, storedVaults] = await Promise.all([
-      repository.listTransactions(), repository.listCategories(defaultCategories),
-      repository.listDebitCards(), repository.listVaults(),
-    ])
-    setTransactions(storedTransactions)
-    setCategories(storedCategories)
-    setDebitCards(storedDebitCards)
-    setVaults(storedVaults)
-    vaultMovements.value = repository.listVaultMovements()
-    automaticReserveRules.value = repository.listAutomaticReserveRules()
-      .filter((rule) => storedVaults.some((vault) => vault.id === rule.vaultId))
-    recurringRules.value = repository.listRecurringRules()
-    const storedSettings = repository.loadAccountSettings()
-    if (storedSettings) accountSettings.value = storedSettings
-    else {
-      const requiredAdjustment = vaultTotalCents.value - transactionNetCents.value
-      accountSettings.value = {
-        openingBalanceAdjustment: centsToDecimal(requiredAdjustment > 0n ? requiredAdjustment : 0n),
-        balanceHidden: false,
-        migratedAt: new Date().toISOString(),
+    if (isInitializing.value) return
+    isInitializing.value = true
+    initializationError.value = ''
+    try {
+      await repository.migrateLegacyAppData()
+      const [
+        storedTransactions, storedCategories, storedDebitCards, storedVaults,
+        storedMovements, storedReserveRules, storedRecurringRules, storedSettings,
+      ] = await Promise.all([
+        repository.listTransactions(), repository.listCategories(defaultCategories),
+        repository.listDebitCards(), repository.listVaults(),
+        repository.listVaultMovements(), repository.listAutomaticReserveRules(),
+        repository.listRecurringRules(), repository.loadAccountSettings(),
+      ])
+      setTransactions(storedTransactions)
+      setCategories(storedCategories)
+      setDebitCards(storedDebitCards)
+      setVaults(storedVaults)
+      vaultMovements.value = storedMovements
+      automaticReserveRules.value = storedReserveRules
+        .filter((rule) => storedVaults.some((vault) => vault.id === rule.vaultId))
+      recurringRules.value = storedRecurringRules
+      if (storedSettings) accountSettings.value = storedSettings
+      else {
+        const requiredAdjustment = vaultTotalCents.value - transactionNetCents.value
+        accountSettings.value = {
+          openingBalanceAdjustment: centsToDecimal(requiredAdjustment > 0n ? requiredAdjustment : 0n),
+          balanceHidden: false,
+          migratedAt: new Date().toISOString(),
+        }
+        await repository.saveAccountSettings(accountSettings.value)
       }
-      repository.saveAccountSettings(accountSettings.value)
+      await processRecurringRules()
+      initialized.value = true
+    } catch (cause) {
+      initialized.value = false
+      initializationError.value = cause instanceof Error
+        ? cause.message
+        : 'Não foi possível abrir os dados financeiros.'
+      throw cause
+    } finally {
+      isInitializing.value = false
     }
-    await processRecurringRules()
   }
 
   function validateTransactionInput(input: NewTransactionInput) {
@@ -327,13 +379,35 @@ export const useFinanceStore = defineStore('finance', () => {
     if (input.kind === 'expense' && amount > availableBalanceCents.value) {
       throw new Error('Saldo insuficiente. O Pingo não deixa sua conta ficar negativa.')
     }
+    if (input.kind === 'expense' && input.debitCardId) {
+      const card = debitCards.value.find((item) => item.id === input.debitCardId)
+      if (!card) throw new Error('Selecione um cartão válido')
+      if (card.isFrozen) throw new Error('Este cartão está congelado')
+      if (card.monthlySpendingLimit) {
+        const used = transactions.value.reduce((total, transaction) =>
+          transaction.kind === 'expense'
+          && transaction.debitCardId === card.id
+          && transaction.date.slice(0, 7) === input.date.slice(0, 7)
+            ? total + decimalToCents(transaction.amount)
+            : total, 0n)
+        if (used + amount > decimalToCents(card.monthlySpendingLimit)) {
+          throw new Error('Esta compra ultrapassa o limite mensal definido para o cartão.')
+        }
+      }
+    }
   }
   async function createTransaction(input: NewTransactionInput) {
     validateTransactionInput(input)
     const transaction = await repository.addTransaction(input)
     addTransaction(transaction)
     pingoMessage.value = pingoMessageForTransaction(transaction, availableBalanceCents.value)
-    if (transaction.kind === 'income') await applyAutomaticReserve(decimalToCents(transaction.amount))
+    if (transaction.kind === 'income') {
+      const [storedVaults, storedMovements] = await Promise.all([
+        repository.listVaults(), repository.listVaultMovements(),
+      ])
+      setVaults(storedVaults)
+      vaultMovements.value = storedMovements
+    }
     return transaction
   }
   async function editTransaction(input: UpdateTransactionInput) {
@@ -344,6 +418,23 @@ export const useFinanceStore = defineStore('finance', () => {
     const projectedTotal = balanceCents.value - transactionEffect(current) + transactionEffect(input)
     if (projectedTotal < vaultTotalCents.value) {
       throw new Error('Essa alteração deixaria a conta negativa. Ajuste o valor ou o saldo primeiro.')
+    }
+    if (input.kind === 'expense' && input.debitCardId) {
+      const card = debitCards.value.find((item) => item.id === input.debitCardId)
+      if (!card) throw new Error('Selecione um cartão válido')
+      if (card.isFrozen) throw new Error('Este cartão está congelado')
+      if (card.monthlySpendingLimit) {
+        const used = transactions.value.reduce((total, transaction) =>
+          transaction.id !== current.id
+          && transaction.kind === 'expense'
+          && transaction.debitCardId === card.id
+          && transaction.date.slice(0, 7) === input.date.slice(0, 7)
+            ? total + decimalToCents(transaction.amount)
+            : total, 0n)
+        if (used + decimalToCents(input.amount) > decimalToCents(card.monthlySpendingLimit)) {
+          throw new Error('Esta alteração ultrapassa o limite mensal definido para o cartão.')
+        }
+      }
     }
     const updated = await repository.updateTransaction(input)
     const index = transactions.value.findIndex((item) => item.id === updated.id)
@@ -399,7 +490,7 @@ export const useFinanceStore = defineStore('finance', () => {
     if (initial > availableBalanceCents.value) throw new Error('Não há saldo suficiente na conta para começar esse cofre.')
     const vault = await repository.addVault(input)
     vaults.value.push(vault)
-    if (initial > 0n) recordVaultMovement({ id: vault.id, kind: 'deposit', amount: input.initialBalance }, 'manual')
+    if (initial > 0n) vaultMovements.value = await repository.listVaultMovements()
     return vault
   }
   async function moveVaultMoney(input: MoveVaultMoneyInput, source: VaultMovementSource = 'manual') {
@@ -407,20 +498,16 @@ export const useFinanceStore = defineStore('finance', () => {
     if (input.kind === 'deposit' && amount > availableBalanceCents.value) {
       throw new Error('Saldo insuficiente na conta principal para guardar esse valor.')
     }
-    const updated = await repository.moveVaultMoney(input)
+    const updated = await repository.moveVaultMoney(input, source)
     const index = vaults.value.findIndex((vault) => vault.id === updated.id)
     if (index >= 0) vaults.value[index] = updated
-    recordVaultMovement(input, source)
+    vaultMovements.value = await repository.listVaultMovements()
     if (source === 'manual') {
       pingoMessage.value = input.kind === 'deposit'
         ? 'Aí sim! Um pingo guardado hoje vira uma poça amanhã. 🐷'
         : 'O porquinho abriu a porteira. Use com carinho! 😅'
     }
     return updated
-  }
-  function recordVaultMovement(input: MoveVaultMoneyInput, source: VaultMovementSource) {
-    const movement = repository.addVaultMovement(input, source)
-    vaultMovements.value.unshift(movement)
   }
   async function customizeVault(input: UpdateVaultInput) {
     const updated = await repository.updateVault(input)
@@ -432,43 +519,40 @@ export const useFinanceStore = defineStore('finance', () => {
     await repository.deleteVault(id)
     vaults.value = vaults.value.filter((vault) => vault.id !== id)
     automaticReserveRules.value = automaticReserveRules.value.filter((rule) => rule.vaultId !== id)
-    repository.removeAutomaticReserveRule(id)
+    await repository.removeAutomaticReserveRule(id)
   }
-  function saveAutomaticReserve(rule: AutomaticReserveRule) {
+  async function saveAutomaticReserve(rule: AutomaticReserveRule) {
     if (decimalToCents(rule.value) <= 0n) throw new Error('Informe um valor maior que zero')
     if (rule.mode === 'percentage' && decimalToCents(rule.value) > 10_000n) {
       throw new Error('A porcentagem deve ser de no máximo 100%')
     }
-    repository.saveAutomaticReserveRule(rule)
+    await repository.saveAutomaticReserveRule(rule)
     const index = automaticReserveRules.value.findIndex((item) => item.vaultId === rule.vaultId)
     if (index >= 0) automaticReserveRules.value[index] = rule
     else automaticReserveRules.value.push(rule)
   }
-  async function applyAutomaticReserve(incomeCents: bigint) {
-    for (const rule of automaticReserveRules.value.filter((item) => item.enabled)) {
-      if (!vaults.value.some((vault) => vault.id === rule.vaultId)) continue
-      let amount = rule.mode === 'percentage'
-        ? (incomeCents * decimalToCents(rule.value)) / 10_000n
-        : decimalToCents(rule.value)
-      if (amount > availableBalanceCents.value) amount = availableBalanceCents.value
-      if (amount <= 0n) continue
-      await moveVaultMoney(
-        { id: rule.vaultId, kind: 'deposit', amount: centsToDecimal(amount) },
-        'automatic',
-      ).catch(() => undefined)
-    }
-  }
-
-  function setAvailableBalance(amount: string) {
+  async function setAvailableBalance(amount: string) {
     const desired = decimalToCents(amount)
     const adjustment = desired + vaultTotalCents.value - transactionNetCents.value
-    accountSettings.value = { ...accountSettings.value, openingBalanceAdjustment: centsToDecimal(adjustment) }
-    repository.saveAccountSettings(accountSettings.value)
+    const previous = accountSettings.value
+    accountSettings.value = { ...previous, openingBalanceAdjustment: centsToDecimal(adjustment) }
+    try {
+      await repository.saveAccountSettings(accountSettings.value)
+    } catch (cause) {
+      accountSettings.value = previous
+      throw cause
+    }
     pingoMessage.value = 'Saldo ajustado. Agora o Pingo e sua conta estão falando a mesma língua. ✅'
   }
-  function toggleBalanceVisibility() {
-    accountSettings.value = { ...accountSettings.value, balanceHidden: !accountSettings.value.balanceHidden }
-    repository.saveAccountSettings(accountSettings.value)
+  async function toggleBalanceVisibility() {
+    const previous = accountSettings.value
+    accountSettings.value = { ...previous, balanceHidden: !previous.balanceHidden }
+    try {
+      await repository.saveAccountSettings(accountSettings.value)
+    } catch (cause) {
+      accountSettings.value = previous
+      reportError(cause, 'Não foi possível alterar a privacidade dos valores.')
+    }
   }
 
   async function createRecurringRule(input: NewRecurringRuleInput) {
@@ -477,14 +561,14 @@ export const useFinanceStore = defineStore('finance', () => {
     }
     const category = categories.value.find((item) => item.id === input.categoryId)
     if (!category || category.kind !== input.kind) throw new Error('Selecione uma categoria válida')
-    const rule = repository.addRecurringRule(input)
+    const rule = await repository.addRecurringRule(input)
     recurringRules.value.push(rule)
     recurringRules.value.sort((a, b) => a.dayOfMonth - b.dayOfMonth)
     if (rule.reminderEnabled) {
       try {
         await scheduleRecurringRuleNotification(rule, true)
       } catch (cause) {
-        repository.deleteRecurringRule(rule.id)
+        await repository.deleteRecurringRule(rule.id)
         recurringRules.value = recurringRules.value.filter((item) => item.id !== rule.id)
         throw cause
       }
@@ -501,21 +585,20 @@ export const useFinanceStore = defineStore('finance', () => {
     if (!isRecurringRuleDue(rule, clock.value)) {
       throw new Error(`A confirmação ficará disponível em ${rule.nextDueDate.split('-').reverse().join('/')}.`)
     }
-    const processedDueDate = rule.nextDueDate
-    const transaction = await createTransaction({
-      kind: rule.kind,
-      amount: rule.amount,
-      date: localDateKey(clock.value),
-      categoryId: rule.categoryId,
-      debitCardId: rule.kind === 'expense' ? rule.debitCardId : null,
-      description: rule.description,
-      recurrence: 'fixed',
-    })
-    rule.lastProcessedPeriod = processedDueDate.slice(0, 7)
-    rule.nextDueDate = followingRecurringDueDate(rule.dayOfMonth, processedDueDate)
-    const updated = repository.updateRecurringRule(rule)
+    const { transaction, rule: updated } = await repository.settleRecurringRule(
+      id,
+      localDateKey(clock.value),
+    )
+    addTransaction(transaction)
     const index = recurringRules.value.findIndex((item) => item.id === id)
     if (index >= 0) recurringRules.value[index] = updated
+    if (transaction.kind === 'income') {
+      const [storedVaults, storedMovements] = await Promise.all([
+        repository.listVaults(), repository.listVaultMovements(),
+      ])
+      setVaults(storedVaults)
+      vaultMovements.value = storedMovements
+    }
     if (automatic) pingoMessage.value = `Você demorou 3 dias, então o Pingo registrou “${rule.description}”. Tudo sem deixar o saldo negativo.`
     else pingoMessage.value = rule.kind === 'income'
       ? `Opa, pingou “${rule.description}”! Agora respira antes de abrir as promoções. 😅`
@@ -533,18 +616,20 @@ export const useFinanceStore = defineStore('finance', () => {
     await maybeNotifyDueRecurringRules(dueRecurringRules.value)
   }
   async function removeRecurringRule(id: string) {
-    repository.deleteRecurringRule(id)
+    await repository.deleteRecurringRule(id)
     recurringRules.value = recurringRules.value.filter((rule) => rule.id !== id)
     await cancelRecurringRuleNotification(id)
   }
 
   return {
     transactions, categories, debitCards, vaults, vaultMovements, automaticReserveRules, recurringRules,
-    filters, accountSettings, pingoMessage, balanceHidden, transactionNetCents, balanceCents, vaultTotalCents,
+    filters, accountSettings, pingoMessage, initialized, isInitializing, initializationError, feedback,
+    balanceHidden, transactionNetCents, balanceCents, vaultTotalCents,
     availableBalanceCents, currentMonthBalanceCents, currentMonthIncomeCents, currentMonthExpenseCents,
     currentMonthSavingsCents, currentMonthFixedExpenseCents, savingsRate, fixedCostRatio,
     averageMonthlyExpenseCents, projectedMonthExpenseCents, dailySpendingAverageCents, dailyBudgetCents,
     emergencyFundMonths, financialHealthScore, filteredTransactions, recentTransactions, recentExpenses,
+    hasActiveFilters,
     recentExpenseCategoryIds, expensesByCategory, currentMonthExpensesByCategory, expensePercentages,
     currentMonthExpensePercentages, topExpenseCategory, expensesByDebitCard, currentMonthExpensesByDebitCard,
     unassignedExpenseCents, defaultDebitCard, fixedMonthlyCommitmentCents, expectedMonthlyIncomeCents,
@@ -553,7 +638,8 @@ export const useFinanceStore = defineStore('finance', () => {
     setDebitCards, setVaults, setFilters, dismissPingoMessage, initialize, createTransaction,
     editTransaction, createCategory, deleteTransaction, createDebitCard, updateCardStyle, setCardFrozen,
     makeDefaultCard, removeDebitCard, createVault, moveVaultMoney, customizeVault, removeVault,
-    saveAutomaticReserve, applyAutomaticReserve, setAvailableBalance, toggleBalanceVisibility,
+    saveAutomaticReserve, setAvailableBalance, toggleBalanceVisibility,
     createRecurringRule, settleRecurringRule, processRecurringRules, removeRecurringRule,
+    showFeedback, reportError, clearFeedback,
   }
 })

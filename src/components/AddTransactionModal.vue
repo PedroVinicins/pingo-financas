@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { BellRing, CalendarClock, Plus, ReceiptText, Sparkles, X } from 'lucide-vue-next'
+import { BellRing, CalendarClock, Plus, ReceiptText, Sparkles, Trash2, X } from 'lucide-vue-next'
 import { useFinanceStore } from '../stores/financeStore'
 import { localizedDecimalToStorage, storageDecimalToLocalized } from '../services/localizedNumber'
 import LocalizedNumberInput from './LocalizedNumberInput.vue'
+import { localDateKey } from '../services/recurringDates'
 import type {
   Category,
   DebitCard,
@@ -20,6 +21,7 @@ const emit = defineEmits<{
   close: []
   save: [input: NewTransactionInput]
   saveRecurring: [input: NewRecurringRuleInput]
+  delete: [transaction: Transaction]
 }>()
 
 const defaultCardId = props.cards.find((card) => card.isDefault && !card.isFrozen)?.id ?? ''
@@ -29,7 +31,7 @@ const form = reactive({
   flow: 'transaction' as 'transaction' | 'recurring',
   kind: (props.transaction?.kind ?? 'expense') as TransactionType,
   amount: props.transaction ? storageDecimalToLocalized(props.transaction.amount) : '',
-  date: props.transaction?.date ?? new Date().toISOString().slice(0, 10),
+  date: props.transaction?.date ?? localDateKey(new Date()),
   categoryId: props.transaction?.categoryId ?? defaultExpenseCategoryId,
   debitCardId: props.transaction?.debitCardId ?? defaultCardId,
   description: props.transaction?.description ?? '',
@@ -222,9 +224,12 @@ function submit() {
         <div class="flex items-start gap-3"><div class="grid size-9 shrink-0 place-items-center rounded-xl bg-violet-400 font-black text-violet-950">P</div><p class="text-sm font-semibold leading-relaxed">Relaxa: eu anoto a data, mas não encosto no seu saldo antes da hora. Porquinho responsável tem limites. 😌</p></div>
       </div>
       <p v-if="formError" class="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-950/35 dark:text-rose-300">{{ formError }}</p>
-      <button class="mt-6 w-full rounded-2xl bg-slate-950 px-4 py-3 font-bold text-white hover:bg-slate-800 dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400">
-        {{ transaction ? 'Salvar alterações' : form.flow === 'recurring' ? 'Ligar Piloto Mensal' : 'Salvar transação' }}
-      </button>
+      <div class="mt-6 grid gap-2" :class="transaction ? 'grid-cols-[auto_1fr]' : ''">
+        <button v-if="transaction" type="button" class="grid size-12 place-items-center rounded-2xl border border-rose-200 text-rose-600 dark:border-rose-900" :aria-label="`Excluir ${transaction.description}`" @click="emit('delete', transaction)"><Trash2 :size="18" /></button>
+        <button class="w-full rounded-2xl bg-slate-950 px-4 py-3 font-bold text-white hover:bg-slate-800 dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400">
+          {{ transaction ? 'Salvar alterações' : form.flow === 'recurring' ? 'Ligar Piloto Mensal' : 'Salvar transação' }}
+        </button>
+      </div>
     </form>
   </div>
 </template>

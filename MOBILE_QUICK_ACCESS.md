@@ -36,11 +36,12 @@ npm run tauri android init
 npm run android:shortcuts
 ```
 
-O script adiciona três atalhos estáticos ao launcher:
+O script adiciona quatro atalhos estáticos ao launcher:
 
 - **Novo gasto** → `pingo://expense`
 - **Carteira** → `pingo://wallet`
 - **Cofres** → `pingo://vaults`
+- **Resumo** → `pingo://dashboard`
 
 Depois, execute:
 

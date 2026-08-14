@@ -8,6 +8,17 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
+## Destaques da versão 0.7.0
+
+- todos os dados financeiros e preferências ficam juntos no SQLite quando o app roda no Tauri;
+- migração automática preserva recorrências, ajustes de saldo e históricos das versões anteriores;
+- regras de saldo, cofres, reservas automáticas e limites de cartões são validadas no core Rust;
+- versão Web instalável e com funcionamento offline após o primeiro acesso;
+- busca e filtros no histórico, exclusão segura e backup local em JSON;
+- carregamento, falhas, confirmações e avisos integrados à interface;
+- melhorias de acessibilidade, privacidade e navegação em celulares, tablets e desktop;
+- Android `versionCode` 7000, atalhos ampliados e build debug instalável em paralelo.
+
 ## Destaques da versão 0.6.0
 
 - Piloto Mensal integrado ao formulário de transações;
@@ -104,7 +115,7 @@ pingo://dashboard
 pingo://vaults
 ```
 
-Há também um script para instalar atalhos estáticos do Android (`Novo gasto`, `Carteira` e `Cofres`) depois do `tauri android init`.
+Há também um script para instalar quatro atalhos estáticos do Android (`Novo gasto`, `Carteira`, `Cofres` e `Resumo`) depois do `tauri android init`.
 
 Veja [MOBILE_QUICK_ACCESS.md](./MOBILE_QUICK_ACCESS.md).
 
@@ -154,6 +165,8 @@ npm run dev
 
 Quando não está dentro do runtime do Tauri, o frontend usa `localStorage` como fallback para facilitar testes de interface.
 
+A build Web é um PWA: pode ser instalada pelo navegador e, após o primeiro carregamento, o shell do aplicativo continua disponível sem internet. Os dados permanecem somente no navegador/dispositivo.
+
 ## Rodar no desktop
 
 Instale primeiro as dependências do Tauri para sua distribuição Linux.
@@ -182,10 +195,19 @@ npm run tauri:dev
 
 ## Android
 
+Use o JDK 17 no build Android. Versões mais novas do Java podem não ser compatíveis com a versão do Gradle usada pelo projeto.
+
 ```bash
+export JAVA_HOME=/caminho/para/o/jdk-17
 npm run tauri android init
 npm run android:shortcuts
 npm run android:dev
+```
+
+Para gerar um APK de desenvolvimento ARM64 instalável ao lado da versão de produção:
+
+```bash
+npm run android:build -- --debug --apk --target aarch64 --ci
 ```
 
 ## Testes
@@ -205,7 +227,7 @@ cargo test
 
 ## Persistência
 
-No Tauri, transações, categorias, cartões e cofres são persistidos no SQLite. Enquanto a migração completa não é concluída, preferências da conta, histórico auxiliar dos cofres, reservas automáticas e recorrências mensais ficam no armazenamento local da WebView. No navegador, todos os dados usam `localStorage`.
+No Tauri, transações, categorias, cartões, cofres, movimentos, ajustes de saldo, reservas automáticas e recorrências são persistidos no SQLite. Ao abrir a versão 0.7.0 pela primeira vez, dados auxiliares das versões anteriores são importados automaticamente da WebView. No navegador, todos os dados continuam no `localStorage`.
 
 O SQLite é inicializado no diretório de dados da aplicação. As migrations atuais são:
 
@@ -215,9 +237,13 @@ O SQLite é inicializado no diretório de dados da aplicação. As migrations at
 0003_card_personalization.sql
 0004_vaults_and_card_backgrounds.sql
 0005_category_kinds.sql
+0006_category_scope.sql
+0007_persisted_app_state.sql
 ```
 
 Valores monetários são persistidos como texto e tratados com `rust_decimal` no core Rust. No frontend, cálculos reativos usam centavos em `bigint`.
+
+O menu de configurações permite exportar uma cópia local em JSON. Como esse arquivo contém dados financeiros, ele deve ser guardado em local seguro.
 
 ## Segurança, privacidade e contribuição
 

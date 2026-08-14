@@ -11,12 +11,16 @@ import TransactionList from '../components/TransactionList.vue'
 import AddTransactionModal from '../components/AddTransactionModal.vue'
 import EditBalanceModal from '../components/EditBalanceModal.vue'
 import RecurringSection from '../components/RecurringSection.vue'
+import TransactionFiltersBar from '../components/TransactionFiltersBar.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 const store = useFinanceStore()
 const showModal = ref(false)
 const showBalanceEditor = ref(false)
 const editingTransaction = ref<Transaction | null>(null)
 const showAllHistory = ref(false)
+const deletingTransaction = ref<Transaction | null>(null)
+const deleting = ref(false)
 
 function money(value: bigint) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(centsToDecimal(value)))
@@ -49,16 +53,32 @@ async function save(input: NewTransactionInput) {
     else await store.createTransaction(input)
     showModal.value = false
     editingTransaction.value = null
-  } catch (cause) { window.alert(cause instanceof Error ? cause.message : 'Não foi possível salvar.') }
+  } catch (cause) { store.reportError(cause, 'Não foi possível salvar.') }
 }
 async function saveRecurring(input: NewRecurringRuleInput) {
   try {
     await store.createRecurringRule(input)
     showModal.value = false
-  } catch (cause) { window.alert(cause instanceof Error ? cause.message : 'Não foi possível ligar o Piloto Mensal.') }
+  } catch (cause) { store.reportError(cause, 'Não foi possível ligar o Piloto Mensal.') }
 }
 function edit(transaction: Transaction) { editingTransaction.value = transaction; showModal.value = true }
-function editBalance(amount: string) { store.setAvailableBalance(amount); showBalanceEditor.value = false }
+function requestDelete(transaction: Transaction) { deletingTransaction.value = transaction }
+async function confirmDelete() {
+  if (!deletingTransaction.value) return
+  deleting.value = true
+  try {
+    await store.deleteTransaction(deletingTransaction.value.id)
+    showModal.value = false
+    editingTransaction.value = null
+    deletingTransaction.value = null
+    store.showFeedback('Transação excluída e saldos recalculados.', 'success')
+  } catch (cause) { store.reportError(cause, 'Não foi possível excluir a transação.') }
+  finally { deleting.value = false }
+}
+async function editBalance(amount: string) {
+  try { await store.setAvailableBalance(amount); showBalanceEditor.value = false }
+  catch (cause) { store.reportError(cause, 'Não foi possível ajustar o saldo.') }
+}
 </script>
 
 <template>
@@ -87,9 +107,10 @@ function editBalance(amount: string) { store.setAvailableBalance(amount); showBa
       <div class="mt-5 grid gap-3 sm:grid-cols-2"><div class="rounded-2xl border border-slate-200 p-4 dark:border-slate-800"><div class="flex items-center justify-between text-sm font-bold"><span>Taxa de economia</span><span :class="store.savingsRate >= 20 ? 'text-emerald-600' : 'text-amber-600'">{{ store.savingsRate.toFixed(1) }}%</span></div><p class="mt-1 text-xs text-slate-500">Meta inicial: guardar pelo menos 20% das entradas.</p></div><div class="rounded-2xl border border-slate-200 p-4 dark:border-slate-800"><div class="flex items-center justify-between text-sm font-bold"><span>Gastos fixos já pagos</span><span :class="store.fixedCostRatio <= 50 ? 'text-emerald-600' : 'text-rose-600'">{{ store.fixedCostRatio.toFixed(1) }}%</span></div><p class="mt-1 text-xs text-slate-500">Percentual da renda consumido por despesas fixas.</p></div></div>
     </section>
 
-    <section class="mt-5 rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-6"><div class="mb-2 flex items-center justify-between gap-3"><div><p class="text-sm font-medium text-slate-500">Histórico editável</p><h3 class="text-xl font-black">{{ showAllHistory ? 'Todas as transações' : 'Transações recentes' }}</h3></div><button class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-black dark:border-slate-700" @click="showAllHistory = !showAllHistory">{{ showAllHistory ? 'Mostrar recentes' : 'Ver histórico completo' }}</button></div><TransactionList :transactions="historyTransactions" :categories="store.categories" :cards="store.debitCards" @edit="edit" /></section>
+    <section class="mt-5 rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-6"><div class="mb-2 flex items-center justify-between gap-3"><div><p class="text-sm font-medium text-slate-500">Histórico editável</p><h3 class="text-xl font-black">{{ store.hasActiveFilters ? `${store.filteredTransactions.length} resultado(s)` : showAllHistory ? 'Todas as transações' : 'Transações recentes' }}</h3></div><button v-if="!store.hasActiveFilters" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-black dark:border-slate-700" @click="showAllHistory = !showAllHistory">{{ showAllHistory ? 'Mostrar recentes' : 'Ver histórico completo' }}</button></div><TransactionFiltersBar /><TransactionList class="mt-2" :transactions="store.hasActiveFilters ? store.filteredTransactions : historyTransactions" :categories="store.categories" :cards="store.debitCards" editable @edit="edit" /></section>
   </main>
 
-  <AddTransactionModal v-if="showModal" :categories="store.categories" :cards="store.debitCards" :transaction="editingTransaction" @close="showModal = false; editingTransaction = null" @save="save" @save-recurring="saveRecurring" />
+  <AddTransactionModal v-if="showModal" :categories="store.categories" :cards="store.debitCards" :transaction="editingTransaction" @close="showModal = false; editingTransaction = null" @save="save" @save-recurring="saveRecurring" @delete="requestDelete" />
   <EditBalanceModal v-if="showBalanceEditor" :current-balance="centsToDecimal(store.availableBalanceCents)" @close="showBalanceEditor = false" @save="editBalance" />
+  <ConfirmDialog v-if="deletingTransaction" title="Excluir transação?" :message="`“${deletingTransaction.description}” será removida do histórico e todos os saldos serão recalculados.`" confirm-label="Excluir transação" :busy="deleting" @cancel="deletingTransaction = null" @confirm="confirmDelete" />
 </template>

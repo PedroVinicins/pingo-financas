@@ -6,8 +6,10 @@ const props = withDefaults(defineProps<{
   transactions: Transaction[]
   categories: Category[]
   cards?: DebitCard[]
+  editable?: boolean
 }>(), {
   cards: () => [],
+  editable: false,
 })
 const emit = defineEmits<{ edit: [transaction: Transaction] }>()
 
@@ -55,7 +57,7 @@ function shortDate(value: string) {
       >
         {{ transaction.kind === 'income' ? '+' : '-' }}{{ money(transaction.amount) }}
       </p>
-      <button class="grid size-9 shrink-0 place-items-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white" :aria-label="`Editar ${transaction.description}`" @click="emit('edit', transaction)"><Pencil :size="15" /></button>
+      <button v-if="editable" class="grid size-10 shrink-0 place-items-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white" :aria-label="`Editar ${transaction.description}`" @click="emit('edit', transaction)"><Pencil :size="15" /></button>
     </div>
   </div>
 

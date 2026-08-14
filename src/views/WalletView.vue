@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, ref, watch, watchEffect } from 'vue'
+import { computed, nextTick, ref, watch, watchEffect } from 'vue'
 import {
-  Check, Building2, Copy, Lock, Palette, Plus, ReceiptText, Snowflake, Star, Trash2, WalletCards, Zap,
+  Check, Building2, Copy, Link2, Lock, Palette, Plus, ReceiptText, Snowflake, Star, Trash2,
+  WalletCards, X, Zap,
 } from 'lucide-vue-next'
 import AddDebitCardModal from '../components/AddDebitCardModal.vue'
 import CardStyleEditor from '../components/CardStyleEditor.vue'
 import DebitCardVisual from '../components/DebitCardVisual.vue'
 import TransactionList from '../components/TransactionList.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { centsToDecimal, decimalToCents, useFinanceStore } from '../stores/financeStore'
 import { quickExpenseLink } from '../services/quickLaunch'
 import type { NewDebitCardInput, UpdateDebitCardStyleInput } from '../types/finance'
@@ -18,6 +20,10 @@ const showAddCard = ref(false)
 const showStyleEditor = ref(false)
 const selectedCardId = ref('')
 const copied = ref(false)
+const showRemoveConfirmation = ref(false)
+const removing = ref(false)
+const manualShortcut = ref('')
+const shortcutInput = ref<HTMLInputElement | null>(null)
 
 watchEffect(() => {
   if (!store.debitCards.length) { selectedCardId.value = ''; return }
@@ -39,21 +45,55 @@ const limitProgress = computed(() => {
 
 function money(value: bigint | null) {
   if (value === null) return '—'
+  if (store.balanceHidden) return 'R$ •••••'
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(centsToDecimal(value)))
 }
 
-async function addCard(input: NewDebitCardInput) { const card = await store.createDebitCard(input); selectedCardId.value = card.id; showAddCard.value = false }
-async function saveStyle(input: UpdateDebitCardStyleInput) { await store.updateCardStyle(input); showStyleEditor.value = false }
-async function toggleFrozen() { if (selectedCard.value) await store.setCardFrozen(selectedCard.value.id, !selectedCard.value.isFrozen) }
-async function makeDefault() { if (selectedCard.value) await store.makeDefaultCard(selectedCard.value.id) }
-async function removeCard() { if (!selectedCard.value || !window.confirm(`Remover ${selectedCard.value.name}? As despesas continuarão no histórico geral.`)) return; await store.removeDebitCard(selectedCard.value.id) }
+async function addCard(input: NewDebitCardInput) {
+  try {
+    const card = await store.createDebitCard(input)
+    selectedCardId.value = card.id
+    showAddCard.value = false
+    store.showFeedback('Cartão adicionado à carteira.', 'success')
+  } catch (cause) { store.reportError(cause, 'Não foi possível adicionar o cartão.') }
+}
+async function saveStyle(input: UpdateDebitCardStyleInput) {
+  try { await store.updateCardStyle(input); showStyleEditor.value = false }
+  catch (cause) { store.reportError(cause, 'Não foi possível personalizar o cartão.') }
+}
+async function toggleFrozen() {
+  if (!selectedCard.value) return
+  try {
+    const frozen = !selectedCard.value.isFrozen
+    await store.setCardFrozen(selectedCard.value.id, frozen)
+    store.showFeedback(frozen ? 'Cartão congelado no Pingo.' : 'Cartão liberado para novos lançamentos.', 'success')
+  } catch (cause) { store.reportError(cause, 'Não foi possível alterar o cartão.') }
+}
+async function makeDefault() {
+  if (!selectedCard.value) return
+  try { await store.makeDefaultCard(selectedCard.value.id); store.showFeedback('Cartão principal atualizado.', 'success') }
+  catch (cause) { store.reportError(cause, 'Não foi possível definir o cartão principal.') }
+}
+async function removeCard() {
+  if (!selectedCard.value) return
+  removing.value = true
+  try {
+    await store.removeDebitCard(selectedCard.value.id)
+    showRemoveConfirmation.value = false
+    store.showFeedback('Cartão removido; as compras continuam no histórico geral.', 'success')
+  } catch (cause) { store.reportError(cause, 'Não foi possível remover o cartão.') }
+  finally { removing.value = false }
+}
 async function copyShortcut() {
   if (!selectedCard.value) return
   try {
     await navigator.clipboard.writeText(quickExpenseLink(selectedCard.value.id))
     copied.value = true
   } catch {
-    window.prompt('Copie o atalho do cartão:', quickExpenseLink(selectedCard.value.id))
+    manualShortcut.value = quickExpenseLink(selectedCard.value.id)
+    await nextTick()
+    shortcutInput.value?.focus()
+    shortcutInput.value?.select()
     return
   }
   window.setTimeout(() => { copied.value = false }, 1800)
@@ -95,7 +135,7 @@ async function copyShortcut() {
             <button class="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-3 py-3 text-sm font-bold dark:border-slate-700" @click="copyShortcut"><Copy :size="17" /> {{ copied ? 'Copiado' : 'Atalho' }}</button>
             <button class="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-3 py-3 text-sm font-bold dark:border-slate-700" @click="toggleFrozen"><Lock :size="17" /> {{ selectedCard.isFrozen ? 'Descongelar' : 'Congelar' }}</button>
             <button v-if="!selectedCard.isDefault" class="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-3 py-3 text-sm font-bold dark:border-slate-700" @click="makeDefault"><Check :size="17" /> Principal</button>
-            <button class="grid place-items-center rounded-2xl border border-rose-200 p-3 text-rose-600 dark:border-rose-900" @click="removeCard"><Trash2 :size="17" /></button>
+            <button class="grid place-items-center rounded-2xl border border-rose-200 p-3 text-rose-600 dark:border-rose-900" :aria-label="`Remover ${selectedCard.name}`" @click="showRemoveConfirmation = true"><Trash2 :size="17" /></button>
           </div>
           <p class="mt-3 text-xs text-slate-400">O botão “Atalho” copia um link como <code>pingo://expense?card=...</code> para abrir o app direto neste cartão.</p>
         </section>
@@ -112,4 +152,14 @@ async function copyShortcut() {
 
   <AddDebitCardModal v-if="showAddCard" :existing-cards-count="store.debitCards.length" @close="showAddCard = false" @save="addCard" />
   <CardStyleEditor v-if="showStyleEditor && selectedCard" :card="selectedCard" @close="showStyleEditor = false" @save="saveStyle" />
+  <ConfirmDialog v-if="showRemoveConfirmation && selectedCard" title="Remover cartão?" :message="`“${selectedCard.name}” sairá da carteira. As despesas já registradas continuarão no histórico geral, sem vínculo com o cartão.`" confirm-label="Remover cartão" :busy="removing" @cancel="showRemoveConfirmation = false" @confirm="removeCard" />
+  <Teleport to="body">
+    <div v-if="manualShortcut" class="fixed inset-0 z-[110] grid place-items-end bg-slate-950/55 backdrop-blur-[2px] sm:place-items-center sm:p-4" @click.self="manualShortcut = ''" @keydown.esc="manualShortcut = ''">
+      <section class="w-full rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-md sm:rounded-[2rem] sm:p-6" role="dialog" aria-modal="true" aria-labelledby="shortcut-dialog-title">
+        <div class="flex items-start gap-3"><div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"><Link2 :size="20" /></div><div class="min-w-0 flex-1"><h2 id="shortcut-dialog-title" class="text-xl font-black">Copiar atalho</h2><p class="mt-1 text-sm text-slate-500">A cópia automática foi bloqueada. Selecione o endereço abaixo para copiá-lo manualmente.</p></div><button class="grid size-9 place-items-center rounded-xl text-slate-400" aria-label="Fechar" @click="manualShortcut = ''"><X :size="18" /></button></div>
+        <input ref="shortcutInput" :value="manualShortcut" readonly class="mt-5 h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 font-mono text-sm dark:border-slate-700 dark:bg-slate-950" aria-label="Endereço do atalho" @focus="($event.target as HTMLInputElement).select()" />
+        <button class="mt-3 w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white dark:bg-white dark:text-slate-950" @click="manualShortcut = ''">Concluir</button>
+      </section>
+    </div>
+  </Teleport>
 </template>

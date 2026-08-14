@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { useFinanceStore } from '../financeStore'
+import { decimalToCents, useFinanceStore } from '../financeStore'
 import type { Category, DebitCard, Transaction, Vault } from '../../types/finance'
 
 function transaction(overrides: Partial<Transaction> = {}): Transaction {
@@ -153,8 +153,10 @@ describe('financeStore', () => {
   it('transfere entre conta e porquinho sem alterar o patrimônio total', async () => {
     const store = useFinanceStore()
     const storedVault = vault({ balance: '300.00' })
+    const storedIncome = transaction({ id: 'salary', kind: 'income', amount: '1000.00' })
     localStorage.setItem('pingo:vaults', JSON.stringify([storedVault]))
-    store.setTransactions([transaction({ id: 'salary', kind: 'income', amount: '1000.00' })])
+    localStorage.setItem('cashew-clone:transactions', JSON.stringify([storedIncome]))
+    store.setTransactions([storedIncome])
     store.setVaults([storedVault])
 
     await store.moveVaultMoney({ id: storedVault.id, kind: 'deposit', amount: '200.00' })
@@ -175,6 +177,37 @@ describe('financeStore', () => {
       kind: 'expense', amount: '100.01', date: '2026-08-12', categoryId: expenseCategory.id,
       debitCardId: null, description: 'Compra impossível', recurrence: 'variable',
     })).rejects.toThrow(/não deixa sua conta ficar negativa/i)
+  })
+
+  it('aplica o limite mensal configurado no cartão', async () => {
+    const store = useFinanceStore()
+    const expenseCategory = category()
+    store.setCategories([expenseCategory])
+    store.setDebitCards([card({ monthlySpendingLimit: '200.00' })])
+    store.setTransactions([
+      transaction({ id: 'salary', kind: 'income', amount: '500.00', categoryId: null }),
+      transaction({ id: 'existing', amount: '195.00', debitCardId: 'card-1', date: '2026-08-05' }),
+    ])
+
+    await expect(store.createTransaction({
+      kind: 'expense', amount: '5.01', date: '2026-08-12', categoryId: expenseCategory.id,
+      debitCardId: 'card-1', description: 'Passou do limite', recurrence: 'variable',
+    })).rejects.toThrow(/limite mensal/i)
+  })
+
+  it('busca no histórico por descrição, categoria e cartão', () => {
+    const store = useFinanceStore()
+    store.setCategories([category()])
+    store.setDebitCards([card({ name: 'Laranja' })])
+    store.setTransactions([
+      transaction({ id: 'market', description: 'Feira da semana', debitCardId: 'card-1' }),
+      transaction({ id: 'bus', description: 'Passagem', categoryId: null }),
+    ])
+
+    store.setFilters({ query: 'laranja' })
+    expect(store.filteredTransactions.map((item) => item.id)).toEqual(['market'])
+    store.setFilters({ query: 'alimentação' })
+    expect(store.filteredTransactions.map((item) => item.id)).toEqual(['market'])
   })
 
   it('edita o saldo disponível sem apagar transações ou cofres', () => {
@@ -208,6 +241,22 @@ describe('financeStore', () => {
     expect(store.availableBalanceCents).toBe(5000n)
     expect(store.transactions).toHaveLength(1)
     expect(store.recurringRules[0]?.nextDueDate).toBe('2026-09-12')
+  })
+
+  it('impede que uma recorrência confirmada deixe o fallback Web negativo', async () => {
+    const store = useFinanceStore()
+    const expenseCategory = category()
+    localStorage.setItem('cashew-clone:categories', JSON.stringify([expenseCategory]))
+    store.setCategories([expenseCategory])
+    await store.setAvailableBalance('40.00')
+    const rule = await store.createRecurringRule({
+      kind: 'expense', amount: '50.00', dayOfMonth: 12, categoryId: expenseCategory.id,
+      debitCardId: null, description: 'Conta acima do saldo', reminderEnabled: false,
+    })
+
+    await expect(store.settleRecurringRule(rule.id)).rejects.toThrow(/saldo insuficiente/i)
+    expect(store.transactions).toHaveLength(0)
+    expect(store.recurringRules[0]?.nextDueDate).toBe('2026-08-12')
   })
 
   it('não mostra confirmação antes do dia da conta ou do salário', async () => {
@@ -295,5 +344,60 @@ describe('financeStore', () => {
     expect(store.availableBalanceCents).toBe(12000n)
     expect(store.vaultTotalCents).toBe(8000n)
     expect(store.getMovementsForVault(created.id)[0]?.kind).toBe('deposit')
+  })
+
+  it('reserva parte de uma entrada de forma automática', async () => {
+    const store = useFinanceStore()
+    const incomeCategory = category({ id: 'salary', kind: 'income', name: 'Salário' })
+    localStorage.setItem('cashew-clone:categories', JSON.stringify([incomeCategory]))
+    store.setCategories([incomeCategory])
+    await store.setAvailableBalance('0.00')
+    const createdVault = await store.createVault({
+      name: 'Reserva', institution: 'Inter', type: 'piggy_bank', initialBalance: '0.00',
+      targetAmount: null, annualYieldRate: null, color: '#10B981', emoji: '🐷',
+    })
+    await store.saveAutomaticReserve({
+      vaultId: createdVault.id, enabled: true, mode: 'percentage', value: '20.00',
+    })
+
+    await store.createTransaction({
+      kind: 'income', amount: '100.00', date: '2026-08-12', categoryId: incomeCategory.id,
+      debitCardId: null, description: 'Salário', recurrence: 'variable',
+    })
+
+    expect(store.vaultTotalCents).toBe(2000n)
+    expect(store.availableBalanceCents).toBe(8000n)
+    expect(store.getMovementsForVault(createdVault.id)[0]?.source).toBe('automatic')
+  })
+
+  it('não reserva mais do que a entrada quando várias regras estão ativas', async () => {
+    const store = useFinanceStore()
+    const incomeCategory = category({ id: 'salary', kind: 'income', name: 'Salário' })
+    localStorage.setItem('cashew-clone:categories', JSON.stringify([incomeCategory]))
+    store.setCategories([incomeCategory])
+    await store.setAvailableBalance('0.00')
+    const firstVault = await store.createVault({
+      name: 'Reserva', institution: 'Inter', type: 'piggy_bank', initialBalance: '0.00',
+      targetAmount: null, annualYieldRate: null, color: '#10B981', emoji: '🐷',
+    })
+    const secondVault = await store.createVault({
+      name: 'Viagem', institution: 'Nubank', type: 'box', initialBalance: '0.00',
+      targetAmount: null, annualYieldRate: null, color: '#8B5CF6', emoji: '✈️',
+    })
+    await store.saveAutomaticReserve({
+      vaultId: firstVault.id, enabled: true, mode: 'percentage', value: '80.00',
+    })
+    await store.saveAutomaticReserve({
+      vaultId: secondVault.id, enabled: true, mode: 'percentage', value: '80.00',
+    })
+
+    await store.createTransaction({
+      kind: 'income', amount: '100.00', date: '2026-08-12', categoryId: incomeCategory.id,
+      debitCardId: null, description: 'Salário', recurrence: 'variable',
+    })
+
+    expect(store.vaultTotalCents).toBe(10000n)
+    expect(store.availableBalanceCents).toBe(0n)
+    expect(store.vaultMovements.reduce((total, item) => total + decimalToCents(item.amount), 0n)).toBe(10000n)
   })
 })

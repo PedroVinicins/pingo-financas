@@ -44,6 +44,23 @@ pub enum VaultMovementType {
     Withdraw,
 }
 
+impl VaultMovementType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Deposit => "deposit",
+            Self::Withdraw => "withdraw",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "deposit" => Some(Self::Deposit),
+            "withdraw" => Some(Self::Withdraw),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Vault {
@@ -183,24 +200,59 @@ impl Vault {
 }
 
 pub fn validate_new_vault(input: &NewVault) -> Result<(), VaultError> {
-    if input.name.trim().is_empty() { return Err(VaultError::EmptyName); }
-    if input.institution.trim().is_empty() { return Err(VaultError::EmptyInstitution); }
-    if input.initial_balance < Decimal::ZERO { return Err(VaultError::NegativeInitialBalance); }
-    if input.target_amount.is_some_and(|value| value <= Decimal::ZERO) { return Err(VaultError::NonPositiveTarget); }
-    if input.annual_yield_rate.is_some_and(|value| value < Decimal::ZERO || value > Decimal::from(1_000u32)) { return Err(VaultError::InvalidYieldRate); }
-    if !is_hex_color(&input.color) { return Err(VaultError::InvalidColor); }
-    if input.emoji.as_ref().is_some_and(|value| value.trim().chars().count() > 4) { return Err(VaultError::EmojiTooLong); }
+    if input.name.trim().is_empty() {
+        return Err(VaultError::EmptyName);
+    }
+    if input.institution.trim().is_empty() {
+        return Err(VaultError::EmptyInstitution);
+    }
+    if input.initial_balance < Decimal::ZERO {
+        return Err(VaultError::NegativeInitialBalance);
+    }
+    if input
+        .target_amount
+        .is_some_and(|value| value <= Decimal::ZERO)
+    {
+        return Err(VaultError::NonPositiveTarget);
+    }
+    if input
+        .annual_yield_rate
+        .is_some_and(|value| value < Decimal::ZERO || value > Decimal::from(1_000u32))
+    {
+        return Err(VaultError::InvalidYieldRate);
+    }
+    if !is_hex_color(&input.color) {
+        return Err(VaultError::InvalidColor);
+    }
+    if input
+        .emoji
+        .as_ref()
+        .is_some_and(|value| value.trim().chars().count() > 4)
+    {
+        return Err(VaultError::EmojiTooLong);
+    }
     Ok(())
 }
 
 fn clean_emoji(emoji: Option<String>) -> Result<Option<String>, VaultError> {
-    let value = emoji.map(|value| value.trim().to_owned()).filter(|value| !value.is_empty());
-    if value.as_ref().is_some_and(|value| value.chars().count() > 4) { return Err(VaultError::EmojiTooLong); }
+    let value = emoji
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    if value
+        .as_ref()
+        .is_some_and(|value| value.chars().count() > 4)
+    {
+        return Err(VaultError::EmojiTooLong);
+    }
     Ok(value)
 }
 
 fn is_hex_color(value: &str) -> bool {
-    value.len() == 7 && value.starts_with('#') && value[1..].chars().all(|character| character.is_ascii_hexdigit())
+    value.len() == 7
+        && value.starts_with('#')
+        && value[1..]
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
 }
 
 #[cfg(test)]
@@ -209,15 +261,36 @@ mod tests {
     use rust_decimal_macros::dec;
 
     fn input() -> NewVault {
-        NewVault { name: "Reserva".into(), institution: "Banco Inter".into(), r#type: VaultType::PiggyBank, initial_balance: dec!(200), target_amount: Some(dec!(1000)), annual_yield_rate: Some(dec!(12)), color: "#F97316".into(), emoji: Some("🐷".into()) }
+        NewVault {
+            name: "Reserva".into(),
+            institution: "Banco Inter".into(),
+            r#type: VaultType::PiggyBank,
+            initial_balance: dec!(200),
+            target_amount: Some(dec!(1000)),
+            annual_yield_rate: Some(dec!(12)),
+            color: "#F97316".into(),
+            emoji: Some("🐷".into()),
+        }
     }
 
     #[test]
     fn moves_money_without_allowing_negative_balance() {
         let mut vault = Vault::new(input()).unwrap();
-        vault.apply_movement(&MoveVaultMoney { id: vault.id, kind: VaultMovementType::Deposit, amount: dec!(50) }).unwrap();
+        vault
+            .apply_movement(&MoveVaultMoney {
+                id: vault.id,
+                kind: VaultMovementType::Deposit,
+                amount: dec!(50),
+            })
+            .unwrap();
         assert_eq!(vault.balance, dec!(250));
-        let error = vault.apply_movement(&MoveVaultMoney { id: vault.id, kind: VaultMovementType::Withdraw, amount: dec!(300) }).unwrap_err();
+        let error = vault
+            .apply_movement(&MoveVaultMoney {
+                id: vault.id,
+                kind: VaultMovementType::Withdraw,
+                amount: dec!(300),
+            })
+            .unwrap_err();
         assert_eq!(error, VaultError::InsufficientBalance);
     }
 }

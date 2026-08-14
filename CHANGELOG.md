@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.0 — Confiança em cada pingo
+
+- migra configurações da conta, recorrências, reservas automáticas e movimentos de cofres para o SQLite no Tauri;
+- importa automaticamente os dados auxiliares mantidos pela WebView nas versões anteriores;
+- grava renda e reservas automáticas na mesma transação do banco;
+- limita o conjunto de reservas automáticas ao valor da entrada que as disparou;
+- grava movimentações e atualização do saldo do cofre de forma atômica;
+- protege saldo disponível e limite mensal do cartão também no core Rust;
+- permite categorias com o mesmo nome quando pertencem a tipos diferentes;
+- transforma a versão Web em um PWA instalável, responsivo e disponível offline;
+- adiciona backup local em JSON, busca e filtros no histórico e exclusão segura de transações;
+- substitui alertas nativos do navegador por feedbacks e confirmações integrados ao layout;
+- adiciona estados de carregamento, recuperação de falhas, conectividade e atualização da Web;
+- melhora acessibilidade, foco por teclado, alvos de toque, safe areas e privacidade dos valores;
+- define CSP para builds Tauri e configura a release Android com `versionCode` 7000;
+- permite instalar a build Android de desenvolvimento ao lado da versão de produção;
+- amplia os atalhos Android para Novo gasto, Carteira, Cofres e Resumo;
+- adiciona testes de integração do SQLite, recorrências e reservas automáticas.
+
 ## 0.6.0 — Radar do Pingo
 
 - integra o Piloto Mensal ao fluxo principal de Adicionar transação;

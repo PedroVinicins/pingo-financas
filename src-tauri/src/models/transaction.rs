@@ -155,11 +155,17 @@ mod tests {
     fn rejects_zero_and_negative_amounts() {
         let mut zero = base_input();
         zero.amount = Decimal::ZERO;
-        assert_eq!(Transaction::new(zero).unwrap_err(), TransactionError::NonPositiveAmount);
+        assert_eq!(
+            Transaction::new(zero).unwrap_err(),
+            TransactionError::NonPositiveAmount
+        );
 
         let mut negative = base_input();
         negative.amount = dec!(-0.01);
-        assert_eq!(Transaction::new(negative).unwrap_err(), TransactionError::NonPositiveAmount);
+        assert_eq!(
+            Transaction::new(negative).unwrap_err(),
+            TransactionError::NonPositiveAmount
+        );
     }
 
     #[test]
@@ -167,6 +173,9 @@ mod tests {
         let mut input = base_input();
         input.kind = TransactionType::Income;
         input.debit_card_id = Some(Uuid::new_v4());
-        assert_eq!(Transaction::new(input).unwrap_err(), TransactionError::DebitCardOnlyForExpense);
+        assert_eq!(
+            Transaction::new(input).unwrap_err(),
+            TransactionError::DebitCardOnlyForExpense
+        );
     }
 }

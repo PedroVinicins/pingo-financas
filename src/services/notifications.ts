@@ -1,5 +1,6 @@
 import { isTauriRuntime } from './financeRepository'
 import type { RecurringRule } from '../types/finance'
+import { localDateKey } from './recurringDates'
 
 export type ReminderFrequencyDays = 1 | 3 | 7
 
@@ -160,7 +161,7 @@ export async function maybeNotifyDueRecurringRules(rules: RecurringRule[]) {
   const enabledRules = rules.filter((rule) => rule.reminderEnabled)
   if (!enabledRules.length || !(await hasPermissionWithoutPrompt())) return
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localDateKey(new Date())
   let log: Record<string, string> = {}
   try { log = JSON.parse(localStorage.getItem(RECURRING_NOTIFICATION_LOG_KEY) ?? '{}') as Record<string, string> } catch { /* vazio */ }
 
