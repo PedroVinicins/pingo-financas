@@ -2,10 +2,14 @@ import type {
   AccountSettings,
   AutomaticReserveRule,
   Category,
+  DashboardLayout,
   DebitCard,
+  DigitalWalletItem,
+  MonthlyReserveRule,
   MoveVaultMoneyInput,
   NewCategoryInput,
   NewDebitCardInput,
+  NewDigitalWalletItemInput,
   NewRecurringRuleInput,
   NewTransactionInput,
   NewVaultInput,
@@ -19,6 +23,7 @@ import type {
   VaultMovement,
   VaultMovementSource,
 } from '../types/finance'
+import { DEFAULT_DASHBOARD_LAYOUT, normalizeDashboardLayout } from './dashboardLayout'
 import { firstRecurringDueDate, followingRecurringDueDate, localDateKey } from './recurringDates'
 
 // Mantidos para preservar dados de quem já usou as versões 0.1/0.2 no navegador.
@@ -30,6 +35,9 @@ const VAULT_MOVEMENTS_KEY = 'pingo:vault-movements'
 const AUTOMATIC_RESERVE_KEY = 'pingo:automatic-reserve-rules'
 const ACCOUNT_SETTINGS_KEY = 'pingo:account-settings'
 const RECURRING_RULES_KEY = 'pingo:recurring-rules'
+const DASHBOARD_LAYOUT_KEY = 'pingo:dashboard-layout'
+const DIGITAL_WALLET_KEY = 'pingo:digital-wallet-items'
+const MONTHLY_RESERVE_KEY = 'pingo:monthly-reserve-rules'
 const SQLITE_MIGRATION_KEY = 'pingo:sqlite-state-migrated-v0.7'
 
 export function isTauriRuntime() {
@@ -520,6 +528,8 @@ export async function deleteVault(id: string): Promise<void> {
     .filter((movement) => movement.vaultId !== id))
   writeLocal(AUTOMATIC_RESERVE_KEY, readLocal<AutomaticReserveRule[]>(AUTOMATIC_RESERVE_KEY, [])
     .filter((rule) => rule.vaultId !== id))
+  writeLocal(MONTHLY_RESERVE_KEY, readLocal<MonthlyReserveRule[]>(MONTHLY_RESERVE_KEY, [])
+    .filter((rule) => rule.vaultId !== id))
 }
 
 export async function loadAccountSettings(): Promise<AccountSettings | null> {
@@ -562,6 +572,119 @@ export async function removeAutomaticReserveRule(vaultId: string): Promise<void>
   if (isTauriRuntime()) return tauriInvoke<void>('remove_automatic_reserve_rule', { vaultId })
   writeLocal(AUTOMATIC_RESERVE_KEY, (await listAutomaticReserveRules())
     .filter((item) => item.vaultId !== vaultId))
+}
+
+export async function loadDashboardLayout(): Promise<DashboardLayout> {
+  if (isTauriRuntime()) {
+    const raw = await tauriInvoke<string | null>('get_dashboard_layout')
+    if (!raw) return normalizeDashboardLayout(DEFAULT_DASHBOARD_LAYOUT)
+    try { return normalizeDashboardLayout(JSON.parse(raw)) } catch { return normalizeDashboardLayout(null) }
+  }
+  return normalizeDashboardLayout(readLocal<DashboardLayout | null>(DASHBOARD_LAYOUT_KEY, null))
+}
+
+export async function saveDashboardLayout(layout: DashboardLayout): Promise<void> {
+  const normalized = normalizeDashboardLayout(layout)
+  if (isTauriRuntime()) return tauriInvoke<void>('save_dashboard_layout', { layoutJson: JSON.stringify(normalized) })
+  writeLocal(DASHBOARD_LAYOUT_KEY, normalized)
+}
+
+export async function resetDashboardLayout(): Promise<DashboardLayout> {
+  if (isTauriRuntime()) await tauriInvoke<void>('reset_dashboard_layout')
+  else localStorage.removeItem(DASHBOARD_LAYOUT_KEY)
+  return normalizeDashboardLayout(DEFAULT_DASHBOARD_LAYOUT)
+}
+
+export async function listDigitalWalletItems(): Promise<DigitalWalletItem[]> {
+  if (isTauriRuntime()) return tauriInvoke<DigitalWalletItem[]>('list_digital_wallet_items')
+  return readLocal<DigitalWalletItem[]>(DIGITAL_WALLET_KEY, [])
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+}
+
+export async function addDigitalWalletItem(input: NewDigitalWalletItemInput): Promise<DigitalWalletItem> {
+  if (isTauriRuntime()) return tauriInvoke<DigitalWalletItem>('add_digital_wallet_item', { input })
+  if (!input.title.trim()) throw new Error('Informe um nome para o item da carteira')
+  if (input.title.trim().length > 100 || input.issuer.trim().length > 100 || input.notes.trim().length > 500) {
+    throw new Error('Um dos textos ultrapassa o limite permitido')
+  }
+  if ((input.fileDataUrl?.length ?? 0) > 4_200_000) throw new Error('O arquivo ultrapassa o limite local de 3 MB')
+  if (input.mimeType && !['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(input.mimeType)) {
+    throw new Error('Tipo de arquivo não permitido; use imagem ou PDF')
+  }
+  if ((input.fileDataUrl || input.mimeType)
+    && (!input.fileDataUrl?.startsWith(`data:${input.mimeType};base64,`) || !input.mimeType)) {
+    throw new Error('Conteúdo do arquivo inválido')
+  }
+  const now = new Date().toISOString()
+  const item: DigitalWalletItem = {
+    ...input, id: crypto.randomUUID(), title: input.title.trim(), issuer: input.issuer.trim(),
+    notes: input.notes.trim(), qrValue: input.qrValue?.trim() || null, createdAt: now, updatedAt: now,
+  }
+  const items = await listDigitalWalletItems()
+  items.unshift(item)
+  writeLocal(DIGITAL_WALLET_KEY, items)
+  return item
+}
+
+export async function deleteDigitalWalletItem(id: string): Promise<void> {
+  if (isTauriRuntime()) return tauriInvoke<void>('delete_digital_wallet_item', { id })
+  const items = await listDigitalWalletItems()
+  if (!items.some((item) => item.id === id)) throw new Error('Item da carteira não encontrado')
+  writeLocal(DIGITAL_WALLET_KEY, items.filter((item) => item.id !== id))
+}
+
+export async function listMonthlyReserveRules(): Promise<MonthlyReserveRule[]> {
+  if (isTauriRuntime()) return tauriInvoke<MonthlyReserveRule[]>('list_monthly_reserve_rules')
+  return readLocal<MonthlyReserveRule[]>(MONTHLY_RESERVE_KEY, [])
+}
+
+export async function saveMonthlyReserveRule(rule: MonthlyReserveRule): Promise<void> {
+  if (isTauriRuntime()) return tauriInvoke<void>('save_monthly_reserve_rule', { rule })
+  if (moneyToCents(rule.value) <= 0n) throw new Error('Informe um valor maior que zero')
+  if (rule.mode === 'percentage' && moneyToCents(rule.value) > 10_000n) throw new Error('A porcentagem deve ser de no máximo 100%')
+  if (!Number.isInteger(rule.dayOfMonth) || rule.dayOfMonth < 1 || rule.dayOfMonth > 28) throw new Error('Escolha um dia entre 1 e 28')
+  const rules = (await listMonthlyReserveRules()).filter((item) => item.vaultId !== rule.vaultId)
+  rules.push(rule)
+  writeLocal(MONTHLY_RESERVE_KEY, rules)
+}
+
+export async function removeMonthlyReserveRule(vaultId: string): Promise<void> {
+  if (isTauriRuntime()) return tauriInvoke<void>('remove_monthly_reserve_rule', { vaultId })
+  writeLocal(MONTHLY_RESERVE_KEY, (await listMonthlyReserveRules()).filter((item) => item.vaultId !== vaultId))
+}
+
+export async function processMonthlyReserves(today = localDateKey(new Date())): Promise<number> {
+  if (isTauriRuntime()) return tauriInvoke<number>('process_monthly_reserves', { today })
+  const period = today.slice(0, 7)
+  const day = Number(today.slice(8, 10))
+  const rules = await listMonthlyReserveRules()
+  const vaults = await listVaults()
+  const movements = readLocal<VaultMovement[]>(VAULT_MOVEMENTS_KEY, [])
+  let available = localAvailableBalanceCents()
+  let processed = 0
+  for (const rule of rules) {
+    if (!rule.enabled || rule.dayOfMonth > day || rule.lastProcessedPeriod === period) continue
+    const vault = vaults.find((item) => item.id === rule.vaultId)
+    if (!vault) continue
+    const amount = rule.mode === 'fixed'
+      ? moneyToCents(rule.value)
+      : (available * moneyToCents(rule.value)) / 10_000n
+    if (amount <= 0n || amount > available) continue
+    const now = new Date().toISOString()
+    vault.balance = centsToMoney(moneyToCents(vault.balance) + amount)
+    vault.updatedAt = now
+    movements.unshift({
+      id: crypto.randomUUID(), vaultId: vault.id, kind: 'deposit', amount: centsToMoney(amount),
+      source: 'automatic', occurredAt: now,
+    })
+    rule.lastProcessedPeriod = period
+    available -= amount
+    processed += 1
+  }
+  writeLocal(VAULTS_KEY, vaults)
+  writeLocal(VAULT_MOVEMENTS_KEY, movements.slice(0, 500))
+  writeLocal(MONTHLY_RESERVE_KEY, rules)
+  return processed
 }
 
 export async function listRecurringRules(): Promise<RecurringRule[]> {

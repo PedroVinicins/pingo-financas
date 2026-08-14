@@ -8,6 +8,14 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
+## Destaques da versão 0.8.0
+
+- painel principal personalizável: reordene, redimensione e escolha quais indicadores aparecem;
+- carteira ao vivo local para ingressos, documentos, imagens, PDFs e QR Codes;
+- reserva mensal por porquinho com dia, valor fixo ou porcentagem do saldo disponível;
+- reset seguro do painel nas configurações, sem apagar dados financeiros;
+- Android `versionCode` 8000 e cache Web renovado para a nova release.
+
 ## Destaques da versão 0.7.0
 
 - todos os dados financeiros e preferências ficam juntos no SQLite quando o app roda no Tauri;
@@ -227,7 +235,7 @@ cargo test
 
 ## Persistência
 
-No Tauri, transações, categorias, cartões, cofres, movimentos, ajustes de saldo, reservas automáticas e recorrências são persistidos no SQLite. Ao abrir a versão 0.7.0 pela primeira vez, dados auxiliares das versões anteriores são importados automaticamente da WebView. No navegador, todos os dados continuam no `localStorage`.
+No Tauri, transações, categorias, cartões, cofres, movimentos, ajustes de saldo, reservas automáticas, carteira ao vivo, painel e recorrências são persistidos no SQLite. Ao abrir a versão 0.7.0 pela primeira vez, dados auxiliares das versões anteriores são importados automaticamente da WebView. No navegador, todos os dados continuam no `localStorage`.
 
 O SQLite é inicializado no diretório de dados da aplicação. As migrations atuais são:
 
@@ -239,6 +247,7 @@ O SQLite é inicializado no diretório de dados da aplicação. As migrations at
 0005_category_kinds.sql
 0006_category_scope.sql
 0007_persisted_app_state.sql
+0008_personal_dashboard_wallet.sql
 ```
 
 Valores monetários são persistidos como texto e tratados com `rust_decimal` no core Rust. No frontend, cálculos reativos usam centavos em `bigint`.

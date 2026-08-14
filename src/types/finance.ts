@@ -8,6 +8,18 @@ export type VaultMovementType = 'deposit' | 'withdraw'
 export type VaultMovementSource = 'manual' | 'automatic'
 export type AutomaticReserveMode = 'fixed' | 'percentage'
 export type FeedbackTone = 'success' | 'error' | 'info'
+export type DashboardWidgetId =
+  | 'net_worth'
+  | 'available_balance'
+  | 'vault_total'
+  | 'month_expenses'
+  | 'daily_budget'
+  | 'month_balance'
+  | 'recurring'
+  | 'insights'
+  | 'history'
+export type DashboardWidgetSize = 'small' | 'medium' | 'large'
+export type DigitalWalletItemKind = 'ticket' | 'document' | 'qr_code' | 'other'
 
 export interface Category {
   id: string
@@ -122,6 +134,48 @@ export interface AutomaticReserveRule {
   enabled: boolean
   mode: AutomaticReserveMode
   value: string
+}
+
+export interface MonthlyReserveRule extends AutomaticReserveRule {
+  dayOfMonth: number
+  lastProcessedPeriod: string | null
+}
+
+export interface DashboardWidgetPreference {
+  id: DashboardWidgetId
+  visible: boolean
+  size: DashboardWidgetSize
+}
+
+export interface DashboardLayout {
+  widgets: DashboardWidgetPreference[]
+}
+
+export interface DigitalWalletItem {
+  id: string
+  kind: DigitalWalletItemKind
+  title: string
+  issuer: string
+  notes: string
+  qrValue: string | null
+  fileName: string | null
+  mimeType: string | null
+  fileDataUrl: string | null
+  expiresAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface NewDigitalWalletItemInput {
+  kind: DigitalWalletItemKind
+  title: string
+  issuer: string
+  notes: string
+  qrValue: string | null
+  fileName: string | null
+  mimeType: string | null
+  fileDataUrl: string | null
+  expiresAt: string | null
 }
 
 export interface Transaction {

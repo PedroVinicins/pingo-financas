@@ -1,16 +1,16 @@
 use std::str::FromStr;
 
-use chrono::{DateTime, NaiveDate, Utc};
-use rust_decimal::Decimal;
+use chrono::{DateTime, Datelike, NaiveDate, Utc};
+use rust_decimal::{Decimal, RoundingStrategy};
 use sqlx::{Row, SqlitePool};
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::models::{
     AccountSettings, AutomaticReserveMode, AutomaticReserveRule, CardBackground, CardNetwork,
-    CardPattern, Category, DebitCard, LegacyAppData, RecurrenceType, RecurringRule, Transaction,
-    TransactionType, UpdateDebitCardStyle, Vault, VaultMovement, VaultMovementSource,
-    VaultMovementType, VaultType,
+    CardPattern, Category, DebitCard, DigitalWalletItem, DigitalWalletItemKind, LegacyAppData,
+    MonthlyReserveRule, RecurrenceType, RecurringRule, Transaction, TransactionType,
+    UpdateDebitCardStyle, Vault, VaultMovement, VaultMovementSource, VaultMovementType, VaultType,
 };
 
 #[derive(Debug, Error)]
@@ -525,6 +525,185 @@ impl<'a> FinanceRepository<'a> {
         Ok(())
     }
 
+    pub async fn get_dashboard_layout(&self) -> Result<Option<String>, DbError> {
+        sqlx::query_scalar("SELECT layout_json FROM dashboard_preferences WHERE id = 1")
+            .fetch_optional(self.pool)
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn save_dashboard_layout(&self, layout_json: &str) -> Result<(), DbError> {
+        sqlx::query(
+            r#"INSERT INTO dashboard_preferences (id, layout_json, updated_at) VALUES (1, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET layout_json = excluded.layout_json, updated_at = excluded.updated_at"#,
+        )
+        .bind(layout_json)
+        .bind(Utc::now().to_rfc3339())
+        .execute(self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn reset_dashboard_layout(&self) -> Result<(), DbError> {
+        sqlx::query("DELETE FROM dashboard_preferences WHERE id = 1")
+            .execute(self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn list_digital_wallet_items(&self) -> Result<Vec<DigitalWalletItem>, DbError> {
+        let rows = sqlx::query(
+            r#"SELECT id, kind, title, issuer, notes, qr_value, file_name, mime_type, file_data_url,
+                      expires_at, created_at, updated_at FROM digital_wallet_items ORDER BY updated_at DESC"#,
+        )
+        .fetch_all(self.pool)
+        .await?;
+        rows.into_iter().map(row_to_digital_wallet_item).collect()
+    }
+
+    pub async fn insert_digital_wallet_item(
+        &self,
+        item: &DigitalWalletItem,
+    ) -> Result<(), DbError> {
+        sqlx::query(
+            r#"INSERT INTO digital_wallet_items
+               (id, kind, title, issuer, notes, qr_value, file_name, mime_type, file_data_url,
+                expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+        )
+        .bind(item.id.to_string())
+        .bind(item.kind.as_str())
+        .bind(&item.title)
+        .bind(&item.issuer)
+        .bind(&item.notes)
+        .bind(&item.qr_value)
+        .bind(&item.file_name)
+        .bind(&item.mime_type)
+        .bind(&item.file_data_url)
+        .bind(
+            item.expires_at
+                .map(|date| date.format("%Y-%m-%d").to_string()),
+        )
+        .bind(item.created_at.to_rfc3339())
+        .bind(item.updated_at.to_rfc3339())
+        .execute(self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_digital_wallet_item(&self, id: Uuid) -> Result<(), DbError> {
+        let result = sqlx::query("DELETE FROM digital_wallet_items WHERE id = ?")
+            .bind(id.to_string())
+            .execute(self.pool)
+            .await?;
+        if result.rows_affected() == 0 {
+            return Err(DbError::NotFound("item da carteira"));
+        }
+        Ok(())
+    }
+
+    pub async fn list_monthly_reserve_rules(&self) -> Result<Vec<MonthlyReserveRule>, DbError> {
+        let rows = sqlx::query(
+            r#"SELECT vault_id, enabled, mode, value, day_of_month, last_processed_period
+               FROM monthly_reserve_rules ORDER BY updated_at"#,
+        )
+        .fetch_all(self.pool)
+        .await?;
+        rows.into_iter().map(row_to_monthly_reserve_rule).collect()
+    }
+
+    pub async fn save_monthly_reserve_rule(
+        &self,
+        rule: &MonthlyReserveRule,
+    ) -> Result<(), DbError> {
+        sqlx::query(
+            r#"INSERT INTO monthly_reserve_rules
+               (vault_id, enabled, mode, value, day_of_month, last_processed_period, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(vault_id) DO UPDATE SET enabled = excluded.enabled, mode = excluded.mode,
+                 value = excluded.value, day_of_month = excluded.day_of_month,
+                 last_processed_period = excluded.last_processed_period, updated_at = excluded.updated_at"#,
+        )
+        .bind(rule.vault_id.to_string())
+        .bind(rule.enabled)
+        .bind(rule.mode.as_str())
+        .bind(rule.value.to_string())
+        .bind(rule.day_of_month)
+        .bind(&rule.last_processed_period)
+        .bind(Utc::now().to_rfc3339())
+        .execute(self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn remove_monthly_reserve_rule(&self, vault_id: Uuid) -> Result<(), DbError> {
+        sqlx::query("DELETE FROM monthly_reserve_rules WHERE vault_id = ?")
+            .bind(vault_id.to_string())
+            .execute(self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn process_monthly_reserves(&self, today: NaiveDate) -> Result<u64, DbError> {
+        let mut transaction = self.pool.begin().await?;
+        let period = format!("{:04}-{:02}", today.year(), today.month());
+        let rows = sqlx::query(
+            r#"SELECT vault_id, mode, value FROM monthly_reserve_rules
+               WHERE enabled = 1 AND day_of_month <= ?
+                 AND (last_processed_period IS NULL OR last_processed_period <> ?)
+               ORDER BY day_of_month, updated_at"#,
+        )
+        .bind(today.day() as i64)
+        .bind(&period)
+        .fetch_all(&mut *transaction)
+        .await?;
+        let mut processed = 0;
+        for row in rows {
+            let vault_id =
+                Uuid::parse_str(&row.try_get::<String, _>("vault_id")?).map_err(invalid)?;
+            let mode_value: String = row.try_get("mode")?;
+            let mode = AutomaticReserveMode::parse(&mode_value)
+                .ok_or_else(|| DbError::InvalidData(mode_value))?;
+            let value = Decimal::from_str(&row.try_get::<String, _>("value")?).map_err(invalid)?;
+            let available = available_balance_in_transaction(&mut transaction).await?;
+            let desired = match mode {
+                AutomaticReserveMode::Fixed => value,
+                AutomaticReserveMode::Percentage => available * value / Decimal::from(100u32),
+            }
+            .round_dp_with_strategy(2, RoundingStrategy::ToZero);
+            if desired <= Decimal::ZERO || desired > available {
+                continue;
+            }
+            let current: Option<String> =
+                sqlx::query_scalar("SELECT balance FROM vaults WHERE id = ?")
+                    .bind(vault_id.to_string())
+                    .fetch_optional(&mut *transaction)
+                    .await?;
+            let Some(current) = current else {
+                continue;
+            };
+            let next = Decimal::from_str(&current).map_err(invalid)? + desired;
+            sqlx::query("UPDATE vaults SET balance = ?, updated_at = ? WHERE id = ?")
+                .bind(next.to_string())
+                .bind(Utc::now().to_rfc3339())
+                .bind(vault_id.to_string())
+                .execute(&mut *transaction)
+                .await?;
+            let movement = VaultMovement::new(
+                vault_id,
+                VaultMovementType::Deposit,
+                desired,
+                VaultMovementSource::Automatic,
+            );
+            insert_vault_movement(&mut transaction, &movement).await?;
+            sqlx::query("UPDATE monthly_reserve_rules SET last_processed_period = ?, updated_at = ? WHERE vault_id = ?")
+                .bind(&period).bind(Utc::now().to_rfc3339()).bind(vault_id.to_string())
+                .execute(&mut *transaction).await?;
+            processed += 1;
+        }
+        transaction.commit().await?;
+        Ok(processed)
+    }
+
     pub async fn list_recurring_rules(&self) -> Result<Vec<RecurringRule>, DbError> {
         let rows = sqlx::query(
             r#"SELECT id, kind, amount, day_of_month, category_id, debit_card_id, description,
@@ -786,7 +965,8 @@ async fn apply_automatic_reserves(
         let desired = match mode {
             AutomaticReserveMode::Fixed => value,
             AutomaticReserveMode::Percentage => income * value / Decimal::from(100u32),
-        };
+        }
+        .round_dp_with_strategy(2, RoundingStrategy::ToZero);
         let amount = desired.min(available).min(remaining_income);
         if amount <= Decimal::ZERO {
             continue;
@@ -815,6 +995,42 @@ async fn apply_automatic_reserves(
         }
     }
     Ok(())
+}
+
+async fn available_balance_in_transaction(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+) -> Result<Decimal, DbError> {
+    let adjustment: Option<String> =
+        sqlx::query_scalar("SELECT opening_balance_adjustment FROM account_settings WHERE id = 1")
+            .fetch_optional(&mut **transaction)
+            .await?;
+    let adjustment = adjustment
+        .map(|value| Decimal::from_str(&value).map_err(invalid))
+        .transpose()?
+        .unwrap_or(Decimal::ZERO);
+    let rows = sqlx::query("SELECT kind, amount FROM transactions")
+        .fetch_all(&mut **transaction)
+        .await?;
+    let transaction_total = rows.into_iter().try_fold(Decimal::ZERO, |total, row| {
+        let kind: String = row.try_get("kind")?;
+        let amount = Decimal::from_str(&row.try_get::<String, _>("amount")?).map_err(invalid)?;
+        match TransactionType::parse(&kind) {
+            Some(TransactionType::Income) => Ok(total + amount),
+            Some(TransactionType::Expense) => Ok(total - amount),
+            None => Err(DbError::InvalidData(kind)),
+        }
+    })?;
+    let vault_rows = sqlx::query("SELECT balance FROM vaults")
+        .fetch_all(&mut **transaction)
+        .await?;
+    let vault_total = vault_rows
+        .into_iter()
+        .try_fold(Decimal::ZERO, |total, row| {
+            let balance =
+                Decimal::from_str(&row.try_get::<String, _>("balance")?).map_err(invalid)?;
+            Ok::<Decimal, DbError>(total + balance)
+        })?;
+    Ok(adjustment + transaction_total - vault_total)
 }
 
 async fn insert_recurring_rule<'e, E>(
@@ -1017,6 +1233,46 @@ fn row_to_automatic_reserve_rule(
         mode: AutomaticReserveMode::parse(&mode)
             .ok_or_else(|| DbError::InvalidData(mode.clone()))?,
         value: Decimal::from_str(&value).map_err(invalid)?,
+    })
+}
+
+fn row_to_monthly_reserve_rule(
+    row: sqlx::sqlite::SqliteRow,
+) -> Result<MonthlyReserveRule, DbError> {
+    let vault_id: String = row.try_get("vault_id")?;
+    let mode: String = row.try_get("mode")?;
+    let value: String = row.try_get("value")?;
+    Ok(MonthlyReserveRule {
+        vault_id: Uuid::parse_str(&vault_id).map_err(invalid)?,
+        enabled: row.try_get("enabled")?,
+        mode: AutomaticReserveMode::parse(&mode).ok_or_else(|| DbError::InvalidData(mode))?,
+        value: Decimal::from_str(&value).map_err(invalid)?,
+        day_of_month: row.try_get("day_of_month")?,
+        last_processed_period: row.try_get("last_processed_period")?,
+    })
+}
+
+fn row_to_digital_wallet_item(row: sqlx::sqlite::SqliteRow) -> Result<DigitalWalletItem, DbError> {
+    let id: String = row.try_get("id")?;
+    let kind: String = row.try_get("kind")?;
+    let expires_at: Option<String> = row.try_get("expires_at")?;
+    let created_at: String = row.try_get("created_at")?;
+    let updated_at: String = row.try_get("updated_at")?;
+    Ok(DigitalWalletItem {
+        id: Uuid::parse_str(&id).map_err(invalid)?,
+        kind: DigitalWalletItemKind::parse(&kind).ok_or_else(|| DbError::InvalidData(kind))?,
+        title: row.try_get("title")?,
+        issuer: row.try_get("issuer")?,
+        notes: row.try_get("notes")?,
+        qr_value: row.try_get("qr_value")?,
+        file_name: row.try_get("file_name")?,
+        mime_type: row.try_get("mime_type")?,
+        file_data_url: row.try_get("file_data_url")?,
+        expires_at: expires_at
+            .map(|value| NaiveDate::parse_from_str(&value, "%Y-%m-%d").map_err(invalid))
+            .transpose()?,
+        created_at: parse_datetime(&created_at)?,
+        updated_at: parse_datetime(&updated_at)?,
     })
 }
 
@@ -1320,5 +1576,80 @@ mod tests {
             .fold(Decimal::ZERO, |total, item| total + item.balance);
         assert_eq!(reserved_total, dec!(120));
         assert_eq!(repository.available_balance().await.unwrap(), dec!(80));
+    }
+
+    #[tokio::test]
+    async fn monthly_reserve_runs_once_per_period_after_the_selected_day() {
+        let pool = test_pool().await;
+        let repository = FinanceRepository::new(&pool);
+        repository
+            .save_account_settings(&AccountSettings {
+                opening_balance_adjustment: dec!(100),
+                balance_hidden: false,
+                migrated_at: Utc::now(),
+            })
+            .await
+            .unwrap();
+        let vault = Vault::new(NewVault {
+            name: "Emergência".into(),
+            institution: "Local".into(),
+            r#type: VaultType::PiggyBank,
+            initial_balance: Decimal::ZERO,
+            target_amount: None,
+            annual_yield_rate: None,
+            color: "#10B981".into(),
+            emoji: None,
+        })
+        .unwrap();
+        repository.insert_vault(&vault).await.unwrap();
+        repository
+            .save_monthly_reserve_rule(&MonthlyReserveRule {
+                vault_id: vault.id,
+                enabled: true,
+                mode: AutomaticReserveMode::Fixed,
+                value: dec!(25),
+                day_of_month: 10,
+                last_processed_period: None,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            repository
+                .process_monthly_reserves(NaiveDate::from_ymd_opt(2026, 8, 9).unwrap())
+                .await
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            repository
+                .process_monthly_reserves(NaiveDate::from_ymd_opt(2026, 8, 10).unwrap())
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            repository
+                .process_monthly_reserves(NaiveDate::from_ymd_opt(2026, 8, 20).unwrap())
+                .await
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            repository
+                .get_vault(vault.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .balance,
+            dec!(25)
+        );
+        assert_eq!(repository.available_balance().await.unwrap(), dec!(75));
+        assert_eq!(
+            repository.list_monthly_reserve_rules().await.unwrap()[0]
+                .last_processed_period
+                .as_deref(),
+            Some("2026-08")
+        );
     }
 }

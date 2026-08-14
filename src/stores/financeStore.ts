@@ -5,10 +5,14 @@ import type {
   AppFeedback,
   AutomaticReserveRule,
   Category,
+  DashboardLayout,
   DebitCard,
+  DigitalWalletItem,
+  MonthlyReserveRule,
   MoveVaultMoneyInput,
   NewCategoryInput,
   NewDebitCardInput,
+  NewDigitalWalletItemInput,
   NewRecurringRuleInput,
   NewTransactionInput,
   NewVaultInput,
@@ -22,6 +26,7 @@ import type {
   VaultMovement,
   VaultMovementSource,
 } from '../types/finance'
+import { DEFAULT_DASHBOARD_LAYOUT, cloneDashboardLayout } from '../services/dashboardLayout'
 import * as repository from '../services/financeRepository'
 import {
   cancelRecurringRuleNotification,
@@ -70,6 +75,9 @@ export const useFinanceStore = defineStore('finance', () => {
   const vaults = ref<Vault[]>([])
   const vaultMovements = ref<VaultMovement[]>([])
   const automaticReserveRules = ref<AutomaticReserveRule[]>([])
+  const monthlyReserveRules = ref<MonthlyReserveRule[]>([])
+  const digitalWalletItems = ref<DigitalWalletItem[]>([])
+  const dashboardLayout = ref<DashboardLayout>(cloneDashboardLayout(DEFAULT_DASHBOARD_LAYOUT))
   const recurringRules = ref<RecurringRule[]>([])
   const filters = ref<TransactionFilters>({})
   const accountSettings = ref<AccountSettings>({
@@ -296,6 +304,9 @@ export const useFinanceStore = defineStore('finance', () => {
   function getAutomaticReserveRule(vaultId: string) {
     return automaticReserveRules.value.find((rule) => rule.vaultId === vaultId) ?? null
   }
+  function getMonthlyReserveRule(vaultId: string) {
+    return monthlyReserveRules.value.find((rule) => rule.vaultId === vaultId) ?? null
+  }
 
   function addTransaction(transaction: Transaction) {
     if (decimalToCents(transaction.amount) <= 0n) throw new Error('O valor deve ser maior que zero')
@@ -330,14 +341,17 @@ export const useFinanceStore = defineStore('finance', () => {
     initializationError.value = ''
     try {
       await repository.migrateLegacyAppData()
+      await repository.processMonthlyReserves(localDateKey(new Date()))
       const [
         storedTransactions, storedCategories, storedDebitCards, storedVaults,
-        storedMovements, storedReserveRules, storedRecurringRules, storedSettings,
+        storedMovements, storedReserveRules, storedMonthlyRules, storedRecurringRules, storedSettings,
+        storedWalletItems, storedDashboardLayout,
       ] = await Promise.all([
         repository.listTransactions(), repository.listCategories(defaultCategories),
         repository.listDebitCards(), repository.listVaults(),
         repository.listVaultMovements(), repository.listAutomaticReserveRules(),
-        repository.listRecurringRules(), repository.loadAccountSettings(),
+        repository.listMonthlyReserveRules(), repository.listRecurringRules(), repository.loadAccountSettings(),
+        repository.listDigitalWalletItems(), repository.loadDashboardLayout(),
       ])
       setTransactions(storedTransactions)
       setCategories(storedCategories)
@@ -346,7 +360,11 @@ export const useFinanceStore = defineStore('finance', () => {
       vaultMovements.value = storedMovements
       automaticReserveRules.value = storedReserveRules
         .filter((rule) => storedVaults.some((vault) => vault.id === rule.vaultId))
+      monthlyReserveRules.value = storedMonthlyRules
+        .filter((rule) => storedVaults.some((vault) => vault.id === rule.vaultId))
       recurringRules.value = storedRecurringRules
+      digitalWalletItems.value = storedWalletItems
+      dashboardLayout.value = storedDashboardLayout
       if (storedSettings) accountSettings.value = storedSettings
       else {
         const requiredAdjustment = vaultTotalCents.value - transactionNetCents.value
@@ -519,7 +537,9 @@ export const useFinanceStore = defineStore('finance', () => {
     await repository.deleteVault(id)
     vaults.value = vaults.value.filter((vault) => vault.id !== id)
     automaticReserveRules.value = automaticReserveRules.value.filter((rule) => rule.vaultId !== id)
+    monthlyReserveRules.value = monthlyReserveRules.value.filter((rule) => rule.vaultId !== id)
     await repository.removeAutomaticReserveRule(id)
+    await repository.removeMonthlyReserveRule(id)
   }
   async function saveAutomaticReserve(rule: AutomaticReserveRule) {
     if (decimalToCents(rule.value) <= 0n) throw new Error('Informe um valor maior que zero')
@@ -530,6 +550,44 @@ export const useFinanceStore = defineStore('finance', () => {
     const index = automaticReserveRules.value.findIndex((item) => item.vaultId === rule.vaultId)
     if (index >= 0) automaticReserveRules.value[index] = rule
     else automaticReserveRules.value.push(rule)
+  }
+  async function saveMonthlyReserve(rule: MonthlyReserveRule) {
+    if (decimalToCents(rule.value) <= 0n) throw new Error('Informe um valor maior que zero')
+    if (rule.mode === 'percentage' && decimalToCents(rule.value) > 10_000n) {
+      throw new Error('A porcentagem deve ser de no máximo 100%')
+    }
+    if (!Number.isInteger(rule.dayOfMonth) || rule.dayOfMonth < 1 || rule.dayOfMonth > 28) {
+      throw new Error('Escolha um dia entre 1 e 28')
+    }
+    await repository.saveMonthlyReserveRule(rule)
+    const index = monthlyReserveRules.value.findIndex((item) => item.vaultId === rule.vaultId)
+    if (index >= 0) monthlyReserveRules.value[index] = rule
+    else monthlyReserveRules.value.push(rule)
+    if (rule.enabled && await repository.processMonthlyReserves(localDateKey(new Date())) > 0) {
+      const [storedVaults, storedMovements, storedRules] = await Promise.all([
+        repository.listVaults(), repository.listVaultMovements(), repository.listMonthlyReserveRules(),
+      ])
+      setVaults(storedVaults)
+      vaultMovements.value = storedMovements
+      monthlyReserveRules.value = storedRules
+    }
+  }
+  async function saveDashboard(layout: DashboardLayout) {
+    await repository.saveDashboardLayout(layout)
+    dashboardLayout.value = cloneDashboardLayout(layout)
+  }
+  async function resetDashboard() {
+    dashboardLayout.value = await repository.resetDashboardLayout()
+    showFeedback('Painel restaurado para o layout original.', 'success')
+  }
+  async function createDigitalWalletItem(input: NewDigitalWalletItemInput) {
+    const item = await repository.addDigitalWalletItem(input)
+    digitalWalletItems.value.unshift(item)
+    return item
+  }
+  async function removeDigitalWalletItem(id: string) {
+    await repository.deleteDigitalWalletItem(id)
+    digitalWalletItems.value = digitalWalletItems.value.filter((item) => item.id !== id)
   }
   async function setAvailableBalance(amount: string) {
     const desired = decimalToCents(amount)
@@ -615,6 +673,22 @@ export const useFinanceStore = defineStore('finance', () => {
     }
     await maybeNotifyDueRecurringRules(dueRecurringRules.value)
   }
+  async function processScheduledAutomation() {
+    clock.value = new Date()
+    const processed = await repository.processMonthlyReserves(localDateKey(clock.value))
+    if (processed > 0) {
+      const [storedVaults, storedMovements, storedRules] = await Promise.all([
+        repository.listVaults(), repository.listVaultMovements(), repository.listMonthlyReserveRules(),
+      ])
+      setVaults(storedVaults)
+      vaultMovements.value = storedMovements
+      monthlyReserveRules.value = storedRules
+      pingoMessage.value = processed === 1
+        ? 'Reserva do mês feita. O porquinho recebeu o pingo combinado! 🐷'
+        : `${processed} reservas do mês foram guardadas nos porquinhos. 🐷`
+    }
+    await processRecurringRules()
+  }
   async function removeRecurringRule(id: string) {
     await repository.deleteRecurringRule(id)
     recurringRules.value = recurringRules.value.filter((rule) => rule.id !== id)
@@ -622,7 +696,8 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   return {
-    transactions, categories, debitCards, vaults, vaultMovements, automaticReserveRules, recurringRules,
+    transactions, categories, debitCards, vaults, vaultMovements, automaticReserveRules,
+    monthlyReserveRules, digitalWalletItems, dashboardLayout, recurringRules,
     filters, accountSettings, pingoMessage, initialized, isInitializing, initializationError, feedback,
     balanceHidden, transactionNetCents, balanceCents, vaultTotalCents,
     availableBalanceCents, currentMonthBalanceCents, currentMonthIncomeCents, currentMonthExpenseCents,
@@ -634,12 +709,13 @@ export const useFinanceStore = defineStore('finance', () => {
     currentMonthExpensePercentages, topExpenseCategory, expensesByDebitCard, currentMonthExpensesByDebitCard,
     unassignedExpenseCents, defaultDebitCard, fixedMonthlyCommitmentCents, expectedMonthlyIncomeCents,
     dueRecurringRules, upcomingRecurringRules, getTransactionsForCard, getMovementsForVault,
-    getAutomaticReserveRule, addTransaction, removeTransaction, setTransactions, setCategories,
+    getAutomaticReserveRule, getMonthlyReserveRule, addTransaction, removeTransaction, setTransactions, setCategories,
     setDebitCards, setVaults, setFilters, dismissPingoMessage, initialize, createTransaction,
     editTransaction, createCategory, deleteTransaction, createDebitCard, updateCardStyle, setCardFrozen,
     makeDefaultCard, removeDebitCard, createVault, moveVaultMoney, customizeVault, removeVault,
-    saveAutomaticReserve, setAvailableBalance, toggleBalanceVisibility,
-    createRecurringRule, settleRecurringRule, processRecurringRules, removeRecurringRule,
+    saveAutomaticReserve, saveMonthlyReserve, saveDashboard, resetDashboard,
+    createDigitalWalletItem, removeDigitalWalletItem, setAvailableBalance, toggleBalanceVisibility,
+    createRecurringRule, settleRecurringRule, processRecurringRules, processScheduledAutomation, removeRecurringRule,
     showFeedback, reportError, clearFeedback,
   }
 })

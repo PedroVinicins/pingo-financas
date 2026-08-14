@@ -1,12 +1,12 @@
 import type {
-  AccountSettings, AutomaticReserveRule, Category, DebitCard, RecurringRule,
-  Transaction, Vault, VaultMovement,
+  AccountSettings, AutomaticReserveRule, Category, DashboardLayout, DebitCard,
+  DigitalWalletItem, MonthlyReserveRule, RecurringRule, Transaction, Vault, VaultMovement,
 } from '../types/finance'
 
 export interface PingoBackup {
   format: 'pingo-backup'
   version: 1
-  appVersion: '0.7.0'
+  appVersion: '0.8.0'
   exportedAt: string
   data: {
     transactions: Transaction[]
@@ -15,6 +15,9 @@ export interface PingoBackup {
     vaults: Vault[]
     vaultMovements: VaultMovement[]
     automaticReserveRules: AutomaticReserveRule[]
+    monthlyReserveRules: MonthlyReserveRule[]
+    digitalWalletItems: DigitalWalletItem[]
+    dashboardLayout: DashboardLayout
     recurringRules: RecurringRule[]
     accountSettings: AccountSettings
   }
@@ -24,7 +27,7 @@ export async function exportBackup(data: PingoBackup['data']) {
   const backup: PingoBackup = {
     format: 'pingo-backup',
     version: 1,
-    appVersion: '0.7.0',
+    appVersion: '0.8.0',
     exportedAt: new Date().toISOString(),
     data,
   }

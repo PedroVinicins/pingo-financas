@@ -10,7 +10,7 @@ import VaultCustomizeSheet from '../components/VaultCustomizeSheet.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { centsToDecimal, decimalToCents, useFinanceStore } from '../stores/financeStore'
 import type {
-  AutomaticReserveRule, MoveVaultMoneyInput, NewVaultInput, UpdateVaultInput,
+  AutomaticReserveRule, MonthlyReserveRule, MoveVaultMoneyInput, NewVaultInput, UpdateVaultInput,
   Vault, VaultMovementType,
 } from '../types/finance'
 
@@ -36,12 +36,13 @@ async function saveMovement(input: MoveVaultMoneyInput) {
   try { await store.moveVaultMoney(input); movingVault.value = null }
   catch (cause) { store.reportError(cause, 'Não foi possível transferir.') }
 }
-async function saveCustomization(vault: UpdateVaultInput, reserve: AutomaticReserveRule) {
+async function saveCustomization(vault: UpdateVaultInput, reserve: AutomaticReserveRule, monthly: MonthlyReserveRule) {
   try {
     await store.customizeVault(vault)
     await store.saveAutomaticReserve(reserve)
+    await store.saveMonthlyReserve(monthly)
     customizingVault.value = null
-    store.showFeedback('Cofre e reserva automática atualizados.', 'success')
+    store.showFeedback('Porquinho e reservas automáticas atualizados.', 'success')
   } catch (cause) { store.reportError(cause, 'Não foi possível personalizar.') }
 }
 async function confirmRemoval() {
@@ -82,6 +83,6 @@ async function confirmRemoval() {
   <button class="fixed bottom-28 right-4 z-30 grid size-14 place-items-center rounded-2xl bg-amber-400 text-slate-950 shadow-xl sm:hidden" aria-label="Adicionar cofre" @click="showAdd = true"><Plus :size="25" /></button>
   <AddVaultModal v-if="showAdd" :available-balance="money(store.availableBalanceCents)" @close="showAdd = false" @save="addVault" />
   <VaultMoveSheet v-if="movingVault" :vault="movingVault" :initial-kind="movementKind" :available-balance="money(store.availableBalanceCents)" @close="movingVault = null" @save="saveMovement" />
-  <VaultCustomizeSheet v-if="customizingVault" :vault="customizingVault" :automatic-rule="store.getAutomaticReserveRule(customizingVault.id)" @close="customizingVault = null" @save="saveCustomization" />
+  <VaultCustomizeSheet v-if="customizingVault" :vault="customizingVault" :automatic-rule="store.getAutomaticReserveRule(customizingVault.id)" :monthly-rule="store.getMonthlyReserveRule(customizingVault.id)" @close="customizingVault = null" @save="saveCustomization" />
   <ConfirmDialog v-if="confirmingRemoval" title="Remover cofre?" :message="`O saldo de “${confirmingRemoval.name}” voltará para a conta disponível. O histórico deste cofre será removido.`" confirm-label="Remover cofre" :busy="removing" @cancel="confirmingRemoval = null" @confirm="confirmRemoval" />
 </template>

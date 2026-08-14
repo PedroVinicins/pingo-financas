@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.0 — O Pingo do seu jeito
+
+- permite reorganizar os cartões da tela principal por arrastar e soltar, inclusive por toque;
+- permite mostrar, esconder e escolher tamanhos diferentes para cada indicador do resumo;
+- adiciona reset seguro do layout sem apagar dados financeiros;
+- cria a carteira ao vivo offline para ingressos, documentos, imagens, PDFs e QR Codes;
+- limita anexos a 3 MB e mantém todo o conteúdo sensível somente no dispositivo;
+- adiciona reserva mensal por porquinho com valor fixo ou porcentagem do saldo disponível;
+- processa a reserva uma única vez por mês, no dia escolhido, sem permitir saldo negativo;
+- persiste painel, carteira ao vivo e automações mensais no SQLite e no fallback Web;
+- inclui os novos dados no backup JSON e atualiza orientações de privacidade;
+- atualiza Web/PWA e Android para a versão 0.8.0 (`versionCode` 8000).
+
 ## 0.7.0 — Confiança em cada pingo
 
 - migra configurações da conta, recorrências, reservas automáticas e movimentos de cofres para o SQLite no Tauri;

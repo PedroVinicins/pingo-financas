@@ -7,8 +7,9 @@ use crate::{
     db::{AppState, FinanceRepository},
     models::{
         clean_emoji, validate_style, AccountSettings, AutomaticReserveRule, Category, DebitCard,
-        LegacyAppData, MoveVaultMoney, NewCategory, NewDebitCard, NewRecurringRule, NewTransaction,
-        NewVault, RecurrenceType, RecurringRule, RecurringSettlement, Transaction, TransactionType,
+        DigitalWalletItem, LegacyAppData, MonthlyReserveRule, MoveVaultMoney, NewCategory,
+        NewDebitCard, NewDigitalWalletItem, NewRecurringRule, NewTransaction, NewVault,
+        RecurrenceType, RecurringRule, RecurringSettlement, Transaction, TransactionType,
         UpdateDebitCardStyle, UpdateVault, Vault, VaultMovement, VaultMovementSource,
         VaultMovementType,
     },
@@ -438,6 +439,125 @@ pub async fn remove_automatic_reserve_rule(
 ) -> Result<(), String> {
     FinanceRepository::new(&state.pool)
         .remove_automatic_reserve_rule(vault_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn get_dashboard_layout(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    FinanceRepository::new(&state.pool)
+        .get_dashboard_layout()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn save_dashboard_layout(
+    state: State<'_, AppState>,
+    layout_json: String,
+) -> Result<(), String> {
+    if layout_json.len() > 20_000
+        || serde_json::from_str::<serde_json::Value>(&layout_json).is_err()
+    {
+        return Err("layout do painel inválido".into());
+    }
+    FinanceRepository::new(&state.pool)
+        .save_dashboard_layout(&layout_json)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn reset_dashboard_layout(state: State<'_, AppState>) -> Result<(), String> {
+    FinanceRepository::new(&state.pool)
+        .reset_dashboard_layout()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn list_digital_wallet_items(
+    state: State<'_, AppState>,
+) -> Result<Vec<DigitalWalletItem>, String> {
+    FinanceRepository::new(&state.pool)
+        .list_digital_wallet_items()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn add_digital_wallet_item(
+    state: State<'_, AppState>,
+    input: NewDigitalWalletItem,
+) -> Result<DigitalWalletItem, String> {
+    let item = DigitalWalletItem::new(input).map_err(|error| error.to_string())?;
+    FinanceRepository::new(&state.pool)
+        .insert_digital_wallet_item(&item)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(item)
+}
+
+#[tauri::command]
+pub async fn delete_digital_wallet_item(
+    state: State<'_, AppState>,
+    id: Uuid,
+) -> Result<(), String> {
+    FinanceRepository::new(&state.pool)
+        .delete_digital_wallet_item(id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn list_monthly_reserve_rules(
+    state: State<'_, AppState>,
+) -> Result<Vec<MonthlyReserveRule>, String> {
+    FinanceRepository::new(&state.pool)
+        .list_monthly_reserve_rules()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn save_monthly_reserve_rule(
+    state: State<'_, AppState>,
+    rule: MonthlyReserveRule,
+) -> Result<(), String> {
+    rule.validate().map_err(|error| error.to_string())?;
+    let repository = FinanceRepository::new(&state.pool);
+    if repository
+        .get_vault(rule.vault_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .is_none()
+    {
+        return Err("cofre não encontrado".into());
+    }
+    repository
+        .save_monthly_reserve_rule(&rule)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn remove_monthly_reserve_rule(
+    state: State<'_, AppState>,
+    vault_id: Uuid,
+) -> Result<(), String> {
+    FinanceRepository::new(&state.pool)
+        .remove_monthly_reserve_rule(vault_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn process_monthly_reserves(
+    state: State<'_, AppState>,
+    today: NaiveDate,
+) -> Result<u64, String> {
+    FinanceRepository::new(&state.pool)
+        .process_monthly_reserves(today)
         .await
         .map_err(|error| error.to_string())
 }

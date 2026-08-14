@@ -82,8 +82,8 @@ async function initializeApp() {
     removeDeepLinkListener ??= await listenForQuickLaunch(handleLaunch)
     stopReminderWatcher ??= startWebReminderWatcher()
     recurringWatcher ??= window.setInterval(() => {
-      void store.processRecurringRules().catch((cause) =>
-        store.reportError(cause, 'Não foi possível atualizar os compromissos mensais.'))
+      void store.processScheduledAutomation().catch((cause) =>
+        store.reportError(cause, 'Não foi possível atualizar as automações mensais.'))
     }, 60 * 60 * 1000)
   } catch (cause) {
     bootError.value = cause instanceof Error ? cause.message : 'Não foi possível abrir seus dados.'
@@ -121,7 +121,7 @@ onBeforeUnmount(() => {
       <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4">
         <button class="flex min-w-0 items-center gap-3 text-left" aria-label="Ir para o resumo" @click="navigate('dashboard')">
           <img src="/pingo-icon.svg" alt="" class="size-10 shrink-0 rounded-2xl shadow-sm" />
-          <span class="min-w-0"><span class="flex items-center gap-2"><span class="text-sm font-black tracking-tight">Pingo</span><span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">v0.7.0</span></span><span class="block truncate text-xs font-semibold text-slate-500 sm:text-sm">{{ pageTitle }}</span></span>
+          <span class="min-w-0"><span class="flex items-center gap-2"><span class="text-sm font-black tracking-tight">Pingo</span><span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">v0.8.0</span></span><span class="block truncate text-xs font-semibold text-slate-500 sm:text-sm">{{ pageTitle }}</span></span>
         </button>
 
         <nav class="hidden items-center rounded-2xl bg-slate-100 p-1 dark:bg-slate-900 md:flex" aria-label="Navegação principal">

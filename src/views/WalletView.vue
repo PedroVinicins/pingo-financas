@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, watchEffect } from 'vue'
 import {
-  Check, Building2, Copy, Link2, Lock, Palette, Plus, ReceiptText, Snowflake, Star, Trash2,
-  WalletCards, X, Zap,
+  CalendarDays, Check, Building2, Copy, FileText, Link2, Lock, Palette, Plus, QrCode,
+  ReceiptText, Snowflake, Star, Trash2, WalletCards, X, Zap,
 } from 'lucide-vue-next'
 import AddDebitCardModal from '../components/AddDebitCardModal.vue'
 import CardStyleEditor from '../components/CardStyleEditor.vue'
 import DebitCardVisual from '../components/DebitCardVisual.vue'
 import TransactionList from '../components/TransactionList.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import AddDigitalWalletItemModal from '../components/AddDigitalWalletItemModal.vue'
 import { centsToDecimal, decimalToCents, useFinanceStore } from '../stores/financeStore'
 import { quickExpenseLink } from '../services/quickLaunch'
-import type { NewDebitCardInput, UpdateDebitCardStyleInput } from '../types/finance'
+import type { DigitalWalletItem, NewDebitCardInput, NewDigitalWalletItemInput, UpdateDebitCardStyleInput } from '../types/finance'
 
 const props = defineProps<{ focusCardId?: string }>()
 const emit = defineEmits<{ quickExpense: [cardId: string] }>()
@@ -24,6 +25,8 @@ const showRemoveConfirmation = ref(false)
 const removing = ref(false)
 const manualShortcut = ref('')
 const shortcutInput = ref<HTMLInputElement | null>(null)
+const showAddWalletItem = ref(false)
+const removingWalletItem = ref<DigitalWalletItem | null>(null)
 
 watchEffect(() => {
   if (!store.debitCards.length) { selectedCardId.value = ''; return }
@@ -98,6 +101,27 @@ async function copyShortcut() {
   }
   window.setTimeout(() => { copied.value = false }, 1800)
 }
+async function addWalletItem(input: NewDigitalWalletItemInput) {
+  try {
+    await store.createDigitalWalletItem(input)
+    showAddWalletItem.value = false
+    store.showFeedback('Item guardado na carteira deste dispositivo.', 'success')
+  } catch (cause) { store.reportError(cause, 'Não foi possível guardar o item.') }
+}
+async function deleteWalletItem() {
+  if (!removingWalletItem.value) return
+  try {
+    await store.removeDigitalWalletItem(removingWalletItem.value.id)
+    removingWalletItem.value = null
+    store.showFeedback('Item removido da carteira.', 'success')
+  } catch (cause) { store.reportError(cause, 'Não foi possível remover o item.') }
+}
+function walletKindLabel(kind: DigitalWalletItem['kind']) {
+  return ({ ticket: 'Ingresso', document: 'Documento', qr_code: 'QR Code', other: 'Outro' })[kind]
+}
+function displayDate(value: string) {
+  return new Intl.DateTimeFormat('pt-BR').format(new Date(`${value}T12:00:00`))
+}
 </script>
 
 <template>
@@ -147,12 +171,20 @@ async function copyShortcut() {
       </template>
     </section>
 
-    <section v-else class="mt-6 grid min-h-[420px] place-items-center rounded-[2rem] border border-dashed border-slate-300 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900"><div class="max-w-sm"><div class="mx-auto grid size-16 place-items-center rounded-3xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"><WalletCards :size="30" /></div><h3 class="mt-5 text-2xl font-black">Monte sua Pingo Wallet</h3><p class="mt-2 text-sm text-slate-500">Adicione cartões com cores, texturas e stickers. Guardamos somente os 4 últimos dígitos.</p><button class="mt-5 rounded-2xl bg-emerald-400 px-5 py-3 font-black text-slate-950" @click="showAddCard = true">Adicionar primeiro cartão</button></div></section>
+    <section v-else class="mt-6 grid min-h-[320px] place-items-center rounded-[2rem] border border-dashed border-slate-300 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900"><div class="max-w-sm"><div class="mx-auto grid size-16 place-items-center rounded-3xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"><WalletCards :size="30" /></div><h3 class="mt-5 text-2xl font-black">Monte sua Pingo Wallet</h3><p class="mt-2 text-sm text-slate-500">Adicione cartões com cores, texturas e stickers. Guardamos somente os 4 últimos dígitos.</p><button class="mt-5 rounded-2xl bg-emerald-400 px-5 py-3 font-black text-slate-950" @click="showAddCard = true">Adicionar primeiro cartão</button></div></section>
+
+    <section class="mt-7">
+      <div class="flex items-end justify-between gap-4"><div><p class="text-sm font-bold text-violet-600">Carteira ao vivo</p><h2 class="text-2xl font-black">Ingressos, documentos e QR Codes</h2><p class="mt-1 text-sm text-slate-500">Arquivos úteis disponíveis offline e somente neste dispositivo.</p></div><button class="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-violet-500 px-4 py-3 text-sm font-black text-white" @click="showAddWalletItem = true"><Plus :size="18" /><span class="hidden sm:inline">Guardar item</span></button></div>
+      <div v-if="store.digitalWalletItems.length" class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><article v-for="item in store.digitalWalletItems" :key="item.id" class="overflow-hidden rounded-[1.6rem] border border-slate-200 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900"><div v-if="item.fileDataUrl && item.mimeType?.startsWith('image/')" class="aspect-[1.6/1] overflow-hidden bg-slate-100 dark:bg-slate-950"><img :src="item.fileDataUrl" alt="" class="size-full object-contain" /></div><div v-else class="grid aspect-[1.6/1] place-items-center bg-gradient-to-br from-violet-100 to-sky-100 text-violet-700 dark:from-violet-950 dark:to-sky-950 dark:text-violet-300"><QrCode v-if="item.kind === 'qr_code'" :size="52" /><FileText v-else :size="52" /></div><div class="p-4"><div class="flex items-start justify-between gap-3"><div class="min-w-0"><span class="text-[10px] font-black uppercase tracking-wider text-violet-600">{{ walletKindLabel(item.kind) }}</span><h3 class="truncate text-lg font-black">{{ item.title }}</h3><p v-if="item.issuer" class="truncate text-xs text-slate-500">{{ item.issuer }}</p></div><button class="grid size-9 shrink-0 place-items-center rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950" :aria-label="`Remover ${item.title}`" @click="removingWalletItem = item"><Trash2 :size="16" /></button></div><p v-if="item.expiresAt" class="mt-3 flex items-center gap-1.5 text-xs font-bold text-amber-600"><CalendarDays :size="14" /> Válido até {{ displayDate(item.expiresAt) }}</p><p v-if="item.qrValue" class="mt-3 break-all rounded-xl bg-slate-50 p-2 font-mono text-[11px] dark:bg-slate-950">{{ item.qrValue }}</p><p v-if="item.notes" class="mt-3 text-xs leading-relaxed text-slate-500">{{ item.notes }}</p><a v-if="item.fileDataUrl" :href="item.fileDataUrl" :download="item.fileName || item.title" class="mt-4 block rounded-xl border border-slate-200 px-3 py-2.5 text-center text-sm font-black dark:border-slate-700">Abrir arquivo</a></div></article></div>
+      <button v-else class="mt-4 grid min-h-48 w-full place-items-center rounded-[1.75rem] border-2 border-dashed border-violet-200 p-6 text-center dark:border-violet-900" @click="showAddWalletItem = true"><span><QrCode :size="34" class="mx-auto text-violet-500" /><strong class="mt-3 block">Sua carteira ao vivo está vazia</strong><span class="mt-1 block text-sm text-slate-500">Guarde um ingresso, PDF, documento ou imagem de QR Code.</span></span></button>
+    </section>
   </main>
 
   <AddDebitCardModal v-if="showAddCard" :existing-cards-count="store.debitCards.length" @close="showAddCard = false" @save="addCard" />
   <CardStyleEditor v-if="showStyleEditor && selectedCard" :card="selectedCard" @close="showStyleEditor = false" @save="saveStyle" />
   <ConfirmDialog v-if="showRemoveConfirmation && selectedCard" title="Remover cartão?" :message="`“${selectedCard.name}” sairá da carteira. As despesas já registradas continuarão no histórico geral, sem vínculo com o cartão.`" confirm-label="Remover cartão" :busy="removing" @cancel="showRemoveConfirmation = false" @confirm="removeCard" />
+  <AddDigitalWalletItemModal v-if="showAddWalletItem" @close="showAddWalletItem = false" @save="addWalletItem" />
+  <ConfirmDialog v-if="removingWalletItem" title="Remover da carteira?" :message="`“${removingWalletItem.title}” e seu arquivo local serão apagados deste dispositivo.`" confirm-label="Remover item" @cancel="removingWalletItem = null" @confirm="deleteWalletItem" />
   <Teleport to="body">
     <div v-if="manualShortcut" class="fixed inset-0 z-[110] grid place-items-end bg-slate-950/55 backdrop-blur-[2px] sm:place-items-center sm:p-4" @click.self="manualShortcut = ''" @keydown.esc="manualShortcut = ''">
       <section class="w-full rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-md sm:rounded-[2rem] sm:p-6" role="dialog" aria-modal="true" aria-labelledby="shortcut-dialog-title">
