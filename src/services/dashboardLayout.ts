@@ -20,7 +20,7 @@ export const DASHBOARD_WIDGETS: Record<DashboardWidgetId, { label: string; descr
 export const DEFAULT_DASHBOARD_LAYOUT: DashboardLayout = {
   widgets: [
     { id: 'net_worth', visible: true, size: 'large' },
-    { id: 'available_balance', visible: true, size: 'small' },
+    { id: 'available_balance', visible: true, size: 'large' },
     { id: 'vault_total', visible: true, size: 'small' },
     { id: 'month_expenses', visible: true, size: 'small' },
     { id: 'daily_budget', visible: true, size: 'small' },

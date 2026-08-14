@@ -1,6 +1,7 @@
 import type {
   AccountSettings,
   AutomaticReserveRule,
+  BankStatementImportInput,
   Category,
   DashboardLayout,
   DebitCard,
@@ -232,6 +233,69 @@ export async function addTransaction(input: NewTransactionInput): Promise<Transa
   return transaction
 }
 
+export async function importBankStatement(input: BankStatementImportInput): Promise<Transaction[]> {
+  if (!input.transactions.length) throw new Error('Selecione pelo menos um lançamento para importar')
+  if (input.transactions.length > 2_000) throw new Error('Importe no máximo 2.000 lançamentos por arquivo')
+  if (input.closingBalance !== null && signedMoneyToCents(input.closingBalance) < 0n) {
+    throw new Error('O Pingo ainda não reconcilia extratos com saldo negativo')
+  }
+  if (isTauriRuntime()) {
+    return tauriInvoke<Transaction[]>('import_transactions', {
+      inputs: input.transactions,
+      closingBalance: input.closingBalance,
+    })
+  }
+
+  const categories = await listCategories([])
+  const now = new Date().toISOString()
+  const imported = input.transactions.map((item, index) => {
+    const amount = moneyToCents(item.amount)
+    if (amount <= 0n) throw new Error('O extrato contém um valor inválido')
+    if (!item.description.trim() || item.description.trim().length > 160) {
+      throw new Error('O extrato contém uma descrição inválida')
+    }
+    const category = categories.find((candidate) => candidate.id === item.categoryId)
+    if (!category || category.kind !== item.kind) {
+      throw new Error('Escolha categorias compatíveis com as entradas e saídas')
+    }
+    return {
+      ...item,
+      debitCardId: null,
+      id: crypto.randomUUID(),
+      description: item.description.trim(),
+      createdAt: new Date(new Date(now).getTime() + index).toISOString(),
+    } satisfies Transaction
+  })
+  const previousTransactions = localStorage.getItem(TRANSACTIONS_KEY)
+  const previousSettings = localStorage.getItem(ACCOUNT_SETTINGS_KEY)
+  const transactions = [...await listTransactions(), ...imported]
+  try {
+    writeLocal(TRANSACTIONS_KEY, transactions)
+    const projectedBalance = localAvailableBalanceCents(transactions)
+    if (input.closingBalance === null) {
+      if (projectedBalance < 0n) {
+        throw new Error('O extrato deixaria o saldo negativo. Ative a conciliação com o saldo do arquivo.')
+      }
+    } else {
+      const settings = readLocal<AccountSettings | null>(ACCOUNT_SETTINGS_KEY, null) ?? {
+        openingBalanceAdjustment: '0.00', balanceHidden: false, migratedAt: now,
+      }
+      const desired = signedMoneyToCents(input.closingBalance)
+      settings.openingBalanceAdjustment = centsToMoney(
+        signedMoneyToCents(settings.openingBalanceAdjustment) + desired - projectedBalance,
+      )
+      writeLocal(ACCOUNT_SETTINGS_KEY, settings)
+    }
+  } catch (cause) {
+    if (previousTransactions === null) localStorage.removeItem(TRANSACTIONS_KEY)
+    else localStorage.setItem(TRANSACTIONS_KEY, previousTransactions)
+    if (previousSettings === null) localStorage.removeItem(ACCOUNT_SETTINGS_KEY)
+    else localStorage.setItem(ACCOUNT_SETTINGS_KEY, previousSettings)
+    throw cause
+  }
+  return imported
+}
+
 export async function updateTransaction(input: UpdateTransactionInput): Promise<Transaction> {
   if (isTauriRuntime()) return tauriInvoke<Transaction>('update_transaction', { id: input.id, input })
 
@@ -257,7 +321,9 @@ export async function updateTransaction(input: UpdateTransactionInput): Promise<
   if (input.kind === 'expense' && input.debitCardId) {
     const card = (await listDebitCards()).find((item) => item.id === input.debitCardId)
     if (!card) throw new Error('Cartão não encontrado')
-    if (card.isFrozen) throw new Error('Este cartão está congelado')
+    if (card.isFrozen && transactions[index].debitCardId !== input.debitCardId) {
+      throw new Error('Este cartão está congelado')
+    }
     if (card.monthlySpendingLimit) {
       const used = transactions.reduce((total, item) =>
         item.id !== input.id
@@ -787,5 +853,7 @@ function signedMoneyToCents(value: string): bigint {
 }
 
 function centsToMoney(value: bigint): string {
-  return `${value / 100n}.${(value % 100n).toString().padStart(2, '0')}`
+  const negative = value < 0n
+  const absolute = negative ? -value : value
+  return `${negative ? '-' : ''}${absolute / 100n}.${(absolute % 100n).toString().padStart(2, '0')}`
 }

@@ -19,6 +19,8 @@ pub enum DbError {
     Sqlx(#[from] sqlx::Error),
     #[error("dado inválido no banco: {0}")]
     InvalidData(String),
+    #[error("{0}")]
+    InvalidOperation(String),
     #[error("{0} não encontrado")]
     NotFound(&'static str),
 }
@@ -37,6 +39,66 @@ impl<'a> FinanceRepository<'a> {
         insert_transaction_record(&mut database_transaction, transaction).await?;
         if transaction.kind == TransactionType::Income {
             apply_automatic_reserves(&mut database_transaction, transaction.amount).await?;
+        }
+        database_transaction.commit().await?;
+        Ok(())
+    }
+
+    pub async fn import_transactions(
+        &self,
+        records: &[Transaction],
+        closing_balance: Option<Decimal>,
+    ) -> Result<(), DbError> {
+        let mut database_transaction = self.pool.begin().await?;
+        for record in records {
+            insert_transaction_record(&mut database_transaction, record).await?;
+        }
+        let projected_balance = available_balance_in_transaction(&mut database_transaction).await?;
+        if let Some(closing_balance) = closing_balance {
+            if closing_balance < Decimal::ZERO {
+                return Err(DbError::InvalidOperation(
+                    "o Pingo ainda não reconcilia extratos com saldo negativo".into(),
+                ));
+            }
+            let row = sqlx::query(
+                "SELECT opening_balance_adjustment, balance_hidden, migrated_at FROM account_settings WHERE id = 1",
+            )
+            .fetch_optional(&mut *database_transaction)
+            .await?;
+            let (adjustment, balance_hidden, migrated_at) = if let Some(row) = row {
+                let value =
+                    Decimal::from_str(&row.try_get::<String, _>("opening_balance_adjustment")?)
+                        .map_err(invalid)?;
+                (
+                    value,
+                    row.try_get::<bool, _>("balance_hidden")?,
+                    row.try_get::<String, _>("migrated_at")?,
+                )
+            } else {
+                (Decimal::ZERO, false, Utc::now().to_rfc3339())
+            };
+            let corrected_adjustment = adjustment + closing_balance - projected_balance;
+            sqlx::query(
+                r#"INSERT INTO account_settings
+                   (id, opening_balance_adjustment, balance_hidden, migrated_at, updated_at)
+                   VALUES (1, ?, ?, ?, ?)
+                   ON CONFLICT(id) DO UPDATE SET
+                     opening_balance_adjustment = excluded.opening_balance_adjustment,
+                     balance_hidden = excluded.balance_hidden,
+                     migrated_at = excluded.migrated_at,
+                     updated_at = excluded.updated_at"#,
+            )
+            .bind(corrected_adjustment.to_string())
+            .bind(balance_hidden)
+            .bind(migrated_at)
+            .bind(Utc::now().to_rfc3339())
+            .execute(&mut *database_transaction)
+            .await?;
+        } else if projected_balance < Decimal::ZERO {
+            return Err(DbError::InvalidOperation(
+                "o extrato deixaria o saldo negativo; ative a conciliação com o saldo do arquivo"
+                    .into(),
+            ));
         }
         database_transaction.commit().await?;
         Ok(())
@@ -1718,5 +1780,109 @@ mod tests {
             .unwrap());
         assert!(repository.get_dashboard_layout().await.unwrap().is_none());
         assert!(repository.get_account_settings().await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn statement_import_reconciles_balance_without_triggering_reserves() {
+        let pool = test_pool().await;
+        let repository = FinanceRepository::new(&pool);
+        let categories = repository.list_categories().await.unwrap();
+        let income_category = categories
+            .iter()
+            .find(|item| item.kind == TransactionType::Income)
+            .unwrap();
+        let expense_category = categories
+            .iter()
+            .find(|item| item.kind == TransactionType::Expense)
+            .unwrap();
+        let vault = Vault::new(NewVault {
+            name: "Reserva".into(),
+            institution: "Inter".into(),
+            r#type: VaultType::PiggyBank,
+            initial_balance: Decimal::ZERO,
+            target_amount: None,
+            annual_yield_rate: None,
+            color: "#10B981".into(),
+            emoji: None,
+        })
+        .unwrap();
+        repository.insert_vault(&vault).await.unwrap();
+        repository
+            .save_automatic_reserve_rule(&AutomaticReserveRule {
+                vault_id: vault.id,
+                enabled: true,
+                mode: AutomaticReserveMode::Percentage,
+                value: dec!(50),
+            })
+            .await
+            .unwrap();
+        let records = vec![
+            Transaction::new(NewTransaction {
+                kind: TransactionType::Income,
+                amount: dec!(100),
+                date: NaiveDate::from_ymd_opt(2026, 8, 7).unwrap(),
+                category_id: Some(income_category.id),
+                debit_card_id: None,
+                description: "Pix recebido".into(),
+                recurrence: RecurrenceType::Variable,
+            })
+            .unwrap(),
+            Transaction::new(NewTransaction {
+                kind: TransactionType::Expense,
+                amount: dec!(20),
+                date: NaiveDate::from_ymd_opt(2026, 8, 7).unwrap(),
+                category_id: Some(expense_category.id),
+                debit_card_id: None,
+                description: "Pix enviado".into(),
+                recurrence: RecurrenceType::Variable,
+            })
+            .unwrap(),
+        ];
+
+        repository
+            .import_transactions(&records, Some(dec!(80)))
+            .await
+            .unwrap();
+
+        assert_eq!(repository.available_balance().await.unwrap(), dec!(80));
+        assert_eq!(
+            repository
+                .get_vault(vault.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .balance,
+            dec!(0)
+        );
+        assert!(repository.list_vault_movements().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn statement_import_rolls_back_when_it_would_leave_a_negative_balance() {
+        let pool = test_pool().await;
+        let repository = FinanceRepository::new(&pool);
+        let category = repository
+            .list_categories()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|item| item.kind == TransactionType::Expense)
+            .unwrap();
+        let record = Transaction::new(NewTransaction {
+            kind: TransactionType::Expense,
+            amount: dec!(10),
+            date: NaiveDate::from_ymd_opt(2026, 8, 7).unwrap(),
+            category_id: Some(category.id),
+            debit_card_id: None,
+            description: "Compra".into(),
+            recurrence: RecurrenceType::Variable,
+        })
+        .unwrap();
+
+        assert!(repository
+            .import_transactions(&[record], None)
+            .await
+            .is_err());
+        assert!(repository.list_transactions().await.unwrap().is_empty());
     }
 }

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.0 — Seu extrato pingou
+
+- importa extratos CSV, TSV, OFX e PDFs com texto selecionável, incluindo o formato exportado pelo Banco Inter;
+- mostra uma prévia local, permite escolher categorias e ignora ocorrências que já existem no histórico;
+- concilia o saldo da carteira com o saldo mais recente do banco sem acionar reservas automáticas sobre entradas antigas;
+- impede que um extrato antigo sobrescreva o saldo quando o Pingo já possui lançamentos mais novos;
+- processa lotes de importação de forma atômica no SQLite e desfaz a operação quando ela deixaria o saldo inconsistente;
+- inclui as reservas por entrada e por mês já durante a criação do porquinho;
+- corrige a duplicação causada pela execução imediata de uma nova reserva mensal;
+- adiciona “Pingou errado? Corrigir valor” para ajustar o saldo real do porquinho preservando o patrimônio total;
+- deixa patrimônio total e saldo da carteira como os dois indicadores principais do Resumo;
+- permite editar valor, data, categoria e detalhes das compras dentro de cada cartão;
+- atualiza Web/PWA e Android para a versão 0.9.0 (`versionCode` 9000).
+
 ## 0.8.0 — O Pingo do seu jeito
 
 - permite reorganizar os cartões diretamente na tela principal por arrastar e soltar, inclusive por toque;

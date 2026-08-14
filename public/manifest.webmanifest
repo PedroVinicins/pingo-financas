@@ -1,7 +1,7 @@
 {
   "name": "Pingo — Finanças pessoais",
   "short_name": "Pingo",
-  "description": "Controle entradas, gastos, cartões, compromissos mensais e cofres sem conectar sua conta bancária.",
+  "description": "Importe extratos e controle entradas, gastos, cartões, compromissos mensais e cofres sem conectar sua conta bancária.",
   "lang": "pt-BR",
   "start_url": "/?source=pwa",
   "scope": "/",

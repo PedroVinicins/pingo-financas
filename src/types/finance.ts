@@ -204,6 +204,30 @@ export interface UpdateTransactionInput extends NewTransactionInput {
   id: string
 }
 
+export type BankStatementFormat = 'csv' | 'ofx' | 'pdf'
+
+export interface ParsedBankStatementTransaction {
+  kind: TransactionType
+  amount: string
+  date: string
+  description: string
+  balance: string | null
+  externalId: string | null
+}
+
+export interface ParsedBankStatement {
+  format: BankStatementFormat
+  fileName: string
+  transactions: ParsedBankStatementTransaction[]
+  closingBalance: string | null
+  warnings: string[]
+}
+
+export interface BankStatementImportInput {
+  transactions: NewTransactionInput[]
+  closingBalance: string | null
+}
+
 export interface AccountSettings {
   openingBalanceAdjustment: string
   balanceHidden: boolean

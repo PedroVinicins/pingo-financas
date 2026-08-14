@@ -1,20 +1,21 @@
-# Validação do projeto — Pingo v0.8.0
+# Validação do projeto — Pingo v0.9.0
 
 ## Validado neste ambiente
 
-- `npm test`: 31 testes aprovados;
+- `npm test`: 39 testes aprovados;
 - `npm run build`: TypeScript e build de produção aprovados;
 - `npm audit`: nenhuma vulnerabilidade conhecida nas dependências npm;
 - `cargo fmt --all -- --check` e `cargo check --locked`: aprovados;
-- `cargo test --locked`: 26 testes aprovados (23 no core e 3 de integração);
+- `cargo test --locked`: 28 testes aprovados (25 no core e 3 de integração);
 - migrations SQLite `0001` até `0008` executadas em sequência em um banco limpo;
 - `PRAGMA foreign_key_check` não encontrou inconsistências;
 - banco validado com 8 categorias de despesa e 7 categorias de entrada;
 - as tabelas de painel, carteira ao vivo e reserva mensal foram criadas corretamente;
 - PWA incluído na build Web com manifest, ícone e service worker;
 - layouts conferidos em viewport mobile (390 × 844) e desktop (1440 × 1000);
-- APK Android ARM64 debug gerado com pacote `com.pedrosilva.financas.debug`, `versionName` 0.8.0, `versionCode` 8000 e `minSdk` 24;
-- APK limpo contém somente a biblioteca nativa `libpingo_financas_lib.so`.
+- APK Android ARM64 debug gerado com pacote `com.pedrosilva.financas.debug`, `versionName` 0.9.0, `versionCode` 9000 e `minSdk` 24;
+- APK limpo contém somente a biblioteca nativa `libpingo_financas_lib.so`;
+- SHA-256 do APK validado: `6916614abcb23d2346d6634dfce7bad8f4118c300e666aa7722b47d808671810`.
 
 ## Testes automatizados
 
@@ -29,6 +30,9 @@
 - criação do Piloto Mensal dentro do formulário de transações;
 - ordem, visibilidade e tamanhos válidos do painel personalizável;
 - reset total do SQLite e do armazenamento Web, preservando somente o estado inicial esperado;
+- leitura do exemplo CSV/TSV do Banco Inter, OFX e linhas extraídas de PDF textual;
+- detecção de duplicatas, conciliação do saldo e rollback atômico de extratos inválidos;
+- criação de porquinho com reserva mensal sem duplicar o depósito inicial;
 - reserva mensal executada no dia correto e apenas uma vez por competência;
 - validação de anexos locais e persistência da carteira ao vivo;
 - transferência inicial da conta principal para um porquinho;

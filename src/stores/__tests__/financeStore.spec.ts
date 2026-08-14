@@ -195,6 +195,34 @@ describe('financeStore', () => {
     })).rejects.toThrow(/limite mensal/i)
   })
 
+  it('permite corrigir uma compra antiga sem desbloquear o cartão no fallback Web', async () => {
+    const store = useFinanceStore()
+    const expenseCategory = category()
+    localStorage.setItem('cashew-clone:categories', JSON.stringify([expenseCategory]))
+    store.setCategories([expenseCategory])
+    await store.setAvailableBalance('100.00')
+    const createdCard = await store.createDebitCard({
+      name: 'Principal', issuer: 'Banco Teste', holderName: 'Pedro Silva', lastFour: '4242',
+      network: 'mastercard', colorFrom: '#0F172A', colorTo: '#334155', pattern: 'soft',
+      backgroundImage: 'none', emoji: null, isDefault: true, monthlySpendingLimit: '200.00',
+    })
+    const purchase = await store.createTransaction({
+      kind: 'expense', amount: '10.00', date: '2026-08-09', categoryId: expenseCategory.id,
+      debitCardId: createdCard.id, description: 'Compra antiga', recurrence: 'variable',
+    })
+    await store.setCardFrozen(createdCard.id, true)
+
+    const updated = await store.editTransaction({
+      id: purchase.id, kind: 'expense', amount: '12.00', date: '2026-08-08',
+      categoryId: expenseCategory.id, debitCardId: createdCard.id,
+      description: 'Compra corrigida', recurrence: 'variable',
+    })
+
+    expect(updated.amount).toBe('12.00')
+    expect(updated.date).toBe('2026-08-08')
+    expect(updated.description).toBe('Compra corrigida')
+  })
+
   it('busca no histórico por descrição, categoria e cartão', () => {
     const store = useFinanceStore()
     store.setCategories([category()])
@@ -344,6 +372,60 @@ describe('financeStore', () => {
     expect(store.availableBalanceCents).toBe(12000n)
     expect(store.vaultTotalCents).toBe(8000n)
     expect(store.getMovementsForVault(created.id)[0]?.kind).toBe('deposit')
+  })
+
+  it('cria a reserva mensal sem duplicar o valor inicial do porquinho', async () => {
+    const store = useFinanceStore()
+    await store.setAvailableBalance('200.00')
+
+    const created = await store.createVault({
+      name: 'Viagem', institution: 'Inter', type: 'piggy_bank', initialBalance: '80.00',
+      targetAmount: null, annualYieldRate: null, color: '#F97316', emoji: '🐷',
+    }, undefined, {
+      enabled: true, mode: 'fixed', value: '80.00', dayOfMonth: 5, lastProcessedPeriod: null,
+    })
+
+    expect(store.vaultTotalCents).toBe(8000n)
+    expect(store.availableBalanceCents).toBe(12000n)
+    expect(store.getMonthlyReserveRule(created.id)?.lastProcessedPeriod).toBe('2026-08')
+    await store.processScheduledAutomation()
+    expect(store.vaultTotalCents).toBe(8000n)
+  })
+
+  it('corrige o saldo do porquinho preservando o patrimônio total', async () => {
+    const store = useFinanceStore()
+    await store.setAvailableBalance('200.00')
+    const created = await store.createVault({
+      name: 'Reserva', institution: 'Inter', type: 'piggy_bank', initialBalance: '80.00',
+      targetAmount: null, annualYieldRate: null, color: '#10B981', emoji: '🐷',
+    })
+    const patrimônio = store.balanceCents
+
+    await store.correctVaultBalance(created.id, '100.00')
+
+    expect(store.vaultTotalCents).toBe(10000n)
+    expect(store.availableBalanceCents).toBe(10000n)
+    expect(store.balanceCents).toBe(patrimônio)
+  })
+
+  it('importa um extrato e concilia o saldo final informado pelo banco', async () => {
+    const store = useFinanceStore()
+    const expenseCategory = category({ id: 'shopping', name: 'Compras' })
+    localStorage.setItem('cashew-clone:categories', JSON.stringify([expenseCategory]))
+    store.setCategories([expenseCategory])
+    await store.setAvailableBalance('0.00')
+
+    const imported = await store.importBankStatement({
+      transactions: [
+        { kind: 'expense', amount: '500.00', date: '2026-08-07', categoryId: 'shopping', debitCardId: null, description: 'Pix enviado · Nivea', recurrence: 'variable' },
+        { kind: 'expense', amount: '5.00', date: '2026-08-07', categoryId: 'shopping', debitCardId: null, description: 'Pix enviado · Elciany', recurrence: 'variable' },
+      ],
+      closingBalance: '1.53',
+    })
+
+    expect(imported).toBe(2)
+    expect(store.transactions).toHaveLength(2)
+    expect(store.availableBalanceCents).toBe(153n)
   })
 
   it('reserva parte de uma entrada de forma automática', async () => {

@@ -28,6 +28,7 @@ async fn validate_card_usage(
     amount: Decimal,
     date: NaiveDate,
     excluding: Option<Uuid>,
+    allow_frozen: bool,
 ) -> Result<(), String> {
     let Some(card_id) = card_id else {
         return Ok(());
@@ -37,7 +38,7 @@ async fn validate_card_usage(
         .await
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "cartão não encontrado".to_string())?;
-    if card.is_frozen {
+    if card.is_frozen && !allow_frozen {
         return Err(
             "este cartão está congelado; desbloqueie-o antes de registrar uma compra".into(),
         );
@@ -102,6 +103,7 @@ pub async fn add_transaction(
         transaction.amount,
         transaction.date,
         None,
+        false,
     )
     .await?;
     repository
@@ -109,6 +111,50 @@ pub async fn add_transaction(
         .await
         .map_err(|error| error.to_string())?;
     Ok(transaction)
+}
+
+#[tauri::command]
+pub async fn import_transactions(
+    state: State<'_, AppState>,
+    inputs: Vec<NewTransaction>,
+    closing_balance: Option<String>,
+) -> Result<Vec<Transaction>, String> {
+    if inputs.is_empty() {
+        return Err("selecione pelo menos um lançamento para importar".into());
+    }
+    if inputs.len() > 2_000 {
+        return Err("importe no máximo 2.000 lançamentos por arquivo".into());
+    }
+    let repository = FinanceRepository::new(&state.pool);
+    let closing_balance = closing_balance
+        .map(|value| {
+            value
+                .parse::<Decimal>()
+                .map_err(|_| "saldo final inválido".to_string())
+        })
+        .transpose()?;
+    let mut records = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        let category_id = input
+            .category_id
+            .ok_or_else(|| "selecione uma categoria para cada lançamento".to_string())?;
+        let category_kind = repository
+            .category_kind(category_id)
+            .await
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "categoria não encontrada".to_string())?;
+        if category_kind != input.kind {
+            return Err("a categoria não corresponde ao tipo do lançamento".into());
+        }
+        let mut record = Transaction::new(input).map_err(|error| error.to_string())?;
+        record.debit_card_id = None;
+        records.push(record);
+    }
+    repository
+        .import_transactions(&records, closing_balance)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(records)
 }
 
 #[tauri::command]
@@ -174,6 +220,7 @@ pub async fn update_transaction(
         transaction.amount,
         transaction.date,
         Some(id),
+        current.debit_card_id == transaction.debit_card_id,
     )
     .await?;
     repository
@@ -595,7 +642,15 @@ pub async fn add_recurring_rule(
     if category_kind != input.kind {
         return Err("a categoria não corresponde ao tipo da recorrência".into());
     }
-    validate_card_usage(&repository, input.debit_card_id, Decimal::ZERO, today, None).await?;
+    validate_card_usage(
+        &repository,
+        input.debit_card_id,
+        Decimal::ZERO,
+        today,
+        None,
+        false,
+    )
+    .await?;
     let rule = RecurringRule::new(input, today).map_err(|error| error.to_string())?;
     repository
         .insert_recurring_rule(&rule)
@@ -675,6 +730,7 @@ pub async fn settle_recurring_rule(
         transaction.amount,
         transaction.date,
         None,
+        false,
     )
     .await?;
 

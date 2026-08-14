@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import {
-  CalendarClock, Eye, EyeOff, Gauge, GripVertical, Landmark, LayoutGrid, Maximize2,
+  CalendarClock, Eye, EyeOff, FileUp, Gauge, GripVertical, Landmark, LayoutGrid, Maximize2,
   Pencil, PiggyBank, Plus, ShieldCheck, Sparkles, TrendingDown, WalletCards, X,
 } from 'lucide-vue-next'
 import { useFinanceStore, centsToDecimal } from '../stores/financeStore'
-import type { DashboardWidgetId, DashboardWidgetSize, NewRecurringRuleInput, NewTransactionInput, Transaction } from '../types/finance'
+import type { BankStatementImportInput, DashboardWidgetId, DashboardWidgetSize, NewRecurringRuleInput, NewTransactionInput, Transaction } from '../types/finance'
 import { cloneDashboardLayout, DASHBOARD_WIDGETS } from '../services/dashboardLayout'
 import TransactionList from '../components/TransactionList.vue'
 import AddTransactionModal from '../components/AddTransactionModal.vue'
@@ -13,10 +13,13 @@ import EditBalanceModal from '../components/EditBalanceModal.vue'
 import RecurringSection from '../components/RecurringSection.vue'
 import TransactionFiltersBar from '../components/TransactionFiltersBar.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import BankStatementImport from '../components/BankStatementImport.vue'
 
 const store = useFinanceStore()
 const showModal = ref(false)
 const showBalanceEditor = ref(false)
+const showStatementImport = ref(false)
+const importingStatement = ref(false)
 const customizing = ref(false)
 const draggingWidget = ref<DashboardWidgetId | null>(null)
 const touchDropTarget = ref<DashboardWidgetId | null>(null)
@@ -62,6 +65,15 @@ async function confirmDelete() {
 async function editBalance(amount: string) {
   try { await store.setAvailableBalance(amount); showBalanceEditor.value = false }
   catch (cause) { store.reportError(cause, 'Não foi possível ajustar o saldo.') }
+}
+async function importStatement(input: BankStatementImportInput) {
+  importingStatement.value = true
+  try {
+    const count = await store.importBankStatement(input)
+    showStatementImport.value = false
+    store.showFeedback(`${count} lançamento${count === 1 ? '' : 's'} importado${count === 1 ? '' : 's'} e saldo conferido.`, 'success')
+  } catch (cause) { store.reportError(cause, 'Não foi possível importar o extrato.') }
+  finally { importingStatement.value = false }
 }
 function persistLayout(change: (layout: ReturnType<typeof cloneDashboardLayout>) => void) {
   const next = cloneDashboardLayout(store.dashboardLayout)
@@ -127,7 +139,7 @@ onBeforeUnmount(() => window.removeEventListener('pointermove', pointerMove))
 
 <template>
   <main class="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8">
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-3"><div><p class="text-sm font-bold text-emerald-600">Meu resumo</p><h1 class="text-2xl font-black">O que importa para você</h1><p v-if="customizing" class="mt-1 text-xs font-bold text-emerald-600">Arraste, redimensione ou esconda. Tudo é salvo automaticamente.</p></div><div class="flex gap-2"><button class="inline-flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black" :class="customizing ? 'border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'" @click="customizing = !customizing"><X v-if="customizing" :size="17" /><LayoutGrid v-else :size="17" /> {{ customizing ? 'Concluir' : 'Personalizar' }}</button><button v-if="!customizing" class="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-black text-emerald-950" @click="showModal = true"><Plus :size="18" /> <span class="hidden sm:inline">Transação</span></button></div></div>
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3"><div><p class="text-sm font-bold text-emerald-600">Meu resumo</p><h1 class="text-2xl font-black">O que importa para você</h1><p v-if="customizing" class="mt-1 text-xs font-bold text-emerald-600">Arraste, redimensione ou esconda. Tudo é salvo automaticamente.</p></div><div class="flex flex-wrap gap-2"><button v-if="!customizing" class="inline-flex items-center gap-2 rounded-2xl border border-sky-200 bg-white px-3 py-3 text-sm font-black text-sky-700 dark:border-sky-900 dark:bg-slate-900" @click="showStatementImport = true"><FileUp :size="17" /> Extrato</button><button class="inline-flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black" :class="customizing ? 'border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'" @click="customizing = !customizing"><X v-if="customizing" :size="17" /><LayoutGrid v-else :size="17" /> {{ customizing ? 'Concluir' : 'Personalizar' }}</button><button v-if="!customizing" class="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-black text-emerald-950" @click="showModal = true"><Plus :size="18" /> <span class="hidden sm:inline">Transação</span></button></div></div>
 
     <section v-if="customizing && hiddenWidgets.length" class="mb-4 rounded-2xl border border-dashed border-slate-300 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><p class="text-xs font-black uppercase tracking-wider text-slate-400">Ocultos</p><div class="mt-2 flex flex-wrap gap-2"><button v-for="widget in hiddenWidgets" :key="widget.id" class="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-xs font-black dark:bg-slate-800" @click="setVisibility(widget.id, true)"><Plus :size="14" /> {{ DASHBOARD_WIDGETS[widget.id].label }}</button></div></section>
 
@@ -136,7 +148,7 @@ onBeforeUnmount(() => window.removeEventListener('pointermove', pointerMove))
         <div v-if="customizing" class="relative z-20 mb-2 flex items-center gap-2 rounded-2xl border border-emerald-200 bg-white p-2 shadow-sm dark:border-emerald-900 dark:bg-slate-900"><button draggable="true" class="grid size-10 touch-none place-items-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950" :aria-label="`Arrastar ${DASHBOARD_WIDGETS[widget.id].label}`" @dragstart="dragStart(widget.id, $event)" @dragend="draggingWidget = null" @pointerdown="pointerStart(widget.id, $event)"><GripVertical :size="18" /></button><strong class="min-w-0 flex-1 truncate text-xs">{{ DASHBOARD_WIDGETS[widget.id].label }}</strong><button class="inline-flex h-10 items-center gap-1 rounded-xl bg-slate-100 px-2 text-[10px] font-black dark:bg-slate-800" :aria-label="`Mudar tamanho de ${DASHBOARD_WIDGETS[widget.id].label}`" @click="cycleSize(widget.id)"><Maximize2 :size="14" /> {{ widget.size === 'small' ? 'P' : widget.size === 'medium' ? 'M' : 'G' }}</button><button class="grid size-10 place-items-center rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950" :aria-label="`Ocultar ${DASHBOARD_WIDGETS[widget.id].label}`" @click="setVisibility(widget.id, false)"><EyeOff :size="16" /></button></div>
         <article v-if="widget.id === 'net_worth'" class="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-slate-950 via-emerald-950 to-emerald-700 p-6 text-white shadow-2xl sm:p-8"><div class="absolute -right-14 -top-16 size-52 rounded-full bg-emerald-300/15 blur-2xl"></div><div class="relative flex items-start justify-between"><div class="grid size-12 place-items-center rounded-[1.1rem] bg-emerald-300 text-xl font-black text-emerald-950">P</div><button class="grid size-11 place-items-center rounded-2xl bg-white/10" :aria-label="store.balanceHidden ? 'Mostrar saldos' : 'Esconder saldos'" @click="store.toggleBalanceVisibility"><Eye v-if="store.balanceHidden" :size="20" /><EyeOff v-else :size="20" /></button></div><p class="relative mt-7 text-sm font-bold text-emerald-200">Patrimônio total</p><h2 class="relative mt-1 text-4xl font-black tracking-tight sm:text-5xl">{{ privateMoney(store.balanceCents) }}</h2><p class="relative mt-2 text-sm text-emerald-100/75">Conta principal + todos os porquinhos.</p><button class="relative mt-5 inline-flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-3 text-sm font-black" @click="showBalanceEditor = true"><Pencil :size="16" /> Editar saldo</button></article>
 
-        <article v-else-if="widget.id === 'available_balance'" class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-card dark:border-slate-800 dark:bg-slate-900"><div class="grid size-10 place-items-center rounded-xl bg-sky-100 text-sky-700 dark:bg-sky-950"><WalletCards :size="19" /></div><p class="mt-4 text-xs font-bold text-slate-400">Saldo da carteira</p><p class="mt-1 text-2xl font-black">{{ privateMoney(store.availableBalanceCents) }}</p><p class="mt-1 text-xs text-slate-500">Disponível agora</p></article>
+        <article v-else-if="widget.id === 'available_balance'" class="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-sky-600 via-cyan-600 to-emerald-500 p-6 text-white shadow-xl sm:p-8"><div class="absolute -bottom-20 -right-16 size-56 rounded-full bg-white/15"></div><div class="relative grid size-12 place-items-center rounded-2xl bg-white/20"><WalletCards :size="22" /></div><p class="relative mt-6 text-sm font-bold text-sky-100">Saldo da carteira</p><p class="relative mt-1 text-4xl font-black tracking-tight sm:text-5xl">{{ privateMoney(store.availableBalanceCents) }}</p><p class="relative mt-2 text-sm font-semibold text-white/75">Dinheiro disponível agora, sem contar os porquinhos.</p><button class="relative mt-5 inline-flex items-center gap-2 rounded-2xl bg-white/15 px-4 py-3 text-sm font-black" @click="showBalanceEditor = true"><Pencil :size="16" /> Corrigir saldo</button></article>
         <article v-else-if="widget.id === 'vault_total'" class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-card dark:border-slate-800 dark:bg-slate-900"><div class="grid size-10 place-items-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-950"><PiggyBank :size="19" /></div><p class="mt-4 text-xs font-bold text-slate-400">Nos porquinhos</p><p class="mt-1 text-2xl font-black">{{ privateMoney(store.vaultTotalCents) }}</p><p class="mt-1 text-xs text-slate-500">Reserva protegida</p></article>
         <article v-else-if="widget.id === 'month_expenses'" class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-card dark:border-slate-800 dark:bg-slate-900"><div class="grid size-10 place-items-center rounded-xl bg-rose-100 text-rose-700 dark:bg-rose-950"><TrendingDown :size="19" /></div><p class="mt-4 text-xs font-bold text-slate-400">Gastos do mês</p><p class="mt-1 text-2xl font-black">{{ privateMoney(store.currentMonthExpenseCents) }}</p><p class="mt-1 text-xs text-slate-500">Até hoje</p></article>
         <article v-else-if="widget.id === 'daily_budget'" class="rounded-[1.75rem] bg-gradient-to-br from-emerald-300 to-lime-300 p-5 text-emerald-950 shadow-card"><CalendarClock :size="22" /><p class="mt-4 text-xs font-black uppercase tracking-wider opacity-70">Posso gastar hoje</p><p class="mt-1 text-2xl font-black">{{ privateMoney(store.dailyBudgetCents) }}</p><p class="mt-1 text-xs font-bold opacity-70">Sem tocar nos porquinhos</p></article>
@@ -153,4 +165,5 @@ onBeforeUnmount(() => window.removeEventListener('pointermove', pointerMove))
   <AddTransactionModal v-if="showModal" :categories="store.categories" :cards="store.debitCards" :transaction="editingTransaction" @close="showModal = false; editingTransaction = null" @save="save" @save-recurring="saveRecurring" @delete="deletingTransaction = $event" />
   <EditBalanceModal v-if="showBalanceEditor" :current-balance="centsToDecimal(store.availableBalanceCents)" @close="showBalanceEditor = false" @save="editBalance" />
   <ConfirmDialog v-if="deletingTransaction" title="Excluir transação?" :message="`“${deletingTransaction.description}” será removida e os saldos serão recalculados.`" confirm-label="Excluir transação" :busy="deleting" @cancel="deletingTransaction = null" @confirm="confirmDelete" />
+  <BankStatementImport v-if="showStatementImport" :categories="store.categories" :transactions="store.transactions" :busy="importingStatement" @close="showStatementImport = false" @import="importStatement" />
 </template>

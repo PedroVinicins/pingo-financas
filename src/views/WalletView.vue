@@ -11,9 +11,10 @@ import TransactionList from '../components/TransactionList.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import AddDigitalWalletItemModal from '../components/AddDigitalWalletItemModal.vue'
 import AddWalletEntryMenu from '../components/AddWalletEntryMenu.vue'
+import AddTransactionModal from '../components/AddTransactionModal.vue'
 import { centsToDecimal, decimalToCents, useFinanceStore } from '../stores/financeStore'
 import { quickExpenseLink } from '../services/quickLaunch'
-import type { DigitalWalletItem, NewDebitCardInput, NewDigitalWalletItemInput, UpdateDebitCardStyleInput } from '../types/finance'
+import type { DigitalWalletItem, NewDebitCardInput, NewDigitalWalletItemInput, NewTransactionInput, Transaction, UpdateDebitCardStyleInput } from '../types/finance'
 
 const props = defineProps<{ focusCardId?: string }>()
 const emit = defineEmits<{ quickExpense: [cardId: string] }>()
@@ -30,6 +31,9 @@ const manualShortcut = ref('')
 const shortcutInput = ref<HTMLInputElement | null>(null)
 const showAddWalletItem = ref(false)
 const removingWalletItem = ref<DigitalWalletItem | null>(null)
+const editingTransaction = ref<Transaction | null>(null)
+const deletingTransaction = ref<Transaction | null>(null)
+const deletingTransactionBusy = ref(false)
 
 watchEffect(() => {
   if (store.digitalWalletItems.some((item) => item.id === selectedWalletItemId.value)) return
@@ -131,6 +135,25 @@ async function deleteWalletItem() {
     store.showFeedback('Item removido da carteira.', 'success')
   } catch (cause) { store.reportError(cause, 'Não foi possível remover o item.') }
 }
+async function saveTransaction(input: NewTransactionInput) {
+  if (!editingTransaction.value) return
+  try {
+    await store.editTransaction({ id: editingTransaction.value.id, ...input })
+    editingTransaction.value = null
+    store.showFeedback('Valor, data e detalhes da compra atualizados.', 'success')
+  } catch (cause) { store.reportError(cause, 'Não foi possível editar a compra.') }
+}
+async function confirmTransactionDelete() {
+  if (!deletingTransaction.value) return
+  deletingTransactionBusy.value = true
+  try {
+    await store.deleteTransaction(deletingTransaction.value.id)
+    deletingTransaction.value = null
+    editingTransaction.value = null
+    store.showFeedback('Compra removida e saldos recalculados.', 'success')
+  } catch (cause) { store.reportError(cause, 'Não foi possível excluir a compra.') }
+  finally { deletingTransactionBusy.value = false }
+}
 function walletKindLabel(kind: DigitalWalletItem['kind']) {
   return ({ ticket: 'Ingresso', document: 'Documento', qr_code: 'QR Code', other: 'Outro' })[kind]
 }
@@ -181,7 +204,7 @@ function displayDate(value: string) {
         </section>
 
         <div class="mt-4 grid gap-4 lg:grid-cols-[1fr_.38fr]">
-          <section class="rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-6"><div class="mb-2 flex items-center gap-2"><ReceiptText :size="19" /><div><p class="text-xs font-bold text-slate-400">Histórico</p><h3 class="font-black">Compras com {{ selectedCard.name }}</h3></div></div><TransactionList :transactions="selectedTransactions" :categories="store.categories" :cards="store.debitCards" /></section>
+          <section class="rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-6"><div class="mb-2 flex items-center gap-2"><ReceiptText :size="19" /><div><p class="text-xs font-bold text-slate-400">Histórico editável</p><h3 class="font-black">Compras com {{ selectedCard.name }}</h3></div></div><TransactionList :transactions="selectedTransactions" :categories="store.categories" :cards="store.debitCards" editable @edit="editingTransaction = $event" /></section>
           <aside class="rounded-[1.75rem] bg-slate-950 p-5 text-white dark:bg-slate-900"><Building2 :size="20" /><p class="mt-5 text-xs font-bold text-slate-400">Saldo da conta</p><p class="mt-1 text-3xl font-black">{{ money(store.balanceCents) }}</p><p class="mt-3 text-xs leading-5 text-slate-400">O Pingo não cria um saldo artificial para cada cartão. Todo gasto reduz o mesmo caixa.</p></aside>
         </div>
       </template>
@@ -197,6 +220,8 @@ function displayDate(value: string) {
   <ConfirmDialog v-if="showRemoveConfirmation && selectedCard" title="Remover cartão?" :message="`“${selectedCard.name}” sairá da carteira. As despesas já registradas continuarão no histórico geral, sem vínculo com o cartão.`" confirm-label="Remover cartão" :busy="removing" @cancel="showRemoveConfirmation = false" @confirm="removeCard" />
   <AddDigitalWalletItemModal v-if="showAddWalletItem" @close="showAddWalletItem = false" @save="addWalletItem" />
   <ConfirmDialog v-if="removingWalletItem" title="Remover da carteira?" :message="`“${removingWalletItem.title}” e seu arquivo local serão apagados deste dispositivo.`" confirm-label="Remover item" @cancel="removingWalletItem = null" @confirm="deleteWalletItem" />
+  <AddTransactionModal v-if="editingTransaction" :categories="store.categories" :cards="store.debitCards" :transaction="editingTransaction" @close="editingTransaction = null" @save="saveTransaction" @delete="deletingTransaction = $event" />
+  <ConfirmDialog v-if="deletingTransaction" title="Excluir compra?" :message="`“${deletingTransaction.description}” será removida e os saldos serão recalculados.`" confirm-label="Excluir compra" :busy="deletingTransactionBusy" @cancel="deletingTransaction = null" @confirm="confirmTransactionDelete" />
   <Teleport to="body">
     <div v-if="manualShortcut" class="fixed inset-0 z-[110] grid place-items-end bg-slate-950/55 backdrop-blur-[2px] sm:place-items-center sm:p-4" @click.self="manualShortcut = ''" @keydown.esc="manualShortcut = ''">
       <section class="w-full rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-md sm:rounded-[2rem] sm:p-6" role="dialog" aria-modal="true" aria-labelledby="shortcut-dialog-title">

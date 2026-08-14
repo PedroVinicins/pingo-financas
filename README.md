@@ -8,6 +8,16 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
+## Destaques da versão 0.9.0
+
+- importação local de extratos CSV/TSV, OFX e PDF textual, com suporte ao formato do Banco Inter;
+- prévia dos lançamentos, categorias para entradas e saídas, proteção contra duplicatas e conciliação do saldo;
+- porquinhos criados já com reserva automática por entrada ou por mês, sem duplicar o valor inicial;
+- correção direta do saldo do porquinho preservando o patrimônio;
+- patrimônio e saldo da carteira em destaque no Resumo;
+- valor, data, categoria e descrição das compras editáveis também dentro dos cartões;
+- Android `versionCode` 9000 e cache Web renovado para a nova release.
+
 ## Destaques da versão 0.8.0
 
 - painel principal personalizável direto na tela: arraste, redimensione ou esconda indicadores com salvamento automático;

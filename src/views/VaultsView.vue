@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import {
-  ArrowDownToLine, ArrowUpFromLine, Bot, History, Paintbrush, PiggyBank,
+  ArrowDownToLine, ArrowUpFromLine, Bot, CircleDollarSign, History, Paintbrush, PiggyBank,
   Plus, ShieldCheck, Sparkles, Trash2, TrendingUp,
 } from 'lucide-vue-next'
 import AddVaultModal from '../components/AddVaultModal.vue'
 import VaultMoveSheet from '../components/VaultMoveSheet.vue'
 import VaultCustomizeSheet from '../components/VaultCustomizeSheet.vue'
+import VaultBalanceCorrectionSheet from '../components/VaultBalanceCorrectionSheet.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { centsToDecimal, decimalToCents, useFinanceStore } from '../stores/financeStore'
 import type {
@@ -18,6 +19,7 @@ const store = useFinanceStore()
 const showAdd = ref(false)
 const movingVault = ref<Vault | null>(null)
 const customizingVault = ref<Vault | null>(null)
+const correctingVault = ref<Vault | null>(null)
 const movementKind = ref<VaultMovementType>('deposit')
 const confirmingRemoval = ref<Vault | null>(null)
 const removing = ref(false)
@@ -28,13 +30,25 @@ function projectedYield(vault: Vault) { return vault.annualYieldRate ? (decimalT
 function progress(vault: Vault) { if (!vault.targetAmount) return 0; const target = decimalToCents(vault.targetAmount); return target > 0n ? Math.min(100, Number((decimalToCents(vault.balance) * 10_000n) / target) / 100) : 0 }
 function openMovement(vault: Vault, kind: VaultMovementType) { movingVault.value = vault; movementKind.value = kind }
 function movementDate(value: string) { return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) }
-async function addVault(input: NewVaultInput) {
-  try { await store.createVault(input); showAdd.value = false }
+async function addVault(
+  input: NewVaultInput,
+  automatic: Omit<AutomaticReserveRule, 'vaultId'>,
+  monthly: Omit<MonthlyReserveRule, 'vaultId'>,
+) {
+  try { await store.createVault(input, automatic, monthly); showAdd.value = false }
   catch (cause) { store.reportError(cause, 'Não foi possível criar o cofre.') }
 }
 async function saveMovement(input: MoveVaultMoneyInput) {
   try { await store.moveVaultMoney(input); movingVault.value = null }
   catch (cause) { store.reportError(cause, 'Não foi possível transferir.') }
+}
+async function correctBalance(balance: string) {
+  if (!correctingVault.value) return
+  try {
+    await store.correctVaultBalance(correctingVault.value.id, balance)
+    correctingVault.value = null
+    store.showFeedback('Saldo do porquinho corrigido sem alterar o patrimônio.', 'success')
+  } catch (cause) { store.reportError(cause, 'Não foi possível corrigir o saldo.') }
 }
 async function saveCustomization(vault: UpdateVaultInput, reserve: AutomaticReserveRule, monthly: MonthlyReserveRule) {
   try {
@@ -67,11 +81,11 @@ async function confirmRemoval() {
 
     <section v-if="store.vaults.length" class="mt-5 grid gap-4 md:grid-cols-2">
       <article v-for="vault in store.vaults" :key="vault.id" class="group relative overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900"><div class="h-2" :style="{ backgroundColor: vault.color }"></div><div class="absolute -right-12 top-8 size-36 rounded-full opacity-[0.07]" :style="{ backgroundColor: vault.color }"></div><div class="relative p-5">
-        <div class="flex items-start justify-between gap-3"><div class="flex min-w-0 items-center gap-3"><div class="grid size-14 shrink-0 place-items-center rounded-[1.25rem] text-3xl shadow-inner" :style="{ backgroundColor: `${vault.color}22` }">{{ vault.emoji || '🔐' }}</div><div class="min-w-0"><h3 class="truncate text-lg font-black">{{ vault.name }}</h3><p class="truncate text-xs font-semibold text-slate-500">{{ vault.institution }}</p><span v-if="store.getAutomaticReserveRule(vault.id)?.enabled" class="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:bg-emerald-950"><Bot :size="11" /> Reserva automática</span></div></div><div class="flex"><button class="grid size-10 place-items-center rounded-xl text-slate-400 hover:bg-amber-50 hover:text-amber-700" :aria-label="`Personalizar ${vault.name}`" @click="customizingVault = vault"><Paintbrush :size="16" /></button><button class="grid size-10 place-items-center rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600" :aria-label="`Remover ${vault.name}`" @click="confirmingRemoval = vault"><Trash2 :size="16" /></button></div></div>
+        <div class="flex items-start justify-between gap-3"><div class="flex min-w-0 items-center gap-3"><div class="grid size-14 shrink-0 place-items-center rounded-[1.25rem] text-3xl shadow-inner" :style="{ backgroundColor: `${vault.color}22` }">{{ vault.emoji || '🔐' }}</div><div class="min-w-0"><h3 class="truncate text-lg font-black">{{ vault.name }}</h3><p class="truncate text-xs font-semibold text-slate-500">{{ vault.institution }}</p><div class="mt-1 flex flex-wrap gap-1"><span v-if="store.getAutomaticReserveRule(vault.id)?.enabled" class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700 dark:bg-emerald-950"><Bot :size="11" /> Ao receber</span><span v-if="store.getMonthlyReserveRule(vault.id)?.enabled" class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-700 dark:bg-amber-950"><Bot :size="11" /> Todo mês</span></div></div></div><div class="flex"><button class="grid size-10 place-items-center rounded-xl text-slate-400 hover:bg-amber-50 hover:text-amber-700" :aria-label="`Personalizar ${vault.name}`" @click="customizingVault = vault"><Paintbrush :size="16" /></button><button class="grid size-10 place-items-center rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600" :aria-label="`Remover ${vault.name}`" @click="confirmingRemoval = vault"><Trash2 :size="16" /></button></div></div>
         <p class="mt-5 text-xs font-bold text-slate-400">Saldo guardado</p><p class="mt-1 text-3xl font-black">{{ money(decimalToCents(vault.balance)) }}</p>
         <div v-if="vault.targetAmount" class="mt-4"><div class="mb-1.5 flex justify-between text-xs font-bold"><span>Meta {{ money(decimalToCents(vault.targetAmount)) }}</span><span>{{ progress(vault).toFixed(0) }}%</span></div><div class="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div class="h-full rounded-full" :style="{ width: `${progress(vault)}%`, backgroundColor: vault.color }"></div></div></div>
         <div v-if="vault.annualYieldRate" class="mt-4 flex items-center justify-between rounded-2xl bg-emerald-50 p-3 text-sm dark:bg-emerald-950/30"><span class="flex items-center gap-2 font-bold text-emerald-700 dark:text-emerald-300"><TrendingUp :size="16" /> {{ vault.annualYieldRate }}% a.a.</span><span class="text-xs font-black text-emerald-700 dark:text-emerald-300">+{{ money(projectedYield(vault)) }}/ano</span></div>
-        <div class="mt-5 grid grid-cols-2 gap-2"><button class="flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-3 py-3 text-sm font-black text-white dark:bg-white dark:text-slate-950" @click="openMovement(vault, 'deposit')"><ArrowDownToLine :size="17" /> Conta → Cofre</button><button class="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-3 py-3 text-sm font-black dark:border-slate-700" @click="openMovement(vault, 'withdraw')"><ArrowUpFromLine :size="17" /> Cofre → Conta</button></div>
+        <div class="mt-5 grid grid-cols-2 gap-2"><button class="flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-3 py-3 text-sm font-black text-white dark:bg-white dark:text-slate-950" @click="openMovement(vault, 'deposit')"><ArrowDownToLine :size="17" /> Conta → Cofre</button><button class="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-3 py-3 text-sm font-black dark:border-slate-700" @click="openMovement(vault, 'withdraw')"><ArrowUpFromLine :size="17" /> Cofre → Conta</button><button class="col-span-2 flex items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm font-black text-amber-800 dark:border-amber-900 dark:bg-amber-950/25 dark:text-amber-300" @click="correctingVault = vault"><CircleDollarSign :size="17" /> Pingou errado? Corrigir valor</button></div>
         <div v-if="store.getMovementsForVault(vault.id).length" class="mt-4 rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><p class="mb-2 flex items-center gap-2 text-xs font-black text-slate-500"><History :size="14" /> Últimas transferências</p><div v-for="movement in store.getMovementsForVault(vault.id).slice(0, 3)" :key="movement.id" class="flex items-center justify-between gap-2 py-1 text-xs"><span class="truncate text-slate-500">{{ movement.kind === 'deposit' ? 'Guardou' : 'Retirou' }} · {{ movement.source === 'automatic' ? 'automática' : movementDate(movement.occurredAt) }}</span><strong :class="movement.kind === 'deposit' ? 'text-emerald-600' : 'text-amber-600'">{{ movement.kind === 'deposit' ? '+' : '-' }}{{ money(decimalToCents(movement.amount)) }}</strong></div></div>
       </div></article>
     </section>
@@ -84,5 +98,6 @@ async function confirmRemoval() {
   <AddVaultModal v-if="showAdd" :available-balance="money(store.availableBalanceCents)" @close="showAdd = false" @save="addVault" />
   <VaultMoveSheet v-if="movingVault" :vault="movingVault" :initial-kind="movementKind" :available-balance="money(store.availableBalanceCents)" @close="movingVault = null" @save="saveMovement" />
   <VaultCustomizeSheet v-if="customizingVault" :vault="customizingVault" :automatic-rule="store.getAutomaticReserveRule(customizingVault.id)" :monthly-rule="store.getMonthlyReserveRule(customizingVault.id)" @close="customizingVault = null" @save="saveCustomization" />
+  <VaultBalanceCorrectionSheet v-if="correctingVault" :vault="correctingVault" :available-balance="money(store.availableBalanceCents)" @close="correctingVault = null" @save="correctBalance" />
   <ConfirmDialog v-if="confirmingRemoval" title="Remover cofre?" :message="`O saldo de “${confirmingRemoval.name}” voltará para a conta disponível. O histórico deste cofre será removido.`" confirm-label="Remover cofre" :busy="removing" @cancel="confirmingRemoval = null" @confirm="confirmRemoval" />
 </template>

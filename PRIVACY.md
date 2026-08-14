@@ -14,6 +14,8 @@ O aplicativo pode armazenar informações inseridas pelo próprio usuário, como
 - Notificações usam apenas a permissão local do sistema operacional.
 - O backup em JSON é gerado no próprio dispositivo e só sai dele quando o usuário escolhe salvar ou compartilhar o arquivo.
 - Anexos da carteira ao vivo ficam no armazenamento local do Pingo e não são enviados para validação ou nuvem. Eles não substituem o documento original.
+- Extratos CSV, OFX e PDF são lidos localmente. O arquivo original não é enviado nem guardado pelo Pingo; somente os lançamentos que o usuário confirmar entram no histórico.
+- PDFs precisam conter texto selecionável. O Pingo não envia documentos escaneados para serviços externos de OCR.
 
 ## Exclusão e segurança
 
