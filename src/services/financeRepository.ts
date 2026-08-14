@@ -687,6 +687,19 @@ export async function processMonthlyReserves(today = localDateKey(new Date())): 
   return processed
 }
 
+export async function factoryReset(): Promise<void> {
+  if (isTauriRuntime()) await tauriInvoke<void>('factory_reset')
+  const keys: string[] = []
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index)
+    if (key && (key.startsWith('pingo:') || key.startsWith('cashew-clone:') || key === 'theme')) {
+      keys.push(key)
+    }
+  }
+  keys.forEach((key) => localStorage.removeItem(key))
+  sessionStorage.removeItem('pingo:active-view')
+}
+
 export async function listRecurringRules(): Promise<RecurringRule[]> {
   if (isTauriRuntime()) return tauriInvoke<RecurringRule[]>('list_recurring_rules')
   return localRecurringRules()

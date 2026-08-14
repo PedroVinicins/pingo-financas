@@ -30,6 +30,7 @@ import { DEFAULT_DASHBOARD_LAYOUT, cloneDashboardLayout } from '../services/dash
 import * as repository from '../services/financeRepository'
 import {
   cancelRecurringRuleNotification,
+  disableMoneyReminders,
   maybeNotifyDueRecurringRules,
   scheduleRecurringRuleNotification,
 } from '../services/notifications'
@@ -93,6 +94,7 @@ export const useFinanceStore = defineStore('finance', () => {
   const feedback = ref<AppFeedback | null>(null)
   let feedbackSequence = 0
   let feedbackTimer: number | undefined
+  let dashboardSaveQueue: Promise<void> = Promise.resolve()
 
   const transactionNetCents = computed(() => transactions.value.reduce(
     (total, transaction) => total + transactionEffect(transaction), 0n,
@@ -572,9 +574,13 @@ export const useFinanceStore = defineStore('finance', () => {
       monthlyReserveRules.value = storedRules
     }
   }
-  async function saveDashboard(layout: DashboardLayout) {
-    await repository.saveDashboardLayout(layout)
-    dashboardLayout.value = cloneDashboardLayout(layout)
+  function saveDashboard(layout: DashboardLayout) {
+    const snapshot = cloneDashboardLayout(layout)
+    dashboardLayout.value = cloneDashboardLayout(snapshot)
+    dashboardSaveQueue = dashboardSaveQueue
+      .catch(() => undefined)
+      .then(() => repository.saveDashboardLayout(snapshot))
+    return dashboardSaveQueue
   }
   async function resetDashboard() {
     dashboardLayout.value = await repository.resetDashboardLayout()
@@ -588,6 +594,14 @@ export const useFinanceStore = defineStore('finance', () => {
   async function removeDigitalWalletItem(id: string) {
     await repository.deleteDigitalWalletItem(id)
     digitalWalletItems.value = digitalWalletItems.value.filter((item) => item.id !== id)
+  }
+  async function factoryReset() {
+    await disableMoneyReminders().catch(() => undefined)
+    for (const rule of recurringRules.value) {
+      await cancelRecurringRuleNotification(rule.id).catch(() => undefined)
+    }
+    await repository.factoryReset()
+    window.location.reload()
   }
   async function setAvailableBalance(amount: string) {
     const desired = decimalToCents(amount)
@@ -714,7 +728,7 @@ export const useFinanceStore = defineStore('finance', () => {
     editTransaction, createCategory, deleteTransaction, createDebitCard, updateCardStyle, setCardFrozen,
     makeDefaultCard, removeDebitCard, createVault, moveVaultMoney, customizeVault, removeVault,
     saveAutomaticReserve, saveMonthlyReserve, saveDashboard, resetDashboard,
-    createDigitalWalletItem, removeDigitalWalletItem, setAvailableBalance, toggleBalanceVisibility,
+    createDigitalWalletItem, removeDigitalWalletItem, factoryReset, setAvailableBalance, toggleBalanceVisibility,
     createRecurringRule, settleRecurringRule, processRecurringRules, processScheduledAutomation, removeRecurringRule,
     showFeedback, reportError, clearFeedback,
   }

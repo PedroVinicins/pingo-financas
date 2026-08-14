@@ -2,10 +2,11 @@
 
 ## 0.8.0 — O Pingo do seu jeito
 
-- permite reorganizar os cartões da tela principal por arrastar e soltar, inclusive por toque;
-- permite mostrar, esconder e escolher tamanhos diferentes para cada indicador do resumo;
-- adiciona reset seguro do layout sem apagar dados financeiros;
-- cria a carteira ao vivo offline para ingressos, documentos, imagens, PDFs e QR Codes;
+- permite reorganizar os cartões diretamente na tela principal por arrastar e soltar, inclusive por toque;
+- permite mostrar, esconder e mudar o tamanho de cada indicador com salvamento automático;
+- adiciona reset total com confirmação digitada para apagar dados, preferências e arquivos locais;
+- reúne cartões de débito e cartões ao vivo na mesma carteira e no mesmo fluxo de novo cartão;
+- cria cartões ao vivo offline para ingressos, documentos, imagens, PDFs e QR Codes;
 - limita anexos a 3 MB e mantém todo o conteúdo sensível somente no dispositivo;
 - adiciona reserva mensal por porquinho com valor fixo ou porcentagem do saldo disponível;
 - processa a reserva uma única vez por mês, no dia escolhido, sem permitir saldo negativo;

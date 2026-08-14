@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Database, Download, HardDrive, RotateCcw, ShieldCheck, Smartphone, X } from 'lucide-vue-next'
-import ConfirmDialog from './ConfirmDialog.vue'
+import FactoryResetDialog from './FactoryResetDialog.vue'
 import { useFinanceStore } from '../stores/financeStore'
 import { exportBackup } from '../services/backup'
 import { isTauriRuntime } from '../services/financeRepository'
@@ -10,6 +10,7 @@ const emit = defineEmits<{ close: [] }>()
 const store = useFinanceStore()
 const exporting = ref(false)
 const confirmingReset = ref(false)
+const resetting = ref(false)
 
 async function downloadBackup() {
   exporting.value = true
@@ -31,9 +32,13 @@ async function downloadBackup() {
   } catch (cause) { store.reportError(cause, 'Não foi possível gerar o backup.') }
   finally { exporting.value = false }
 }
-async function resetDashboard() {
-  try { await store.resetDashboard(); confirmingReset.value = false }
-  catch (cause) { store.reportError(cause, 'Não foi possível restaurar o painel.') }
+async function factoryReset() {
+  resetting.value = true
+  try { await store.factoryReset() }
+  catch (cause) {
+    resetting.value = false
+    store.reportError(cause, 'Não foi possível apagar os dados.')
+  }
 }
 </script>
 
@@ -50,10 +55,10 @@ async function resetDashboard() {
 
       <section class="mt-5 rounded-2xl bg-slate-950 p-5 text-white dark:bg-slate-800"><div class="flex items-start gap-3"><Download :size="21" class="mt-0.5 shrink-0 text-emerald-300" /><div><h3 class="font-black">Faça uma cópia dos seus dados</h3><p class="mt-1 text-xs leading-relaxed text-slate-300">O arquivo inclui valores e descrições financeiras. Proteja-o como protegeria um extrato.</p></div></div><button :disabled="exporting" class="mt-4 w-full rounded-xl bg-emerald-300 px-4 py-3 text-sm font-black text-emerald-950 disabled:opacity-50" @click="downloadBackup">{{ exporting ? 'Preparando…' : 'Exportar backup em JSON' }}</button></section>
 
-      <section class="mt-4 flex items-start justify-between gap-4 rounded-2xl border border-slate-200 p-4 dark:border-slate-800"><div class="flex gap-3"><RotateCcw :size="20" class="mt-0.5 shrink-0 text-amber-600" /><div><h3 class="text-sm font-black">Restaurar painel principal</h3><p class="mt-1 text-xs leading-relaxed text-slate-500">Volta a ordem, os tamanhos e os cartões visíveis ao padrão. Nenhum dado financeiro será apagado.</p></div></div><button class="shrink-0 rounded-xl border border-amber-300 px-3 py-2 text-xs font-black text-amber-700 dark:border-amber-800 dark:text-amber-300" @click="confirmingReset = true">Resetar</button></section>
+      <section class="mt-4 flex items-start justify-between gap-4 rounded-2xl border border-rose-200 bg-rose-50/60 p-4 dark:border-rose-900 dark:bg-rose-950/20"><div class="flex gap-3"><RotateCcw :size="20" class="mt-0.5 shrink-0 text-rose-600" /><div><h3 class="text-sm font-black">Reset total</h3><p class="mt-1 text-xs leading-relaxed text-slate-500">Apaga todos os dados e devolve o Pingo ao estado inicial. Esta ação não pode ser desfeita.</p></div></div><button class="shrink-0 rounded-xl bg-rose-600 px-3 py-2 text-xs font-black text-white" @click="confirmingReset = true">Apagar tudo</button></section>
 
       <p class="mt-4 text-center text-[11px] leading-relaxed text-slate-400">O backup é gerado localmente. Nenhum dado é enviado pelo Pingo.</p>
     </section>
   </div>
-  <ConfirmDialog v-if="confirmingReset" title="Restaurar o painel?" message="Somente a personalização da tela principal será resetada. Transações, saldos, porquinhos, cartões e documentos continuarão intactos." confirm-label="Restaurar painel" @cancel="confirmingReset = false" @confirm="resetDashboard" />
+  <FactoryResetDialog v-if="confirmingReset" :busy="resetting" @cancel="confirmingReset = false" @confirm="factoryReset" />
 </template>

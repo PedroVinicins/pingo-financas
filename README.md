@@ -10,10 +10,10 @@ A proposta é unir a velocidade de um app de carteira no celular com ferramentas
 
 ## Destaques da versão 0.8.0
 
-- painel principal personalizável: reordene, redimensione e escolha quais indicadores aparecem;
-- carteira ao vivo local para ingressos, documentos, imagens, PDFs e QR Codes;
+- painel principal personalizável direto na tela: arraste, redimensione ou esconda indicadores com salvamento automático;
+- cartões de débito, ingressos, documentos, imagens, PDFs e QR Codes reunidos na mesma carteira;
 - reserva mensal por porquinho com dia, valor fixo ou porcentagem do saldo disponível;
-- reset seguro do painel nas configurações, sem apagar dados financeiros;
+- reset total nas configurações, com confirmação digitada, para apagar todos os dados e restaurar o estado inicial;
 - Android `versionCode` 8000 e cache Web renovado para a nova release.
 
 ## Destaques da versão 0.7.0
@@ -252,7 +252,7 @@ O SQLite é inicializado no diretório de dados da aplicação. As migrations at
 
 Valores monetários são persistidos como texto e tratados com `rust_decimal` no core Rust. No frontend, cálculos reativos usam centavos em `bigint`.
 
-O menu de configurações permite exportar uma cópia local em JSON. Como esse arquivo contém dados financeiros, ele deve ser guardado em local seguro.
+O menu de configurações permite exportar uma cópia local em JSON. Como esse arquivo contém dados financeiros, ele deve ser guardado em local seguro. O mesmo menu oferece um reset total que apaga permanentemente os dados locais depois que o usuário digita `APAGAR`.
 
 ## Segurança, privacidade e contribuição
 

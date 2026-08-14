@@ -563,6 +563,14 @@ pub async fn process_monthly_reserves(
 }
 
 #[tauri::command]
+pub async fn factory_reset(state: State<'_, AppState>) -> Result<(), String> {
+    FinanceRepository::new(&state.pool)
+        .factory_reset()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn list_recurring_rules(
     state: State<'_, AppState>,
 ) -> Result<Vec<RecurringRule>, String> {

@@ -704,6 +704,49 @@ impl<'a> FinanceRepository<'a> {
         Ok(processed)
     }
 
+    pub async fn factory_reset(&self) -> Result<(), DbError> {
+        let mut transaction = self.pool.begin().await?;
+        for table in [
+            "transactions",
+            "recurring_rules",
+            "vault_movements",
+            "automatic_reserve_rules",
+            "monthly_reserve_rules",
+            "vaults",
+            "debit_cards",
+            "digital_wallet_items",
+            "dashboard_preferences",
+            "account_settings",
+            "categories",
+        ] {
+            sqlx::query(&format!("DELETE FROM {table}"))
+                .execute(&mut *transaction)
+                .await?;
+        }
+        sqlx::query(
+            r#"INSERT INTO categories (id, kind, name, icon, color, created_at) VALUES
+            ('8d4c8dd6-5fd6-4ec3-9d3f-6c79c1d42801', 'expense', 'Casa', 'house', '#0F766E', CURRENT_TIMESTAMP),
+            ('8d4c8dd6-5fd6-4ec3-9d3f-6c79c1d42802', 'expense', 'Alimentação', 'utensils', '#EA580C', CURRENT_TIMESTAMP),
+            ('8d4c8dd6-5fd6-4ec3-9d3f-6c79c1d42803', 'expense', 'Transporte', 'bus', '#2563EB', CURRENT_TIMESTAMP),
+            ('8d4c8dd6-5fd6-4ec3-9d3f-6c79c1d42804', 'expense', 'Lazer', 'gamepad-2', '#7C3AED', CURRENT_TIMESTAMP),
+            ('8d4c8dd6-5fd6-4ec3-9d3f-6c79c1d42805', 'expense', 'Saúde', 'heart-pulse', '#E11D48', CURRENT_TIMESTAMP),
+            ('8d4c8dd6-5fd6-4ec3-9d3f-6c79c1d42806', 'expense', 'Educação', 'graduation-cap', '#0891B2', CURRENT_TIMESTAMP),
+            ('8d4c8dd6-5fd6-4ec3-9d3f-6c79c1d42807', 'expense', 'Contas', 'receipt-text', '#CA8A04', CURRENT_TIMESTAMP),
+            ('8d4c8dd6-5fd6-4ec3-9d3f-6c79c1d42808', 'expense', 'Compras', 'shopping-bag', '#DB2777', CURRENT_TIMESTAMP),
+            ('8d4c8dd6-5fd6-4ec3-9d3f-6c79c1d42811', 'income', 'Salário', 'badge-dollar-sign', '#059669', CURRENT_TIMESTAMP),
+            ('8d4c8dd6-5fd6-4ec3-9d3f-6c79c1d42812', 'income', 'Freelance', 'laptop', '#0D9488', CURRENT_TIMESTAMP),
+            ('8d4c8dd6-5fd6-4ec3-9d3f-6c79c1d42813', 'income', 'Trabalho extra', 'briefcase-business', '#2563EB', CURRENT_TIMESTAMP),
+            ('8d4c8dd6-5fd6-4ec3-9d3f-6c79c1d42814', 'income', 'Vendas', 'store', '#7C3AED', CURRENT_TIMESTAMP),
+            ('8d4c8dd6-5fd6-4ec3-9d3f-6c79c1d42815', 'income', 'Benefícios', 'gift', '#EA580C', CURRENT_TIMESTAMP),
+            ('8d4c8dd6-5fd6-4ec3-9d3f-6c79c1d42816', 'income', 'Rendimentos', 'trending-up', '#16A34A', CURRENT_TIMESTAMP),
+            ('8d4c8dd6-5fd6-4ec3-9d3f-6c79c1d42817', 'income', 'Outras entradas', 'circle-dollar-sign', '#475569', CURRENT_TIMESTAMP)"#,
+        )
+        .execute(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+        Ok(())
+    }
+
     pub async fn list_recurring_rules(&self) -> Result<Vec<RecurringRule>, DbError> {
         let rows = sqlx::query(
             r#"SELECT id, kind, amount, day_of_month, category_id, debit_card_id, description,
@@ -1651,5 +1694,29 @@ mod tests {
                 .as_deref(),
             Some("2026-08")
         );
+    }
+
+    #[tokio::test]
+    async fn factory_reset_deletes_user_data_and_restores_default_categories() {
+        let pool = test_pool().await;
+        let repository = FinanceRepository::new(&pool);
+        let custom = category(TransactionType::Expense, "Personalizada");
+        repository.insert_category(&custom).await.unwrap();
+        repository
+            .save_dashboard_layout(r#"{"widgets":[]}"#)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO account_settings (id, opening_balance_adjustment, balance_hidden, migrated_at, updated_at) VALUES (1, '100', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+            .execute(&pool).await.unwrap();
+
+        repository.factory_reset().await.unwrap();
+
+        assert_eq!(repository.list_categories().await.unwrap().len(), 15);
+        assert!(!repository
+            .category_name_exists(TransactionType::Expense, "Personalizada")
+            .await
+            .unwrap());
+        assert!(repository.get_dashboard_layout().await.unwrap().is_none());
+        assert!(repository.get_account_settings().await.unwrap().is_none());
     }
 }

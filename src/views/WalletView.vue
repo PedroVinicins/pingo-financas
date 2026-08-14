@@ -10,6 +10,7 @@ import DebitCardVisual from '../components/DebitCardVisual.vue'
 import TransactionList from '../components/TransactionList.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import AddDigitalWalletItemModal from '../components/AddDigitalWalletItemModal.vue'
+import AddWalletEntryMenu from '../components/AddWalletEntryMenu.vue'
 import { centsToDecimal, decimalToCents, useFinanceStore } from '../stores/financeStore'
 import { quickExpenseLink } from '../services/quickLaunch'
 import type { DigitalWalletItem, NewDebitCardInput, NewDigitalWalletItemInput, UpdateDebitCardStyleInput } from '../types/finance'
@@ -18,8 +19,10 @@ const props = defineProps<{ focusCardId?: string }>()
 const emit = defineEmits<{ quickExpense: [cardId: string] }>()
 const store = useFinanceStore()
 const showAddCard = ref(false)
+const showAddMenu = ref(false)
 const showStyleEditor = ref(false)
 const selectedCardId = ref('')
+const selectedWalletItemId = ref('')
 const copied = ref(false)
 const showRemoveConfirmation = ref(false)
 const removing = ref(false)
@@ -29,12 +32,18 @@ const showAddWalletItem = ref(false)
 const removingWalletItem = ref<DigitalWalletItem | null>(null)
 
 watchEffect(() => {
-  if (!store.debitCards.length) { selectedCardId.value = ''; return }
-  if (!store.debitCards.some((card) => card.id === selectedCardId.value)) selectedCardId.value = store.defaultDebitCard?.id ?? store.debitCards[0].id
+  if (store.digitalWalletItems.some((item) => item.id === selectedWalletItemId.value)) return
+  if (store.debitCards.some((card) => card.id === selectedCardId.value)) return
+  if (store.debitCards.length) selectedCardId.value = store.defaultDebitCard?.id ?? store.debitCards[0].id
+  else if (store.digitalWalletItems.length) selectedWalletItemId.value = store.digitalWalletItems[0].id
 })
-watch(() => props.focusCardId, (id) => { if (id && store.debitCards.some((card) => card.id === id)) selectedCardId.value = id }, { immediate: true })
+watch(() => props.focusCardId, (id) => {
+  if (id && store.debitCards.some((card) => card.id === id)) selectCard(id)
+}, { immediate: true })
 
 const selectedCard = computed(() => store.debitCards.find((card) => card.id === selectedCardId.value) ?? null)
+const selectedWalletItem = computed(() => store.digitalWalletItems.find((item) => item.id === selectedWalletItemId.value) ?? null)
+const walletEntriesCount = computed(() => store.debitCards.length + store.digitalWalletItems.length)
 const selectedTransactions = computed(() => selectedCard.value ? store.getTransactionsForCard(selectedCard.value.id) : [])
 const monthSpentCents = computed(() => selectedCard.value ? store.currentMonthExpensesByDebitCard.get(selectedCard.value.id) ?? 0n : 0n)
 const totalSpentCents = computed(() => selectedCard.value ? store.expensesByDebitCard.get(selectedCard.value.id) ?? 0n : 0n)
@@ -51,11 +60,15 @@ function money(value: bigint | null) {
   if (store.balanceHidden) return 'R$ •••••'
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(centsToDecimal(value)))
 }
+function selectCard(id: string) { selectedCardId.value = id; selectedWalletItemId.value = '' }
+function selectWalletItem(id: string) { selectedWalletItemId.value = id; selectedCardId.value = '' }
+function addDebitCardChoice() { showAddMenu.value = false; showAddCard.value = true }
+function addLiveCardChoice() { showAddMenu.value = false; showAddWalletItem.value = true }
 
 async function addCard(input: NewDebitCardInput) {
   try {
     const card = await store.createDebitCard(input)
-    selectedCardId.value = card.id
+    selectCard(card.id)
     showAddCard.value = false
     store.showFeedback('Cartão adicionado à carteira.', 'success')
   } catch (cause) { store.reportError(cause, 'Não foi possível adicionar o cartão.') }
@@ -103,7 +116,8 @@ async function copyShortcut() {
 }
 async function addWalletItem(input: NewDigitalWalletItemInput) {
   try {
-    await store.createDigitalWalletItem(input)
+    const item = await store.createDigitalWalletItem(input)
+    selectWalletItem(item.id)
     showAddWalletItem.value = false
     store.showFeedback('Item guardado na carteira deste dispositivo.', 'success')
   } catch (cause) { store.reportError(cause, 'Não foi possível guardar o item.') }
@@ -112,6 +126,7 @@ async function deleteWalletItem() {
   if (!removingWalletItem.value) return
   try {
     await store.removeDigitalWalletItem(removingWalletItem.value.id)
+    selectedWalletItemId.value = ''
     removingWalletItem.value = null
     store.showFeedback('Item removido da carteira.', 'success')
   } catch (cause) { store.reportError(cause, 'Não foi possível remover o item.') }
@@ -127,14 +142,15 @@ function displayDate(value: string) {
 <template>
   <main class="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8">
     <section class="flex items-end justify-between gap-4">
-      <div><p class="text-sm font-bold text-violet-600">Pingo Wallet</p><h2 class="text-3xl font-black tracking-tight">Seus cartões</h2><p class="mt-1 text-sm text-slate-500">Cada cartão organiza compras diferentes, mas todos usam o mesmo saldo.</p></div>
-      <button class="hidden items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 font-bold text-white dark:bg-white dark:text-slate-950 sm:flex" @click="showAddCard = true"><Plus :size="18" /> Novo cartão</button>
+      <div><p class="text-sm font-bold text-violet-600">Pingo Wallet</p><h2 class="text-3xl font-black tracking-tight">Sua carteira</h2><p class="mt-1 text-sm text-slate-500">Cartões de pagamento, ingressos, documentos e QR Codes no mesmo lugar.</p></div>
+      <button class="hidden items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 font-bold text-white dark:bg-white dark:text-slate-950 sm:flex" @click="showAddMenu = true"><Plus :size="18" /> Novo cartão</button>
     </section>
 
-    <section v-if="store.debitCards.length" class="mt-5">
+    <section v-if="walletEntriesCount" class="mt-5">
       <div class="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-5 sm:mx-0 sm:px-0">
-        <button v-for="card in store.debitCards" :key="card.id" class="w-[86vw] max-w-[350px] shrink-0 snap-center text-left transition" :class="selectedCardId === card.id ? 'opacity-100' : 'scale-[.96] opacity-60'" @click="selectedCardId = card.id"><DebitCardVisual :card="card" /></button>
-        <button class="grid aspect-[1.586/1] w-[70vw] max-w-[280px] shrink-0 snap-center place-items-center rounded-[1.75rem] border-2 border-dashed border-slate-300 text-slate-500 dark:border-slate-700" @click="showAddCard = true"><span class="grid place-items-center gap-2 text-sm font-bold"><Plus :size="25" /> Adicionar cartão</span></button>
+        <button v-for="card in store.debitCards" :key="card.id" class="w-[86vw] max-w-[350px] shrink-0 snap-center text-left transition" :class="selectedCardId === card.id ? 'opacity-100' : 'scale-[.96] opacity-60'" @click="selectCard(card.id)"><DebitCardVisual :card="card" /></button>
+        <button v-for="item in store.digitalWalletItems" :key="item.id" class="relative aspect-[1.586/1] w-[86vw] max-w-[350px] shrink-0 snap-center overflow-hidden rounded-[1.75rem] text-left shadow-card transition" :class="selectedWalletItemId === item.id ? 'opacity-100' : 'scale-[.96] opacity-60'" @click="selectWalletItem(item.id)"><img v-if="item.fileDataUrl && item.mimeType?.startsWith('image/')" :src="item.fileDataUrl" alt="" class="absolute inset-0 size-full object-cover" /><span class="absolute inset-0 bg-gradient-to-br from-violet-700/95 via-violet-600/90 to-sky-500/90"></span><span class="relative flex h-full flex-col justify-between p-5 text-white"><span class="flex items-start justify-between"><span class="grid size-11 place-items-center rounded-2xl bg-white/20"><QrCode v-if="item.kind === 'qr_code'" :size="23" /><FileText v-else :size="23" /></span><span class="rounded-full bg-white/20 px-2 py-1 text-[10px] font-black uppercase tracking-wider">Ao vivo</span></span><span><span class="block text-xs font-bold text-white/70">{{ walletKindLabel(item.kind) }}</span><strong class="mt-1 block truncate text-xl">{{ item.title }}</strong><span class="mt-1 block truncate text-xs text-white/70">{{ item.issuer || 'Disponível offline' }}</span></span></span></button>
+        <button class="grid aspect-[1.586/1] w-[70vw] max-w-[280px] shrink-0 snap-center place-items-center rounded-[1.75rem] border-2 border-dashed border-slate-300 text-slate-500 dark:border-slate-700" @click="showAddMenu = true"><span class="grid place-items-center gap-2 text-sm font-bold"><Plus :size="25" /> Adicionar à carteira</span></button>
       </div>
 
       <template v-if="selectedCard">
@@ -169,17 +185,13 @@ function displayDate(value: string) {
           <aside class="rounded-[1.75rem] bg-slate-950 p-5 text-white dark:bg-slate-900"><Building2 :size="20" /><p class="mt-5 text-xs font-bold text-slate-400">Saldo da conta</p><p class="mt-1 text-3xl font-black">{{ money(store.balanceCents) }}</p><p class="mt-3 text-xs leading-5 text-slate-400">O Pingo não cria um saldo artificial para cada cartão. Todo gasto reduz o mesmo caixa.</p></aside>
         </div>
       </template>
+      <section v-else-if="selectedWalletItem" class="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900"><div v-if="selectedWalletItem.fileDataUrl && selectedWalletItem.mimeType?.startsWith('image/')" class="max-h-[420px] overflow-hidden bg-slate-100 dark:bg-slate-950"><img :src="selectedWalletItem.fileDataUrl" :alt="selectedWalletItem.title" class="mx-auto max-h-[420px] w-full object-contain" /></div><div v-else class="grid min-h-56 place-items-center bg-gradient-to-br from-violet-100 to-sky-100 text-violet-700 dark:from-violet-950 dark:to-sky-950 dark:text-violet-300"><QrCode v-if="selectedWalletItem.kind === 'qr_code'" :size="72" /><FileText v-else :size="72" /></div><div class="p-5 sm:p-6"><div class="flex items-start justify-between gap-3"><div class="min-w-0"><span class="text-xs font-black uppercase tracking-wider text-violet-600">Cartão ao vivo · {{ walletKindLabel(selectedWalletItem.kind) }}</span><h3 class="mt-1 text-2xl font-black">{{ selectedWalletItem.title }}</h3><p v-if="selectedWalletItem.issuer" class="mt-1 text-sm text-slate-500">{{ selectedWalletItem.issuer }}</p></div><button class="grid size-11 shrink-0 place-items-center rounded-xl border border-rose-200 text-rose-600 dark:border-rose-900" :aria-label="`Remover ${selectedWalletItem.title}`" @click="removingWalletItem = selectedWalletItem"><Trash2 :size="18" /></button></div><p v-if="selectedWalletItem.expiresAt" class="mt-4 flex items-center gap-2 text-sm font-bold text-amber-600"><CalendarDays :size="17" /> Válido até {{ displayDate(selectedWalletItem.expiresAt) }}</p><p v-if="selectedWalletItem.qrValue" class="mt-4 break-all rounded-xl bg-slate-50 p-3 font-mono text-xs dark:bg-slate-950">{{ selectedWalletItem.qrValue }}</p><p v-if="selectedWalletItem.notes" class="mt-4 text-sm leading-relaxed text-slate-500">{{ selectedWalletItem.notes }}</p><a v-if="selectedWalletItem.fileDataUrl" :href="selectedWalletItem.fileDataUrl" :download="selectedWalletItem.fileName || selectedWalletItem.title" class="mt-5 block rounded-2xl bg-violet-500 px-4 py-3 text-center text-sm font-black text-white">Abrir arquivo</a><p class="mt-4 text-xs text-slate-400">Este cartão fica somente neste dispositivo e está disponível offline.</p></div></section>
     </section>
 
-    <section v-else class="mt-6 grid min-h-[320px] place-items-center rounded-[2rem] border border-dashed border-slate-300 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900"><div class="max-w-sm"><div class="mx-auto grid size-16 place-items-center rounded-3xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"><WalletCards :size="30" /></div><h3 class="mt-5 text-2xl font-black">Monte sua Pingo Wallet</h3><p class="mt-2 text-sm text-slate-500">Adicione cartões com cores, texturas e stickers. Guardamos somente os 4 últimos dígitos.</p><button class="mt-5 rounded-2xl bg-emerald-400 px-5 py-3 font-black text-slate-950" @click="showAddCard = true">Adicionar primeiro cartão</button></div></section>
-
-    <section class="mt-7">
-      <div class="flex items-end justify-between gap-4"><div><p class="text-sm font-bold text-violet-600">Carteira ao vivo</p><h2 class="text-2xl font-black">Ingressos, documentos e QR Codes</h2><p class="mt-1 text-sm text-slate-500">Arquivos úteis disponíveis offline e somente neste dispositivo.</p></div><button class="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-violet-500 px-4 py-3 text-sm font-black text-white" @click="showAddWalletItem = true"><Plus :size="18" /><span class="hidden sm:inline">Guardar item</span></button></div>
-      <div v-if="store.digitalWalletItems.length" class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><article v-for="item in store.digitalWalletItems" :key="item.id" class="overflow-hidden rounded-[1.6rem] border border-slate-200 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900"><div v-if="item.fileDataUrl && item.mimeType?.startsWith('image/')" class="aspect-[1.6/1] overflow-hidden bg-slate-100 dark:bg-slate-950"><img :src="item.fileDataUrl" alt="" class="size-full object-contain" /></div><div v-else class="grid aspect-[1.6/1] place-items-center bg-gradient-to-br from-violet-100 to-sky-100 text-violet-700 dark:from-violet-950 dark:to-sky-950 dark:text-violet-300"><QrCode v-if="item.kind === 'qr_code'" :size="52" /><FileText v-else :size="52" /></div><div class="p-4"><div class="flex items-start justify-between gap-3"><div class="min-w-0"><span class="text-[10px] font-black uppercase tracking-wider text-violet-600">{{ walletKindLabel(item.kind) }}</span><h3 class="truncate text-lg font-black">{{ item.title }}</h3><p v-if="item.issuer" class="truncate text-xs text-slate-500">{{ item.issuer }}</p></div><button class="grid size-9 shrink-0 place-items-center rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950" :aria-label="`Remover ${item.title}`" @click="removingWalletItem = item"><Trash2 :size="16" /></button></div><p v-if="item.expiresAt" class="mt-3 flex items-center gap-1.5 text-xs font-bold text-amber-600"><CalendarDays :size="14" /> Válido até {{ displayDate(item.expiresAt) }}</p><p v-if="item.qrValue" class="mt-3 break-all rounded-xl bg-slate-50 p-2 font-mono text-[11px] dark:bg-slate-950">{{ item.qrValue }}</p><p v-if="item.notes" class="mt-3 text-xs leading-relaxed text-slate-500">{{ item.notes }}</p><a v-if="item.fileDataUrl" :href="item.fileDataUrl" :download="item.fileName || item.title" class="mt-4 block rounded-xl border border-slate-200 px-3 py-2.5 text-center text-sm font-black dark:border-slate-700">Abrir arquivo</a></div></article></div>
-      <button v-else class="mt-4 grid min-h-48 w-full place-items-center rounded-[1.75rem] border-2 border-dashed border-violet-200 p-6 text-center dark:border-violet-900" @click="showAddWalletItem = true"><span><QrCode :size="34" class="mx-auto text-violet-500" /><strong class="mt-3 block">Sua carteira ao vivo está vazia</strong><span class="mt-1 block text-sm text-slate-500">Guarde um ingresso, PDF, documento ou imagem de QR Code.</span></span></button>
-    </section>
+    <section v-else class="mt-6 grid min-h-[360px] place-items-center rounded-[2rem] border border-dashed border-slate-300 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900"><div class="max-w-sm"><div class="mx-auto grid size-16 place-items-center rounded-3xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"><WalletCards :size="30" /></div><h3 class="mt-5 text-2xl font-black">Monte sua Pingo Wallet</h3><p class="mt-2 text-sm text-slate-500">Adicione um cartão de débito, ingresso, documento ou QR Code.</p><button class="mt-5 rounded-2xl bg-emerald-400 px-5 py-3 font-black text-slate-950" @click="showAddMenu = true">Adicionar primeiro cartão</button></div></section>
   </main>
 
+  <AddWalletEntryMenu v-if="showAddMenu" @close="showAddMenu = false" @card="addDebitCardChoice" @live="addLiveCardChoice" />
   <AddDebitCardModal v-if="showAddCard" :existing-cards-count="store.debitCards.length" @close="showAddCard = false" @save="addCard" />
   <CardStyleEditor v-if="showStyleEditor && selectedCard" :card="selectedCard" @close="showStyleEditor = false" @save="saveStyle" />
   <ConfirmDialog v-if="showRemoveConfirmation && selectedCard" title="Remover cartão?" :message="`“${selectedCard.name}” sairá da carteira. As despesas já registradas continuarão no histórico geral, sem vínculo com o cartão.`" confirm-label="Remover cartão" :busy="removing" @cancel="showRemoveConfirmation = false" @confirm="removeCard" />

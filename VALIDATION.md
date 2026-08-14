@@ -2,11 +2,11 @@
 
 ## Validado neste ambiente
 
-- `npm test`: 30 testes aprovados;
+- `npm test`: 31 testes aprovados;
 - `npm run build`: TypeScript e build de produção aprovados;
 - `npm audit`: nenhuma vulnerabilidade conhecida nas dependências npm;
 - `cargo fmt --all -- --check` e `cargo check --locked`: aprovados;
-- `cargo test --locked`: 25 testes aprovados (22 no core e 3 de integração);
+- `cargo test --locked`: 26 testes aprovados (23 no core e 3 de integração);
 - migrations SQLite `0001` até `0008` executadas em sequência em um banco limpo;
 - `PRAGMA foreign_key_check` não encontrou inconsistências;
 - banco validado com 8 categorias de despesa e 7 categorias de entrada;
@@ -28,6 +28,7 @@
 - vencimento real das recorrências e prazo automático de três dias;
 - criação do Piloto Mensal dentro do formulário de transações;
 - ordem, visibilidade e tamanhos válidos do painel personalizável;
+- reset total do SQLite e do armazenamento Web, preservando somente o estado inicial esperado;
 - reserva mensal executada no dia correto e apenas uma vez por competência;
 - validação de anexos locais e persistência da carteira ao vivo;
 - transferência inicial da conta principal para um porquinho;

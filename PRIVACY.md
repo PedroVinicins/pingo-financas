@@ -17,6 +17,8 @@ O aplicativo pode armazenar informações inseridas pelo próprio usuário, como
 
 ## Exclusão e segurança
 
-Os dados podem ser removidos apagando os registros dentro do aplicativo ou limpando os dados locais da aplicação. Antes de limpar dados ou desinstalar, exporte um backup se quiser conservar o histórico: não existe sincronização ou recuperação automática em nuvem.
+Os dados podem ser removidos individualmente ou pelo **Reset total** das configurações. Esse reset exige que o usuário digite `APAGAR` e remove permanentemente transações, saldos, categorias personalizadas, cartões, anexos, porquinhos, automações, alertas e preferências do dispositivo. No fim, o Pingo recria apenas as categorias originais necessárias para um novo começo.
+
+Antes de usar o reset, limpar os dados locais ou desinstalar, exporte um backup se quiser conservar o histórico: não existe sincronização ou recuperação automática em nuvem.
 
 Proteja o dispositivo com senha ou biometria caso guarde documentos pessoais. Não use dados bancários sensíveis, senhas, CVV ou números completos de cartão no campo de descrição das transações.
