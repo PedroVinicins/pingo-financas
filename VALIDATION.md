@@ -1,21 +1,21 @@
-# Validação do projeto — Pingo v0.10.0
+# Validação do projeto — Pingo v0.11.0
 
 ## Validado neste ambiente
 
-- `npm test`: 48 testes aprovados em 10 arquivos;
+- `npm test`: 50 testes aprovados em 10 arquivos;
 - `npm run build`: TypeScript, Vue e build PWA de produção aprovados;
 - `npm audit --audit-level=high`: nenhuma vulnerabilidade conhecida;
 - `cargo fmt --all -- --check`: aprovado;
 - `cargo test --locked`: 29 testes aprovados (26 no core e 3 de integração);
 - migrations SQLite `0001` até `0009` executadas em sequência nos bancos limpos dos testes;
 - lotes de extrato e transferências de Porquinho validados com rollback/atomicidade;
-- PWA gerado com cache `pingo-shell-v0.10.0`, manifest, ícone e service worker;
+- PWA gerado com cache `pingo-shell-v0.11.0`, manifest, ícone e service worker;
 - APK Android ARM64 debug gerado com pacote `com.pedrosilva.financas.debug`;
-- APK confirmado com `versionName` 0.10.0, `versionCode` 10000, `minSdk` 24, `targetSdk` 36 e ABI `arm64-v8a`;
+- APK confirmado com `versionName` 0.11.0, `versionCode` 11000, `minSdk` 24, `targetSdk` 36 e ABI `arm64-v8a`;
 - APK assinado por certificado Android Debug e verificado com APK Signature Scheme v2;
 - Manifest Android confirmado com `windowSoftInputMode="adjustResize"`, backup externo desativado e quatro atalhos do launcher;
 - APK contém somente a biblioteca nativa `libpingo_financas_lib.so` em `arm64-v8a`;
-- SHA-256 do APK: `5178b59b5e6f2fae8f73111caa9c1d53abcaa44a4f5fdc3b18e1dfc5f5edd171`.
+- SHA-256 do APK: `e1229edb5299903b6da21557cc8a8337f8c705f69ac9b40d772e4dfe070f6477`.
 
 ## Testes automatizados
 
@@ -38,16 +38,18 @@
 - validação de anexos locais e visualizador da carteira ao vivo;
 - saudação por horário, interpretação dos comandos de voz, sensibilidade e cooldown do gesto de agitar;
 - radar diário de gastos e persistência das preferências da Central do Pingo.
+- período selecionado como fonte única de entradas, saídas, resultado e histórico;
+- ações rápidas abertas no tipo e fluxo corretos para gasto, entrada e Porquinho.
 
 ## APK gerado
 
 Arquivo:
 
 ```text
-src-tauri/gen/android/app/build/outputs/apk/universal/debug/Pingo-0.10.0-Android-ARM64.apk
+src-tauri/gen/android/app/build/outputs/apk/universal/debug/Pingo-0.11.0-Android-ARM64.apk
 ```
 
-Tamanho: 180.356.675 bytes. Esta build é para celulares ARM64 e usa o sufixo `.debug`, portanto pode ser instalada ao lado do pacote de produção.
+Tamanho: 180.152.663 bytes. Esta build é para celulares ARM64 e usa o sufixo `.debug`, portanto pode ser instalada ao lado do pacote de produção.
 
 ## Integração contínua
 
@@ -64,7 +66,7 @@ npm ci
 npm run validate
 npm audit --audit-level=high
 
-export JAVA_HOME=/caminho/para/o/jdk-17
+export JAVA_HOME=/usr/lib/jvm/java-17-temurin-jdk
 npm run android:build -- --debug --apk --target aarch64 --ci
 ```
 

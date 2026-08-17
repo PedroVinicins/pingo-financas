@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.0 — Mais simples, mais Pingo
+
+- redesenha a experiência mobile e desktop usando superfícies claras, cartão principal preto e roxo como destaque;
+- adiciona tokens semânticos para cores, raios, sombras e tema escuro sem hexadecimais espalhados pelos novos componentes;
+- reorganiza a navegação em Contas, Início, Análises e Ajustes com barra flutuante e sidebar responsiva;
+- permite trocar entre seções com gesto horizontal e protege controles, formulários, cards arrastáveis e carrosséis;
+- destaca saldo disponível e patrimônio no Início e adiciona seletor de mês conectado aos totais reais da Pinia;
+- mantém a personalização da Home com ordem, visibilidade, tamanhos e salvamento automático;
+- cria ações rápidas para Gasto, Entrada e transferência ao Porquinho usando os fluxos financeiros existentes;
+- transforma Ajustes em uma página agrupada com perfil, orçamento, aparência, registro, notificações, dados e segurança;
+- implementa tema Claro, Escuro e Sistema persistido, incluindo atualização em tempo real quando o aparelho muda;
+- adiciona exportação CSV e mantém backup JSON, privacidade, lembretes, atalhos, reset da Home e reset total;
+- corrige definitivamente estouros de nomes, categorias, cartões e valores no histórico de compras;
+- atualiza Web/PWA e Android para a versão 0.11.0 (`versionCode` 11000).
+
 ## 0.10.0 — Pingo na palma da mão
 
 - corrige estouros de nomes e valores longos em cartões e réguas, limitando os textos a uma linha com reticências;

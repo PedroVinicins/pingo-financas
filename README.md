@@ -8,6 +8,18 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
+## Destaques da versão 0.11.0
+
+- nova identidade minimalista e responsiva com tokens semânticos, cartão preto de saldo e roxo como destaque;
+- navegação unificada em Contas, Início, Análises e Ajustes, com barra flutuante no mobile e sidebar no desktop;
+- gesto horizontal para avançar ou voltar entre seções, sem conflitar com formulários e carrosséis;
+- Início reorganizado com saudação, seletor de período, saldo disponível, patrimônio, ações rápidas e últimas transações;
+- seletor de mês ligado à Pinia para manter saldo do período, entradas, saídas, histórico e Análises na mesma fonte;
+- Ajustes em grupos com perfil, limite mensal, tema Claro/Escuro/Sistema, notificações, privacidade e central do Pingo;
+- exportação real das transações em CSV, além do backup JSON e reset total já existentes;
+- histórico dos cartões protegido contra textos e valores extensos em telas a partir de 320 px;
+- Android `versionCode` 11000 e cache Web renovado para a nova release.
+
 ## Destaques da versão 0.10.0
 
 - Resumo personalizável em grid P/M/G com arraste fluido por mouse e toque e salvamento automático;

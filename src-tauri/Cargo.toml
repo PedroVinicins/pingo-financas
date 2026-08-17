@@ -1,6 +1,6 @@
 [package]
 name = "pingo-financas"
-version = "0.10.0"
+version = "0.11.0"
 description = "Pingo — gerenciador de finanças pessoais mobile-first em Tauri, Rust e Vue"
 authors = ["Pedro Silva"]
 edition = "2021"
