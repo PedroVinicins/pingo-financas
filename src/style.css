@@ -3,23 +3,54 @@
 @tailwind utilities;
 
 @layer base {
-  :root { color-scheme: light; }
-  :root.dark { color-scheme: dark; }
+  :root {
+    color-scheme: light;
+    --color-background: 247 247 250;
+    --color-surface: 255 255 255;
+    --color-surface-muted: 241 241 245;
+    --color-text-primary: 21 21 26;
+    --color-text-secondary: 145 145 158;
+    --color-border: 232 232 238;
+    --color-hero: 23 23 25;
+    --color-primary: 124 58 237;
+    --color-primary-soft: 237 233 254;
+  }
+  :root.dark {
+    color-scheme: dark;
+    --color-background: 15 15 18;
+    --color-surface: 25 25 30;
+    --color-surface-muted: 35 35 42;
+    --color-text-primary: 247 247 250;
+    --color-text-secondary: 164 164 177;
+    --color-border: 47 47 57;
+    --color-hero: 8 8 10;
+    --color-primary: 167 139 250;
+    --color-primary-soft: 46 34 74;
+  }
   html { @apply scroll-smooth; }
-  body { @apply min-h-dvh bg-slate-50 text-slate-950 antialiased dark:bg-slate-950 dark:text-slate-100; overscroll-behavior-y: none; }
-  button, input, select, textarea { @apply outline-none; }
+  body {
+    @apply min-h-dvh bg-canvas text-ink antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Inter, system-ui, sans-serif;
+    overscroll-behavior-y: none;
+  }
+  button, input, select, textarea { @apply outline-none; font: inherit; }
   button, [role='button'], input, select, textarea { -webkit-tap-highlight-color: transparent; }
   button:focus-visible, [role='button']:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible {
-    @apply ring-2 ring-emerald-400 ring-offset-2 ring-offset-white dark:ring-offset-slate-950;
+    @apply ring-2 ring-brand ring-offset-2 ring-offset-surface;
   }
   button:disabled { @apply cursor-not-allowed; }
-  ::selection { @apply bg-emerald-200 text-emerald-950; }
+  ::selection { @apply bg-brand-soft text-ink; }
 }
 
 @layer utilities {
   .safe-top { padding-top: env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
   .touch-pan-x { touch-action: pan-x; }
   .keyboard-aware-modal { overscroll-behavior: contain; }
+  .pingo-card { @apply rounded-pingo-lg border border-line bg-surface shadow-card; }
+  .pingo-interactive { @apply transition duration-200 ease-pingo active:scale-[0.985]; }
+  .no-scrollbar { scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -210,7 +210,7 @@ function displayDate(value: string) {
         </section>
 
         <div class="mt-4 grid gap-4 lg:grid-cols-[1fr_.38fr]">
-          <section class="rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-6"><div class="mb-2 flex items-center gap-2"><ReceiptText :size="19" /><div><p class="text-xs font-bold text-slate-400">Histórico editável</p><h3 class="font-black">Compras com {{ selectedCard.name }}</h3></div></div><TransactionList :transactions="selectedTransactions" :categories="store.categories" :cards="store.debitCards" editable @edit="editingTransaction = $event" /></section>
+          <section class="min-w-0 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-6"><div class="mb-3 flex min-w-0 items-center gap-2"><ReceiptText :size="19" class="shrink-0" /><div class="min-w-0 overflow-hidden"><p class="truncate text-xs font-bold text-slate-400">Histórico editável</p><h3 class="truncate font-black" :title="`Compras com ${selectedCard.name}`">Compras com {{ selectedCard.name }}</h3></div></div><TransactionList :transactions="selectedTransactions" :categories="store.categories" :cards="store.debitCards" editable @edit="editingTransaction = $event" /></section>
           <aside class="rounded-[1.75rem] bg-slate-950 p-5 text-white dark:bg-slate-900"><Building2 :size="20" /><p class="mt-5 text-xs font-bold text-slate-400">Saldo da conta</p><p class="mt-1 text-3xl font-black">{{ money(store.balanceCents) }}</p><p class="mt-3 text-xs leading-5 text-slate-400">O Pingo não cria um saldo artificial para cada cartão. Todo gasto reduz o mesmo caixa.</p></aside>
         </div>
       </template>
