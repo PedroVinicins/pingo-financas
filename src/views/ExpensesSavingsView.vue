@@ -39,7 +39,8 @@ const savingsProgress = computed(() => savingTargetCents.value > 0n
   : 0)
 const currentExpenses = computed(() => store.transactions
   .filter((transaction) => transaction.kind === 'expense' && isCurrentMonth(transaction))
-  .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)))
+  .sort((a, b) => (b.occurredAt ?? b.date).localeCompare(a.occurredAt ?? a.date)
+    || b.createdAt.localeCompare(a.createdAt)))
 const expenseRules = computed(() => store.recurringRules
   .filter((rule) => rule.active && rule.kind === 'expense')
   .sort((a, b) => a.nextDueDate.localeCompare(b.nextDueDate)))

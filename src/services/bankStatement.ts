@@ -1,5 +1,6 @@
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 import type {
+  BankPaymentMethod,
   BankStatementFormat,
   ParsedBankStatement,
   ParsedBankStatementTransaction,
@@ -55,36 +56,78 @@ export function parseBankAmount(value: string): bigint | null {
   return negative ? -cents : cents
 }
 
-function parseDate(value: string): string | null {
+function parseBankMoment(value: string, separateTime = ''): { date: string; occurredAt: string | null } | null {
   const clean = value.trim()
   let year: number
   let month: number
   let day: number
-  let match = /^(\d{2})[/-](\d{2})[/-](\d{4})$/.exec(clean)
+  let match = /^(\d{2})[/-](\d{2})[/-](\d{4})(?:[ T]+(\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(clean)
+  let hour = match?.[4] ? Number(match[4]) : 0
+  let minute = match?.[5] ? Number(match[5]) : 0
+  let second = match?.[6] ? Number(match[6]) : 0
+  let hasTime = Boolean(match?.[4])
   if (match) {
     day = Number(match[1]); month = Number(match[2]); year = Number(match[3])
   } else {
-    match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(clean)
+    match = /^(\d{4})-(\d{2})-(\d{2})(?:[ T]+(\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(clean)
     if (match) {
       year = Number(match[1]); month = Number(match[2]); day = Number(match[3])
+      hour = match[4] ? Number(match[4]) : 0
+      minute = match[5] ? Number(match[5]) : 0
+      second = match[6] ? Number(match[6]) : 0
+      hasTime = Boolean(match[4])
     } else {
-      match = /^(\d{4})(\d{2})(\d{2})/.exec(clean)
+      match = /^(\d{4})(\d{2})(\d{2})(?:(\d{2})(\d{2})(\d{2}))?/.exec(clean)
       if (!match) return null
       year = Number(match[1]); month = Number(match[2]); day = Number(match[3])
+      hour = match[4] ? Number(match[4]) : 0
+      minute = match[5] ? Number(match[5]) : 0
+      second = match[6] ? Number(match[6]) : 0
+      hasTime = Boolean(match[4])
     }
   }
+  const timeMatch = /^(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(separateTime.trim())
+  if (timeMatch) {
+    hour = Number(timeMatch[1]); minute = Number(timeMatch[2]); second = Number(timeMatch[3] ?? 0)
+    hasTime = true
+  }
   const date = new Date(Date.UTC(year, month - 1, day))
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null
-  return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day
+    || hour > 23 || minute > 59 || second > 59) return null
+  const dateKey = `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`
+  return {
+    date: dateKey,
+    occurredAt: hasTime
+      ? `${dateKey}T${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}`
+      : null,
+  }
 }
 
-function cleanDescription(...parts: Array<string | undefined | null>) {
+export function detectBankPaymentMethod(value: string): BankPaymentMethod {
+  const normalized = normalizedHeader(value)
+  if (/\b(?:debito|debit)\b/.test(normalized)) return 'debit'
+  if (/\b(?:credito|credit)\b/.test(normalized)) return 'credit'
+  if (/\bpix\b/.test(normalized)) return 'pix'
+  if (/\bcartao\b/.test(normalized)) return 'card'
+  return 'unknown'
+}
+
+export function cleanBankDescription(...parts: Array<string | undefined | null>) {
   const unique: string[] = []
   for (const part of parts) {
     const value = part?.replace(/\s+/g, ' ').trim()
     if (value && !unique.some((item) => normalizedHeader(item) === normalizedHeader(value))) unique.push(value)
   }
-  return (unique.join(' · ') || 'Movimentação importada').slice(0, 160)
+  let description = unique.join(' · ')
+    .replace(/\b(?:end\s*to\s*end|e2e|nsu|aut(?:oriza[cç][aã]o)?|id|c[oó]d(?:igo)?|doc(?:umento)?)\s*[:#-]?\s*[a-z0-9-]{5,}\b/gi, ' ')
+    .replace(/\b(?=[a-z0-9-]{12,}\b)(?=[a-z0-9-]*\d)[a-z0-9-]+\b/gi, ' ')
+    .replace(/\s*[·|]\s*/g, ' · ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const operationalPrefix = /^(?:(?:pix(?:\s+(?:enviado|recebido))?(?:\s+(?:para|de))?)|(?:transfer[eê]ncia(?:\s+(?:enviada|recebida))?(?:\s+(?:para|de))?)|(?:compra\s+(?:(?:no|com)\s+)?(?:cart[aã]o\s+)?(?:de\s+)?(?:d[eé]bito|cr[eé]dito|debit|credit))|(?:(?:d[eé]bito|cr[eé]dito|debit|credit)(?:\s+em)?)|(?:pagamento\s+(?:de\s+)?cart[aã]o)|cart[aã]o)\s*(?:[-:·|]+\s*)?/i
+  while (operationalPrefix.test(description)) description = description.replace(operationalPrefix, '').trim()
+  description = description.replace(/^(?:lan[cç]amento|hist[oó]rico)\s*(?:[-:·|]+\s*)?/i, '').trim()
+  return (description || 'Movimentação importada').slice(0, 160)
 }
 
 function transactionFromValues(
@@ -93,18 +136,23 @@ function transactionFromValues(
   description: string,
   balanceValue?: string | null,
   externalId?: string | null,
+  timeValue = '',
 ): ParsedBankStatementTransaction | null {
-  const date = parseDate(dateValue)
+  const moment = parseBankMoment(dateValue, timeValue)
   const signedAmount = parseBankAmount(amountValue)
-  if (!date || signedAmount === null || signedAmount === 0n) return null
+  if (!moment || signedAmount === null || signedAmount === 0n) return null
   const balance = balanceValue ? parseBankAmount(balanceValue) : null
+  const paymentMethod = detectBankPaymentMethod(description)
   return {
     kind: signedAmount < 0n ? 'expense' : 'income',
     amount: centsToStorage(signedAmount < 0n ? -signedAmount : signedAmount),
-    date,
-    description: cleanDescription(description),
+    date: moment.date,
+    occurredAt: moment.occurredAt,
+    description: cleanBankDescription(description),
     balance: balance === null ? null : centsToStorage(balance),
     externalId: externalId?.trim() || null,
+    paymentMethod,
+    suggestedCardLink: paymentMethod === 'debit' || paymentMethod === 'credit' || paymentMethod === 'card',
   }
 }
 
@@ -163,6 +211,7 @@ export function parseDelimitedStatement(content: string, fileName = 'extrato.csv
   if (rows.length < 2) throw new Error('O arquivo não possui cabeçalho e lançamentos reconhecíveis.')
   const headers = rows[0].map(normalizedHeader)
   const dateIndex = headerIndex(headers, ['data lancamento', 'data movimento', 'data', 'date'])
+  const timeIndex = headerIndex(headers, ['hora lancamento', 'horario', 'hora', 'time'])
   const amountIndex = headerIndex(headers, ['valor lancamento', 'valor', 'amount'])
   const balanceIndex = headerIndex(headers, ['saldo', 'balance'])
   const historyIndex = headerIndex(headers, ['historico', 'lancamento', 'tipo'])
@@ -172,8 +221,10 @@ export function parseDelimitedStatement(content: string, fileName = 'extrato.csv
   }
   const transactions = rows.slice(1).map((row) => transactionFromValues(
     row[dateIndex] ?? '', row[amountIndex] ?? '',
-    cleanDescription(row[historyIndex], row[descriptionIndex]),
+    [row[historyIndex], row[descriptionIndex]].filter(Boolean).join(' · '),
     balanceIndex >= 0 ? row[balanceIndex] : null,
+    null,
+    timeIndex >= 0 ? row[timeIndex] : '',
   )).filter((item): item is ParsedBankStatementTransaction => item !== null).slice(0, MAX_IMPORT_ROWS)
   if (!transactions.length) throw new Error('Nenhum lançamento válido foi encontrado no arquivo.')
   return {
@@ -193,7 +244,7 @@ export function parseOfxStatement(content: string, fileName = 'extrato.ofx'): Pa
   for (const block of blocks.slice(0, MAX_IMPORT_ROWS)) {
     const transaction = transactionFromValues(
       ofxValue(block, 'DTPOSTED'), ofxValue(block, 'TRNAMT'),
-      cleanDescription(ofxValue(block, 'NAME'), ofxValue(block, 'MEMO')),
+      [ofxValue(block, 'TRNTYPE'), ofxValue(block, 'NAME'), ofxValue(block, 'MEMO')].filter(Boolean).join(' · '),
       null, ofxValue(block, 'FITID'),
     )
     if (transaction) transactions.push(transaction)
@@ -215,13 +266,14 @@ export function parseStatementTextLines(lines: string[], fileName = 'extrato.pdf
     const dateMatch = /\b(\d{2}[/-]\d{2}[/-]\d{4}|\d{4}-\d{2}-\d{2})\b/.exec(line)
     if (!dateMatch) continue
     const rest = line.slice(dateMatch.index + dateMatch[0].length)
+    const timeMatch = /^\s+(\d{1,2}:\d{2}(?::\d{2})?)\b/.exec(rest)
     const moneyMatches = [...rest.matchAll(TEXT_MONEY_PATTERN)]
     if (!moneyMatches.length) continue
     const amountMatch = moneyMatches.length >= 2 ? moneyMatches[moneyMatches.length - 2] : moneyMatches[0]
     const balanceMatch = moneyMatches.length >= 2 ? moneyMatches[moneyMatches.length - 1] : null
-    const description = rest.slice(0, amountMatch.index).replace(/[|\t]+/g, ' ')
+    const description = rest.slice(timeMatch?.[0].length ?? 0, amountMatch.index).replace(/[|\t]+/g, ' ')
     const transaction = transactionFromValues(
-      dateMatch[0], amountMatch[0], description, balanceMatch?.[0] ?? null,
+      dateMatch[0], amountMatch[0], description, balanceMatch?.[0] ?? null, null, timeMatch?.[1] ?? '',
     )
     if (transaction) transactions.push(transaction)
     if (transactions.length >= MAX_IMPORT_ROWS) break
@@ -275,9 +327,9 @@ export async function parseBankStatementFile(file: File): Promise<ParsedBankStat
 }
 
 export function statementTransactionSignature(
-  transaction: Pick<Transaction | ParsedBankStatementTransaction, 'date' | 'kind' | 'amount' | 'description'>,
+  transaction: Pick<Transaction | ParsedBankStatementTransaction, 'date' | 'occurredAt' | 'kind' | 'amount' | 'description'>,
 ) {
-  return [transaction.date, transaction.kind, transaction.amount.replace(',', '.'), normalizedHeader(transaction.description)].join('|')
+  return [transaction.occurredAt ?? transaction.date, transaction.kind, transaction.amount.replace(',', '.'), normalizedHeader(transaction.description)].join('|')
 }
 
 export function duplicateStatementRows(

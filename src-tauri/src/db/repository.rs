@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use chrono::{DateTime, Datelike, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
 use rust_decimal::{Decimal, RoundingStrategy};
 use sqlx::{Row, SqlitePool};
 use thiserror::Error;
@@ -106,9 +106,9 @@ impl<'a> FinanceRepository<'a> {
 
     pub async fn list_transactions(&self) -> Result<Vec<Transaction>, DbError> {
         let rows = sqlx::query(
-            r#"SELECT id, kind, amount, date, category_id, debit_card_id, description, recurrence, created_at
+            r#"SELECT id, kind, amount, date, occurred_at, category_id, debit_card_id, description, recurrence, created_at
                FROM transactions
-               ORDER BY date DESC, created_at DESC"#,
+               ORDER BY date DESC, occurred_at DESC, created_at DESC"#,
         )
         .fetch_all(self.pool)
         .await?;
@@ -118,7 +118,7 @@ impl<'a> FinanceRepository<'a> {
 
     pub async fn get_transaction(&self, id: Uuid) -> Result<Option<Transaction>, DbError> {
         let row = sqlx::query(
-            r#"SELECT id, kind, amount, date, category_id, debit_card_id, description, recurrence, created_at
+            r#"SELECT id, kind, amount, date, occurred_at, category_id, debit_card_id, description, recurrence, created_at
                FROM transactions WHERE id = ?"#,
         )
         .bind(id.to_string())
@@ -129,12 +129,13 @@ impl<'a> FinanceRepository<'a> {
 
     pub async fn update_transaction(&self, transaction: &Transaction) -> Result<(), DbError> {
         let result = sqlx::query(
-            r#"UPDATE transactions SET kind = ?, amount = ?, date = ?, category_id = ?, debit_card_id = ?,
+            r#"UPDATE transactions SET kind = ?, amount = ?, date = ?, occurred_at = ?, category_id = ?, debit_card_id = ?,
                description = ?, recurrence = ? WHERE id = ?"#,
         )
         .bind(transaction.kind.as_str())
         .bind(transaction.amount.to_string())
         .bind(transaction.date.format("%Y-%m-%d").to_string())
+        .bind(transaction.occurred_at.map(|value| value.format("%Y-%m-%dT%H:%M:%S").to_string()))
         .bind(transaction.category_id.map(|id| id.to_string()))
         .bind(transaction.debit_card_id.map(|id| id.to_string()))
         .bind(&transaction.description)
@@ -982,13 +983,14 @@ async fn insert_transaction_record(
 ) -> Result<(), DbError> {
     sqlx::query(
         r#"INSERT INTO transactions
-           (id, kind, amount, date, category_id, debit_card_id, description, recurrence, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+           (id, kind, amount, date, occurred_at, category_id, debit_card_id, description, recurrence, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
     )
     .bind(record.id.to_string())
     .bind(record.kind.as_str())
     .bind(record.amount.to_string())
     .bind(record.date.format("%Y-%m-%d").to_string())
+    .bind(record.occurred_at.map(|value| value.format("%Y-%m-%dT%H:%M:%S").to_string()))
     .bind(record.category_id.map(|id| id.to_string()))
     .bind(record.debit_card_id.map(|id| id.to_string()))
     .bind(&record.description)
@@ -1183,6 +1185,7 @@ fn row_to_transaction(row: sqlx::sqlite::SqliteRow) -> Result<Transaction, DbErr
     let kind: String = row.try_get("kind")?;
     let amount: String = row.try_get("amount")?;
     let date: String = row.try_get("date")?;
+    let occurred_at: Option<String> = row.try_get("occurred_at")?;
     let category_id: Option<String> = row.try_get("category_id")?;
     let debit_card_id: Option<String> = row.try_get("debit_card_id")?;
     let created_at: String = row.try_get("created_at")?;
@@ -1193,6 +1196,11 @@ fn row_to_transaction(row: sqlx::sqlite::SqliteRow) -> Result<Transaction, DbErr
         kind: TransactionType::parse(&kind).ok_or_else(|| DbError::InvalidData(kind.clone()))?,
         amount: Decimal::from_str(&amount).map_err(invalid)?,
         date: NaiveDate::parse_from_str(&date, "%Y-%m-%d").map_err(invalid)?,
+        occurred_at: occurred_at
+            .map(|value| {
+                NaiveDateTime::parse_from_str(&value, "%Y-%m-%dT%H:%M:%S").map_err(invalid)
+            })
+            .transpose()?,
         category_id: category_id
             .map(|value| Uuid::parse_str(&value).map_err(invalid))
             .transpose()?,
@@ -1497,6 +1505,7 @@ mod tests {
             kind: TransactionType::Income,
             amount: dec!(150),
             date: NaiveDate::from_ymd_opt(2026, 8, 13).unwrap(),
+            occurred_at: None,
             category_id: Some(income_category.id),
             debit_card_id: None,
             description: "Salário".into(),
@@ -1607,6 +1616,7 @@ mod tests {
             kind: TransactionType::Income,
             amount: dec!(100),
             date: NaiveDate::from_ymd_opt(2026, 8, 13).unwrap(),
+            occurred_at: None,
             category_id: Some(category.id),
             debit_card_id: None,
             description: "Salário".into(),
@@ -1664,6 +1674,7 @@ mod tests {
             kind: TransactionType::Income,
             amount: dec!(100),
             date: NaiveDate::from_ymd_opt(2026, 8, 14).unwrap(),
+            occurred_at: None,
             category_id: Some(category.id),
             debit_card_id: None,
             description: "Freelance".into(),
@@ -1821,6 +1832,9 @@ mod tests {
                 kind: TransactionType::Income,
                 amount: dec!(100),
                 date: NaiveDate::from_ymd_opt(2026, 8, 7).unwrap(),
+                occurred_at: NaiveDate::from_ymd_opt(2026, 8, 7)
+                    .unwrap()
+                    .and_hms_opt(12, 34, 56),
                 category_id: Some(income_category.id),
                 debit_card_id: None,
                 description: "Pix recebido".into(),
@@ -1831,6 +1845,7 @@ mod tests {
                 kind: TransactionType::Expense,
                 amount: dec!(20),
                 date: NaiveDate::from_ymd_opt(2026, 8, 7).unwrap(),
+                occurred_at: None,
                 category_id: Some(expense_category.id),
                 debit_card_id: None,
                 description: "Pix enviado".into(),
@@ -1845,6 +1860,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(repository.available_balance().await.unwrap(), dec!(80));
+        let stored = repository.list_transactions().await.unwrap();
+        assert_eq!(stored[0].occurred_at, records[0].occurred_at);
         assert_eq!(
             repository
                 .get_vault(vault.id)
@@ -1872,6 +1889,7 @@ mod tests {
             kind: TransactionType::Expense,
             amount: dec!(10),
             date: NaiveDate::from_ymd_opt(2026, 8, 7).unwrap(),
+            occurred_at: None,
             category_id: Some(category.id),
             debit_card_id: None,
             description: "Compra".into(),

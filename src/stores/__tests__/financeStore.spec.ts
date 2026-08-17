@@ -9,6 +9,7 @@ function transaction(overrides: Partial<Transaction> = {}): Transaction {
     kind: 'expense',
     amount: '10.00',
     date: '2026-08-09',
+    occurredAt: null,
     categoryId: 'food',
     debitCardId: null,
     description: 'Teste',

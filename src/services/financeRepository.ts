@@ -182,7 +182,10 @@ function applyLocalAutomaticReserves(incomeCents: bigint) {
 
 export async function listTransactions(): Promise<Transaction[]> {
   if (isTauriRuntime()) return tauriInvoke<Transaction[]>('list_transactions')
-  return readLocal<Transaction[]>(TRANSACTIONS_KEY, [])
+  return readLocal<Transaction[]>(TRANSACTIONS_KEY, []).map((item) => ({
+    ...item,
+    occurredAt: item.occurredAt ?? null,
+  }))
 }
 
 export async function addTransaction(input: NewTransactionInput): Promise<Transaction> {
@@ -223,6 +226,7 @@ export async function addTransaction(input: NewTransactionInput): Promise<Transa
 
   const transaction: Transaction = {
     ...input,
+    occurredAt: input.occurredAt ?? null,
     debitCardId: input.kind === 'income' ? null : input.debitCardId,
     id: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
@@ -246,7 +250,7 @@ export async function importBankStatement(input: BankStatementImportInput): Prom
     })
   }
 
-  const categories = await listCategories([])
+  const [categories, cards] = await Promise.all([listCategories([]), listDebitCards()])
   const now = new Date().toISOString()
   const imported = input.transactions.map((item, index) => {
     const amount = moneyToCents(item.amount)
@@ -258,9 +262,14 @@ export async function importBankStatement(input: BankStatementImportInput): Prom
     if (!category || category.kind !== item.kind) {
       throw new Error('Escolha categorias compatíveis com as entradas e saídas')
     }
+    if (item.kind === 'expense' && item.debitCardId
+      && !cards.some((candidate) => candidate.id === item.debitCardId)) {
+      throw new Error('O extrato referencia um cartão que não existe mais')
+    }
     return {
       ...item,
-      debitCardId: null,
+      occurredAt: item.occurredAt ?? null,
+      debitCardId: item.kind === 'expense' ? item.debitCardId : null,
       id: crypto.randomUUID(),
       description: item.description.trim(),
       createdAt: new Date(new Date(now).getTime() + index).toISOString(),
@@ -341,6 +350,7 @@ export async function updateTransaction(input: UpdateTransactionInput): Promise<
   const updated: Transaction = {
     ...transactions[index],
     ...input,
+    occurredAt: input.occurredAt ?? null,
     categoryId: input.categoryId,
     debitCardId: input.kind === 'income' ? null : input.debitCardId,
   }
@@ -549,9 +559,10 @@ export async function moveVaultMoney(
   const next = input.kind === 'deposit' ? current + amount : current - amount
   if (next < 0n) throw new Error('O cofre não tem saldo suficiente')
 
+  const previousVaults = localStorage.getItem(VAULTS_KEY)
+  const previousMovements = localStorage.getItem(VAULT_MOVEMENTS_KEY)
   vault.balance = centsToMoney(next)
   vault.updatedAt = new Date().toISOString()
-  writeLocal(VAULTS_KEY, vaults)
   const movements = readLocal<VaultMovement[]>(VAULT_MOVEMENTS_KEY, [])
   movements.unshift({
     id: crypto.randomUUID(),
@@ -561,7 +572,16 @@ export async function moveVaultMoney(
     source,
     occurredAt: vault.updatedAt,
   })
-  writeLocal(VAULT_MOVEMENTS_KEY, movements.slice(0, 500))
+  try {
+    writeLocal(VAULTS_KEY, vaults)
+    writeLocal(VAULT_MOVEMENTS_KEY, movements.slice(0, 500))
+  } catch (cause) {
+    if (previousVaults === null) localStorage.removeItem(VAULTS_KEY)
+    else localStorage.setItem(VAULTS_KEY, previousVaults)
+    if (previousMovements === null) localStorage.removeItem(VAULT_MOVEMENTS_KEY)
+    else localStorage.setItem(VAULT_MOVEMENTS_KEY, previousMovements)
+    throw cause
+  }
   return { ...vault }
 }
 

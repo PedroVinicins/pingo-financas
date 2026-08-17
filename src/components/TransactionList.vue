@@ -27,7 +27,12 @@ function cardName(cardId: string | null) {
   return card ? `${card.name} •••• ${card.lastFour}` : 'Cartão removido'
 }
 
-function shortDate(value: string) {
+function shortDate(value: string, occurredAt: string | null) {
+  if (occurredAt) {
+    return new Intl.DateTimeFormat('pt-BR', {
+      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+    }).format(new Date(occurredAt))
+  }
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(new Date(`${value}T12:00:00`))
 }
 </script>
@@ -46,7 +51,7 @@ function shortDate(value: string) {
       <div class="min-w-0 flex-1">
         <p class="truncate font-semibold">{{ transaction.description }}</p>
         <p class="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
-          {{ categoryName(transaction.categoryId) }} · {{ shortDate(transaction.date) }}
+          {{ categoryName(transaction.categoryId) }} · {{ shortDate(transaction.date, transaction.occurredAt) }}
           <template v-if="cardName(transaction.debitCardId)"> · {{ cardName(transaction.debitCardId) }}</template>
         </p>
       </div>
