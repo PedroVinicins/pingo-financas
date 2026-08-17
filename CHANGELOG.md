@@ -11,7 +11,7 @@
 - cria ações rápidas para Gasto, Entrada e transferência ao Porquinho usando os fluxos financeiros existentes;
 - transforma Ajustes em uma página agrupada com perfil, orçamento, aparência, registro, notificações, dados e segurança;
 - implementa tema Claro, Escuro e Sistema persistido, incluindo atualização em tempo real quando o aparelho muda;
-- adiciona exportação CSV e mantém backup JSON, privacidade, lembretes, atalhos, reset da Home e reset total;
+- adiciona exportação CSV e restauração validada e atômica do backup JSON, mantendo privacidade, lembretes e resets;
 - corrige definitivamente estouros de nomes, categorias, cartões e valores no histórico de compras;
 - atualiza Web/PWA e Android para a versão 0.11.0 (`versionCode` 11000).
 

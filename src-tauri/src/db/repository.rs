@@ -1,4 +1,7 @@
-use std::str::FromStr;
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+};
 
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
 use rust_decimal::{Decimal, RoundingStrategy};
@@ -7,9 +10,9 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::models::{
-    AccountSettings, AutomaticReserveMode, AutomaticReserveRule, CardBackground, CardNetwork,
-    CardPattern, Category, DebitCard, DigitalWalletItem, DigitalWalletItemKind, LegacyAppData,
-    MonthlyReserveRule, RecurrenceType, RecurringRule, Transaction, TransactionType,
+    AccountSettings, AutomaticReserveMode, AutomaticReserveRule, BackupData, CardBackground,
+    CardNetwork, CardPattern, Category, DebitCard, DigitalWalletItem, DigitalWalletItemKind,
+    LegacyAppData, MonthlyReserveRule, RecurrenceType, RecurringRule, Transaction, TransactionType,
     UpdateDebitCardStyle, Vault, VaultMovement, VaultMovementSource, VaultMovementType, VaultType,
 };
 
@@ -810,6 +813,125 @@ impl<'a> FinanceRepository<'a> {
         Ok(())
     }
 
+    pub async fn restore_backup(&self, data: &BackupData) -> Result<(), DbError> {
+        validate_backup(data)?;
+        let mut database_transaction = self.pool.begin().await?;
+        for table in [
+            "transactions",
+            "recurring_rules",
+            "vault_movements",
+            "automatic_reserve_rules",
+            "monthly_reserve_rules",
+            "vaults",
+            "debit_cards",
+            "digital_wallet_items",
+            "dashboard_preferences",
+            "account_settings",
+            "categories",
+        ] {
+            sqlx::query(&format!("DELETE FROM {table}"))
+                .execute(&mut *database_transaction)
+                .await?;
+        }
+
+        for category in &data.categories {
+            sqlx::query("INSERT INTO categories (id, kind, name, icon, color, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+                .bind(category.id.to_string()).bind(category.kind.as_str()).bind(&category.name)
+                .bind(&category.icon).bind(&category.color).bind(category.created_at.to_rfc3339())
+                .execute(&mut *database_transaction).await?;
+        }
+        for card in &data.debit_cards {
+            sqlx::query(
+                r#"INSERT INTO debit_cards
+                   (id, name, issuer, holder_name, last_four, network, color_from, color_to, pattern,
+                    background_image, emoji, is_default, is_frozen, monthly_spending_limit, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+            )
+            .bind(card.id.to_string()).bind(&card.name).bind(&card.issuer).bind(&card.holder_name)
+            .bind(&card.last_four).bind(card.network.as_str()).bind(&card.color_from).bind(&card.color_to)
+            .bind(card.pattern.as_str()).bind(card.background_image.as_str()).bind(&card.emoji)
+            .bind(card.is_default).bind(card.is_frozen)
+            .bind(card.monthly_spending_limit.map(|value| value.to_string()))
+            .bind(card.created_at.to_rfc3339()).execute(&mut *database_transaction).await?;
+        }
+        for vault in &data.vaults {
+            sqlx::query(
+                r#"INSERT INTO vaults
+                   (id, name, institution, type, balance, target_amount, annual_yield_rate, color, emoji, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+            )
+            .bind(vault.id.to_string()).bind(&vault.name).bind(&vault.institution).bind(vault.r#type.as_str())
+            .bind(vault.balance.to_string()).bind(vault.target_amount.map(|value| value.to_string()))
+            .bind(vault.annual_yield_rate.map(|value| value.to_string())).bind(&vault.color).bind(&vault.emoji)
+            .bind(vault.created_at.to_rfc3339()).bind(vault.updated_at.to_rfc3339())
+            .execute(&mut *database_transaction).await?;
+        }
+        for transaction in &data.transactions {
+            insert_transaction_record(&mut database_transaction, transaction).await?;
+        }
+        for movement in &data.vault_movements {
+            insert_vault_movement(&mut database_transaction, movement).await?;
+        }
+        for rule in &data.automatic_reserve_rules {
+            sqlx::query("INSERT INTO automatic_reserve_rules (vault_id, enabled, mode, value, updated_at) VALUES (?, ?, ?, ?, ?)")
+                .bind(rule.vault_id.to_string()).bind(rule.enabled).bind(rule.mode.as_str())
+                .bind(rule.value.to_string()).bind(Utc::now().to_rfc3339())
+                .execute(&mut *database_transaction).await?;
+        }
+        for rule in &data.monthly_reserve_rules {
+            sqlx::query(
+                r#"INSERT INTO monthly_reserve_rules
+                   (vault_id, enabled, mode, value, day_of_month, last_processed_period, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)"#,
+            )
+            .bind(rule.vault_id.to_string())
+            .bind(rule.enabled)
+            .bind(rule.mode.as_str())
+            .bind(rule.value.to_string())
+            .bind(rule.day_of_month)
+            .bind(&rule.last_processed_period)
+            .bind(Utc::now().to_rfc3339())
+            .execute(&mut *database_transaction)
+            .await?;
+        }
+        for item in &data.digital_wallet_items {
+            sqlx::query(
+                r#"INSERT INTO digital_wallet_items
+                   (id, kind, title, issuer, notes, qr_value, file_name, mime_type, file_data_url,
+                    expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+            )
+            .bind(item.id.to_string()).bind(item.kind.as_str()).bind(&item.title).bind(&item.issuer)
+            .bind(&item.notes).bind(&item.qr_value).bind(&item.file_name).bind(&item.mime_type)
+            .bind(&item.file_data_url).bind(item.expires_at.map(|date| date.format("%Y-%m-%d").to_string()))
+            .bind(item.created_at.to_rfc3339()).bind(item.updated_at.to_rfc3339())
+            .execute(&mut *database_transaction).await?;
+        }
+        for rule in &data.recurring_rules {
+            insert_recurring_rule(&mut *database_transaction, rule, false).await?;
+        }
+        sqlx::query(
+            r#"INSERT INTO account_settings
+               (id, opening_balance_adjustment, balance_hidden, migrated_at, updated_at)
+               VALUES (1, ?, ?, ?, ?)"#,
+        )
+        .bind(data.account_settings.opening_balance_adjustment.to_string())
+        .bind(data.account_settings.balance_hidden)
+        .bind(data.account_settings.migrated_at.to_rfc3339())
+        .bind(Utc::now().to_rfc3339())
+        .execute(&mut *database_transaction)
+        .await?;
+        sqlx::query(
+            "INSERT INTO dashboard_preferences (id, layout_json, updated_at) VALUES (1, ?, ?)",
+        )
+        .bind(serde_json::to_string(&data.dashboard_layout).map_err(invalid)?)
+        .bind(Utc::now().to_rfc3339())
+        .execute(&mut *database_transaction)
+        .await?;
+
+        database_transaction.commit().await?;
+        Ok(())
+    }
+
     pub async fn list_recurring_rules(&self) -> Result<Vec<RecurringRule>, DbError> {
         let rows = sqlx::query(
             r#"SELECT id, kind, amount, day_of_month, category_id, debit_card_id, description,
@@ -956,6 +1078,126 @@ impl<'a> FinanceRepository<'a> {
         transaction.commit().await?;
         Ok(())
     }
+}
+
+fn validate_backup(data: &BackupData) -> Result<(), DbError> {
+    if data.transactions.len() > 50_000
+        || data.categories.len() > 1_000
+        || data.debit_cards.len() > 500
+        || data.vaults.len() > 1_000
+        || data.digital_wallet_items.len() > 1_000
+        || data.recurring_rules.len() > 5_000
+    {
+        return Err(DbError::InvalidOperation(
+            "o backup ultrapassa os limites seguros".into(),
+        ));
+    }
+    let categories: HashMap<Uuid, TransactionType> = data
+        .categories
+        .iter()
+        .map(|item| (item.id, item.kind))
+        .collect();
+    if categories.len() != data.categories.len()
+        || data.categories.iter().any(|item| {
+            item.name.trim().is_empty() || item.color.len() != 7 || !item.color.starts_with('#')
+        })
+    {
+        return Err(DbError::InvalidOperation(
+            "o backup contém categorias inválidas".into(),
+        ));
+    }
+    let cards: HashSet<Uuid> = data.debit_cards.iter().map(|item| item.id).collect();
+    if cards.len() != data.debit_cards.len()
+        || data
+            .debit_cards
+            .iter()
+            .filter(|item| item.is_default)
+            .count()
+            > 1
+        || data.debit_cards.iter().any(|item| {
+            item.last_four.len() != 4
+                || item
+                    .monthly_spending_limit
+                    .is_some_and(|value| value <= Decimal::ZERO)
+        })
+    {
+        return Err(DbError::InvalidOperation(
+            "o backup contém cartões inválidos".into(),
+        ));
+    }
+    let vaults: HashSet<Uuid> = data.vaults.iter().map(|item| item.id).collect();
+    if vaults.len() != data.vaults.len()
+        || data.vaults.iter().any(|item| {
+            item.balance < Decimal::ZERO
+                || item.name.trim().is_empty()
+                || item
+                    .target_amount
+                    .is_some_and(|value| value <= Decimal::ZERO)
+        })
+    {
+        return Err(DbError::InvalidOperation(
+            "o backup contém Porquinhos inválidos".into(),
+        ));
+    }
+    let mut transaction_ids = HashSet::new();
+    let mut net = data.account_settings.opening_balance_adjustment;
+    for item in &data.transactions {
+        if !transaction_ids.insert(item.id)
+            || item.amount <= Decimal::ZERO
+            || item.description.trim().is_empty()
+            || item
+                .occurred_at
+                .is_some_and(|value| value.date() != item.date)
+            || item.category_id.and_then(|id| categories.get(&id).copied()) != Some(item.kind)
+            || item.debit_card_id.is_some_and(|id| !cards.contains(&id))
+            || (item.kind == TransactionType::Income && item.debit_card_id.is_some())
+        {
+            return Err(DbError::InvalidOperation(
+                "o backup contém transações inválidas".into(),
+            ));
+        }
+        net += if item.kind == TransactionType::Income {
+            item.amount
+        } else {
+            -item.amount
+        };
+    }
+    net -= data.vaults.iter().map(|item| item.balance).sum::<Decimal>();
+    if net < Decimal::ZERO {
+        return Err(DbError::InvalidOperation(
+            "o backup deixaria o saldo disponível negativo".into(),
+        ));
+    }
+    if data
+        .vault_movements
+        .iter()
+        .any(|item| !vaults.contains(&item.vault_id) || item.amount <= Decimal::ZERO)
+        || data
+            .automatic_reserve_rules
+            .iter()
+            .any(|item| !vaults.contains(&item.vault_id) || item.validate().is_err())
+        || data
+            .monthly_reserve_rules
+            .iter()
+            .any(|item| !vaults.contains(&item.vault_id) || item.validate().is_err())
+        || data.recurring_rules.iter().any(|item| {
+            item.validate().is_err()
+                || categories.get(&item.category_id).copied() != Some(item.kind)
+                || item.debit_card_id.is_some_and(|id| !cards.contains(&id))
+        })
+        || data.digital_wallet_items.iter().any(|item| {
+            item.title.trim().is_empty()
+                || item
+                    .file_data_url
+                    .as_ref()
+                    .is_some_and(|value| value.len() > 4_200_000)
+        })
+    {
+        return Err(DbError::InvalidOperation(
+            "o backup contém vínculos ou automações inválidas".into(),
+        ));
+    }
+    Ok(())
 }
 
 async fn insert_vault_movement(
@@ -1902,5 +2144,58 @@ mod tests {
             .await
             .is_err());
         assert!(repository.list_transactions().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn restore_backup_replaces_data_atomically() {
+        let pool = test_pool().await;
+        let repository = FinanceRepository::new(&pool);
+        let categories = repository.list_categories().await.unwrap();
+        let income_category = categories
+            .iter()
+            .find(|item| item.kind == TransactionType::Income)
+            .unwrap();
+        let income = Transaction::new(NewTransaction {
+            kind: TransactionType::Income,
+            amount: dec!(250),
+            date: NaiveDate::from_ymd_opt(2026, 8, 17).unwrap(),
+            occurred_at: None,
+            category_id: Some(income_category.id),
+            debit_card_id: None,
+            description: "Salário restaurado".into(),
+            recurrence: RecurrenceType::Variable,
+        })
+        .unwrap();
+        let backup = BackupData {
+            transactions: vec![income.clone()],
+            categories,
+            debit_cards: vec![],
+            vaults: vec![],
+            vault_movements: vec![],
+            automatic_reserve_rules: vec![],
+            monthly_reserve_rules: vec![],
+            digital_wallet_items: vec![],
+            dashboard_layout: serde_json::json!({"widgets": []}),
+            recurring_rules: vec![],
+            account_settings: AccountSettings {
+                opening_balance_adjustment: Decimal::ZERO,
+                balance_hidden: true,
+                migrated_at: Utc::now(),
+            },
+        };
+
+        repository.factory_reset().await.unwrap();
+        repository.restore_backup(&backup).await.unwrap();
+
+        assert_eq!(repository.list_transactions().await.unwrap(), vec![income]);
+        assert_eq!(repository.available_balance().await.unwrap(), dec!(250));
+        assert!(
+            repository
+                .get_account_settings()
+                .await
+                .unwrap()
+                .unwrap()
+                .balance_hidden
+        );
     }
 }

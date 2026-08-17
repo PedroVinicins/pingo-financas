@@ -53,6 +53,7 @@ pub fn run() {
             commands::remove_monthly_reserve_rule,
             commands::process_monthly_reserves,
             commands::factory_reset,
+            commands::restore_backup,
             commands::list_recurring_rules,
             commands::add_recurring_rule,
             commands::update_recurring_rule,

@@ -5,12 +5,13 @@ import {
   Mic, Move3d, Palette, RefreshCw, RotateCcw, ShieldCheck, Smartphone, Upload, X,
 } from 'lucide-vue-next'
 import AppSwitch from './AppSwitch.vue'
+import ConfirmDialog from './ConfirmDialog.vue'
 import FactoryResetDialog from './FactoryResetDialog.vue'
 import ProfileCard from './ProfileCard.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsRow from './SettingsRow.vue'
 import { useFinanceStore } from '../stores/financeStore'
-import { exportBackup, exportTransactionsCsv } from '../services/backup'
+import { exportBackup, exportTransactionsCsv, parseBackupFile, type PingoBackup } from '../services/backup'
 import { isTauriRuntime } from '../services/financeRepository'
 import { DASHBOARD_WIDGETS } from '../services/dashboardLayout'
 import { requestMotionPermission } from '../services/deviceExperience'
@@ -23,6 +24,9 @@ const emit = defineEmits<{ close: [] }>()
 const store = useFinanceStore()
 const exporting = ref(false)
 const exportingCsv = ref(false)
+const backupInput = ref<HTMLInputElement | null>(null)
+const pendingBackup = ref<PingoBackup | null>(null)
+const restoringBackup = ref(false)
 const confirmingReset = ref(false)
 const resetting = ref(false)
 const sensorBusy = ref(false)
@@ -110,6 +114,23 @@ async function downloadCsv() {
   catch (cause) { store.reportError(cause, 'Não foi possível exportar o CSV.') }
   finally { exportingCsv.value = false }
 }
+async function chooseBackup(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  try { pendingBackup.value = await parseBackupFile(file) }
+  catch (cause) { store.reportError(cause, 'Não foi possível ler o backup.') }
+}
+async function confirmRestoreBackup() {
+  if (!pendingBackup.value) return
+  restoringBackup.value = true
+  try { await store.restoreBackup(pendingBackup.value.data) }
+  catch (cause) {
+    restoringBackup.value = false
+    store.reportError(cause, 'Não foi possível restaurar o backup.')
+  }
+}
 async function factoryReset() {
   resetting.value = true
   try { await store.factoryReset() }
@@ -173,7 +194,8 @@ async function factoryReset() {
           <SettingsGroup title="Dados e segurança">
             <SettingsRow label="Backup local" :value="exporting ? 'Preparando…' : ''" clickable @activate="downloadBackup"><template #icon><Download :size="18" class="text-brand" /></template></SettingsRow>
             <SettingsRow label="Exportar CSV" :value="exportingCsv ? 'Preparando…' : ''" clickable @activate="downloadCsv"><template #icon><FileDown :size="18" class="text-brand" /></template></SettingsRow>
-            <SettingsRow label="Restaurar backup" value="Em preparação" disabled><template #icon><Upload :size="18" class="text-subtle" /></template></SettingsRow>
+            <SettingsRow label="Restaurar backup" description="Substitui os dados atuais após sua confirmação." clickable @activate="backupInput?.click()"><template #icon><Upload :size="18" class="text-brand" /></template></SettingsRow>
+            <input ref="backupInput" type="file" accept="application/json,.json" class="sr-only" aria-label="Selecionar backup do Pingo" @change="chooseBackup" />
             <SettingsRow label="Bloqueio do aplicativo" :value="isTauriRuntime() ? 'Em preparação' : 'Não disponível na Web'" disabled><template #icon><LockKeyhole :size="18" class="text-subtle" /></template></SettingsRow>
             <SettingsRow label="Reset total" description="Apaga permanentemente dados, preferências e automações deste dispositivo." danger clickable @activate="confirmingReset = true"><template #icon><RotateCcw :size="18" /></template></SettingsRow>
           </SettingsGroup>
@@ -194,4 +216,5 @@ async function factoryReset() {
     </div>
   </Teleport>
   <FactoryResetDialog v-if="confirmingReset" :busy="resetting" @cancel="confirmingReset = false" @confirm="factoryReset" />
+  <ConfirmDialog v-if="pendingBackup" title="Restaurar este backup?" message="Os dados atuais deste dispositivo serão substituídos pelo conteúdo do arquivo. Faça um backup atual antes de continuar." confirm-label="Restaurar dados" :busy="restoringBackup" @cancel="pendingBackup = null" @confirm="confirmRestoreBackup" />
 </template>

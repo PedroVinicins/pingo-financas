@@ -2,11 +2,11 @@
 
 ## Validado neste ambiente
 
-- `npm test`: 50 testes aprovados em 10 arquivos;
+- `npm test`: 51 testes aprovados em 10 arquivos;
 - `npm run build`: TypeScript, Vue e build PWA de produção aprovados;
 - `npm audit --audit-level=high`: nenhuma vulnerabilidade conhecida;
 - `cargo fmt --all -- --check`: aprovado;
-- `cargo test --locked`: 29 testes aprovados (26 no core e 3 de integração);
+- `cargo test --locked`: 30 testes aprovados (27 no core e 3 de integração);
 - migrations SQLite `0001` até `0009` executadas em sequência nos bancos limpos dos testes;
 - lotes de extrato e transferências de Porquinho validados com rollback/atomicidade;
 - PWA gerado com cache `pingo-shell-v0.11.0`, manifest, ícone e service worker;
@@ -15,7 +15,7 @@
 - APK assinado por certificado Android Debug e verificado com APK Signature Scheme v2;
 - Manifest Android confirmado com `windowSoftInputMode="adjustResize"`, backup externo desativado e quatro atalhos do launcher;
 - APK contém somente a biblioteca nativa `libpingo_financas_lib.so` em `arm64-v8a`;
-- SHA-256 do APK: `e1229edb5299903b6da21557cc8a8337f8c705f69ac9b40d772e4dfe070f6477`.
+- SHA-256 do APK: `928889c6507b019185105cda7acc92500f76fb51f67231b51f158f79f83752d6`.
 
 ## Testes automatizados
 
@@ -32,6 +32,7 @@
 - criação do Piloto Mensal e envio ao Porquinho dentro do formulário de transações;
 - ordem, visibilidade e tamanhos válidos do painel personalizável;
 - reset total do SQLite e do armazenamento Web;
+- restauração de backup validada no Web e aplicada de forma atômica no SQLite;
 - leitura do exemplo CSV/TSV do Banco Inter, OFX e linhas extraídas de PDF textual;
 - preservação de data/hora, limpeza de códigos operacionais e detecção de PIX, débito e crédito;
 - sugestão de vínculo de cartão, duplicatas, conciliação de saldo e rollback de extratos inválidos;
@@ -49,7 +50,7 @@ Arquivo:
 src-tauri/gen/android/app/build/outputs/apk/universal/debug/Pingo-0.11.0-Android-ARM64.apk
 ```
 
-Tamanho: 180.152.663 bytes. Esta build é para celulares ARM64 e usa o sufixo `.debug`, portanto pode ser instalada ao lado do pacote de produção.
+Tamanho: 181.368.265 bytes. Esta build é para celulares ARM64 e usa o sufixo `.debug`, portanto pode ser instalada ao lado do pacote de produção.
 
 ## Integração contínua
 

@@ -7,7 +7,7 @@ mod transaction;
 mod vault;
 
 pub use app_data::{
-    AccountSettings, AutomaticReserveError, AutomaticReserveMode, AutomaticReserveRule,
+    AccountSettings, AutomaticReserveError, AutomaticReserveMode, AutomaticReserveRule, BackupData,
     LegacyAppData, VaultMovement, VaultMovementSource,
 };
 pub use category::{Category, CategoryError, NewCategory};

@@ -26,6 +26,7 @@ import type {
 } from '../types/finance'
 import { DEFAULT_DASHBOARD_LAYOUT, normalizeDashboardLayout } from './dashboardLayout'
 import { firstRecurringDueDate, followingRecurringDueDate, localDateKey } from './recurringDates'
+import { validateBackupData, type PingoBackup } from './backup'
 
 // Mantidos para preservar dados de quem já usou as versões 0.1/0.2 no navegador.
 const TRANSACTIONS_KEY = 'cashew-clone:transactions'
@@ -784,6 +785,54 @@ export async function factoryReset(): Promise<void> {
   }
   keys.forEach((key) => localStorage.removeItem(key))
   sessionStorage.removeItem('pingo:active-view')
+}
+
+export async function restoreBackup(data: PingoBackup['data']): Promise<void> {
+  validateBackupData(data)
+  const preferenceKey = 'pingo:preferences'
+  const preferenceSnapshot = localStorage.getItem(preferenceKey)
+  if (isTauriRuntime()) {
+    try {
+      localStorage.setItem(preferenceKey, JSON.stringify(data.preferences))
+      await tauriInvoke<void>('restore_backup', { data })
+    } catch (cause) {
+      if (preferenceSnapshot === null) localStorage.removeItem(preferenceKey)
+      else localStorage.setItem(preferenceKey, preferenceSnapshot)
+      throw cause
+    }
+    return
+  }
+
+  const existingKeys: string[] = []
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index)
+    if (key && (key.startsWith('pingo:') || key.startsWith('cashew-clone:') || key === 'theme')) existingKeys.push(key)
+  }
+  const snapshot = new Map(existingKeys.map((key) => [key, localStorage.getItem(key)]))
+  try {
+    existingKeys.forEach((key) => localStorage.removeItem(key))
+    writeLocal(TRANSACTIONS_KEY, data.transactions)
+    writeLocal(CATEGORIES_KEY, data.categories)
+    writeLocal(DEBIT_CARDS_KEY, data.debitCards)
+    writeLocal(VAULTS_KEY, data.vaults)
+    writeLocal(VAULT_MOVEMENTS_KEY, data.vaultMovements)
+    writeLocal(AUTOMATIC_RESERVE_KEY, data.automaticReserveRules)
+    writeLocal(MONTHLY_RESERVE_KEY, data.monthlyReserveRules)
+    writeLocal(DIGITAL_WALLET_KEY, data.digitalWalletItems)
+    writeLocal(DASHBOARD_LAYOUT_KEY, normalizeDashboardLayout(data.dashboardLayout))
+    writeLocal(RECURRING_RULES_KEY, data.recurringRules)
+    writeLocal(ACCOUNT_SETTINGS_KEY, data.accountSettings)
+    writeLocal(preferenceKey, data.preferences)
+  } catch (cause) {
+    const restoredKeys: string[] = []
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index)
+      if (key && (key.startsWith('pingo:') || key.startsWith('cashew-clone:') || key === 'theme')) restoredKeys.push(key)
+    }
+    restoredKeys.forEach((key) => localStorage.removeItem(key))
+    snapshot.forEach((value, key) => { if (value !== null) localStorage.setItem(key, value) })
+    throw cause
+  }
 }
 
 export async function listRecurringRules(): Promise<RecurringRule[]> {

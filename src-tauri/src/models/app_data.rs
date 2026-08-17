@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-use super::{RecurringRule, VaultMovementType};
+use super::{
+    Category, DebitCard, DigitalWalletItem, MonthlyReserveRule, RecurringRule, Transaction, Vault,
+    VaultMovementType,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -143,4 +146,29 @@ pub struct LegacyAppData {
     pub automatic_reserve_rules: Vec<AutomaticReserveRule>,
     #[serde(default)]
     pub recurring_rules: Vec<RecurringRule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupData {
+    #[serde(default)]
+    pub transactions: Vec<Transaction>,
+    #[serde(default)]
+    pub categories: Vec<Category>,
+    #[serde(default)]
+    pub debit_cards: Vec<DebitCard>,
+    #[serde(default)]
+    pub vaults: Vec<Vault>,
+    #[serde(default)]
+    pub vault_movements: Vec<VaultMovement>,
+    #[serde(default)]
+    pub automatic_reserve_rules: Vec<AutomaticReserveRule>,
+    #[serde(default)]
+    pub monthly_reserve_rules: Vec<MonthlyReserveRule>,
+    #[serde(default)]
+    pub digital_wallet_items: Vec<DigitalWalletItem>,
+    pub dashboard_layout: serde_json::Value,
+    #[serde(default)]
+    pub recurring_rules: Vec<RecurringRule>,
+    pub account_settings: AccountSettings,
 }

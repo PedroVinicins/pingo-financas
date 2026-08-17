@@ -16,7 +16,7 @@ A proposta é unir a velocidade de um app de carteira no celular com ferramentas
 - Início reorganizado com saudação, seletor de período, saldo disponível, patrimônio, ações rápidas e últimas transações;
 - seletor de mês ligado à Pinia para manter saldo do período, entradas, saídas, histórico e Análises na mesma fonte;
 - Ajustes em grupos com perfil, limite mensal, tema Claro/Escuro/Sistema, notificações, privacidade e central do Pingo;
-- exportação real das transações em CSV, além do backup JSON e reset total já existentes;
+- exportação real das transações em CSV, backup JSON com restauração confirmada e reset total;
 - histórico dos cartões protegido contra textos e valores extensos em telas a partir de 320 px;
 - Android `versionCode` 11000 e cache Web renovado para a nova release.
 

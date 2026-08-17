@@ -6,10 +6,10 @@ use uuid::Uuid;
 use crate::{
     db::{AppState, FinanceRepository},
     models::{
-        clean_emoji, validate_style, AccountSettings, AutomaticReserveRule, Category, DebitCard,
-        DigitalWalletItem, LegacyAppData, MonthlyReserveRule, MoveVaultMoney, NewCategory,
-        NewDebitCard, NewDigitalWalletItem, NewRecurringRule, NewTransaction, NewVault,
-        RecurrenceType, RecurringRule, RecurringSettlement, Transaction, TransactionType,
+        clean_emoji, validate_style, AccountSettings, AutomaticReserveRule, BackupData, Category,
+        DebitCard, DigitalWalletItem, LegacyAppData, MonthlyReserveRule, MoveVaultMoney,
+        NewCategory, NewDebitCard, NewDigitalWalletItem, NewRecurringRule, NewTransaction,
+        NewVault, RecurrenceType, RecurringRule, RecurringSettlement, Transaction, TransactionType,
         UpdateDebitCardStyle, UpdateVault, Vault, VaultMovement, VaultMovementSource,
         VaultMovementType,
     },
@@ -622,6 +622,14 @@ pub async fn process_monthly_reserves(
 pub async fn factory_reset(state: State<'_, AppState>) -> Result<(), String> {
     FinanceRepository::new(&state.pool)
         .factory_reset()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn restore_backup(state: State<'_, AppState>, data: BackupData) -> Result<(), String> {
+    FinanceRepository::new(&state.pool)
+        .restore_backup(&data)
         .await
         .map_err(|error| error.to_string())
 }

@@ -38,6 +38,7 @@ import {
 } from '../services/notifications'
 import { pingoMessageForTransaction } from '../services/pingoMessages'
 import { loadPingoPreferences, savePingoPreferences } from '../services/pingoPreferences'
+import type { PingoBackup } from '../services/backup'
 import {
   daysAfterRecurringDueDate,
   isRecurringRuleDue,
@@ -694,6 +695,14 @@ export const useFinanceStore = defineStore('finance', () => {
     await repository.factoryReset()
     window.location.reload()
   }
+  async function restoreBackup(data: PingoBackup['data']) {
+    await disableMoneyReminders().catch(() => undefined)
+    for (const rule of recurringRules.value) {
+      await cancelRecurringRuleNotification(rule.id).catch(() => undefined)
+    }
+    await repository.restoreBackup(data)
+    window.location.reload()
+  }
   async function setAvailableBalance(amount: string) {
     const desired = decimalToCents(amount)
     const adjustment = desired + vaultTotalCents.value - transactionNetCents.value
@@ -820,7 +829,7 @@ export const useFinanceStore = defineStore('finance', () => {
     editTransaction, createCategory, deleteTransaction, createDebitCard, updateCardStyle, setCardFrozen,
     makeDefaultCard, removeDebitCard, createVault, moveVaultMoney, correctVaultBalance, customizeVault, removeVault,
     saveAutomaticReserve, saveMonthlyReserve, saveDashboard, resetDashboard,
-    createDigitalWalletItem, removeDigitalWalletItem, factoryReset, setAvailableBalance, toggleBalanceVisibility,
+    createDigitalWalletItem, removeDigitalWalletItem, factoryReset, restoreBackup, setAvailableBalance, toggleBalanceVisibility,
     createRecurringRule, settleRecurringRule, processRecurringRules, processScheduledAutomation, removeRecurringRule,
     showFeedback, reportError, clearFeedback, updatePreferences,
   }
