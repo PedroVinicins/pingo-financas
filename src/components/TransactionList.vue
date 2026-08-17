@@ -52,8 +52,9 @@ function shortDate(value: string) {
       </div>
 
       <p
-        class="shrink-0 text-sm font-bold sm:text-base"
+        class="max-w-[42%] shrink truncate text-right text-sm font-bold tabular-nums sm:max-w-[36%] sm:text-base"
         :class="transaction.kind === 'income' ? 'text-emerald-600' : 'text-slate-900 dark:text-slate-100'"
+        :title="`${transaction.kind === 'income' ? '+' : '-'}${money(transaction.amount)}`"
       >
         {{ transaction.kind === 'income' ? '+' : '-' }}{{ money(transaction.amount) }}
       </p>

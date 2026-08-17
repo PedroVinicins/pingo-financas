@@ -46,6 +46,7 @@ let removeDeepLinkListener: (() => void) | undefined
 let stopReminderWatcher: (() => void) | undefined
 let stopWebApp: (() => void) | undefined
 let recurringWatcher: number | undefined
+let pingoMessageTimer: number | undefined
 
 const pageTitle = computed(() => ({
   dashboard: 'Meu dinheiro', expenses: 'Gastos e economias', wallet: 'Carteira', vaults: 'Cofres',
@@ -98,6 +99,13 @@ watch(activeView, (view) => {
   document.title = `${pageTitle.value} · Pingo`
 }, { immediate: true })
 
+watch(() => store.pingoMessage, (message) => {
+  if (pingoMessageTimer !== undefined) window.clearTimeout(pingoMessageTimer)
+  pingoMessageTimer = message
+    ? window.setTimeout(() => store.dismissPingoMessage(), 4_500)
+    : undefined
+})
+
 onMounted(async () => {
   applyTheme()
   stopWebApp = await setupWebApp()
@@ -108,6 +116,7 @@ onBeforeUnmount(() => {
   stopReminderWatcher?.()
   stopWebApp?.()
   if (recurringWatcher) window.clearInterval(recurringWatcher)
+  if (pingoMessageTimer !== undefined) window.clearTimeout(pingoMessageTimer)
 })
 </script>
 

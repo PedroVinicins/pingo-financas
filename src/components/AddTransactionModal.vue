@@ -5,6 +5,7 @@ import { useFinanceStore } from '../stores/financeStore'
 import { localizedDecimalToStorage, storageDecimalToLocalized } from '../services/localizedNumber'
 import LocalizedNumberInput from './LocalizedNumberInput.vue'
 import { localDateKey } from '../services/recurringDates'
+import { useKeyboardAwareModal } from '../services/mobileViewport'
 import type {
   Category,
   DebitCard,
@@ -17,6 +18,7 @@ import type {
 
 const props = defineProps<{ categories: Category[]; cards: DebitCard[]; transaction?: Transaction | null }>()
 const store = useFinanceStore()
+const { overlayStyle, contentStyle, keepFocusedFieldVisible } = useKeyboardAwareModal()
 const emit = defineEmits<{
   close: []
   save: [input: NewTransactionInput]
@@ -118,8 +120,8 @@ function submit() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 grid place-items-end bg-slate-950/45 p-0 sm:place-items-center sm:p-4" @click.self="emit('close')">
-    <form class="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-3xl" @submit.prevent="submit">
+  <div class="keyboard-aware-modal fixed inset-0 z-50 grid place-items-end bg-slate-950/45 p-0 sm:place-items-center sm:p-4" :style="overlayStyle" @click.self="emit('close')" @focusin="keepFocusedFieldVisible">
+    <form class="w-full overflow-y-auto overscroll-contain rounded-t-3xl bg-white p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-3xl sm:pb-5" :style="contentStyle" @submit.prevent="submit">
       <div class="mb-5 flex items-center justify-between">
         <div>
           <p class="text-sm font-medium text-emerald-600">{{ transaction ? 'Correção do histórico' : 'Nova movimentação' }}</p>

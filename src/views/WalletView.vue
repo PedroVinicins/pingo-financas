@@ -184,10 +184,10 @@ function displayDate(value: string) {
           </div>
 
           <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><p class="text-[11px] font-bold text-slate-400">Este mês</p><p class="mt-1 font-black">{{ money(monthSpentCents) }}</p></div>
-            <div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><p class="text-[11px] font-bold text-slate-400">Média/compra</p><p class="mt-1 font-black">{{ money(averagePurchaseCents) }}</p></div>
-            <div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><p class="text-[11px] font-bold text-slate-400">Compras</p><p class="mt-1 font-black">{{ selectedTransactions.length }}</p></div>
-            <div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><p class="text-[11px] font-bold text-slate-400">Histórico</p><p class="mt-1 font-black">{{ money(totalSpentCents) }}</p></div>
+            <div class="min-w-0 overflow-hidden rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><p class="truncate text-[11px] font-bold text-slate-400">Este mês</p><p class="mt-1 truncate font-black tabular-nums" :title="money(monthSpentCents)">{{ money(monthSpentCents) }}</p></div>
+            <div class="min-w-0 overflow-hidden rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><p class="truncate text-[11px] font-bold text-slate-400">Média/compra</p><p class="mt-1 truncate font-black tabular-nums" :title="money(averagePurchaseCents)">{{ money(averagePurchaseCents) }}</p></div>
+            <div class="min-w-0 overflow-hidden rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><p class="truncate text-[11px] font-bold text-slate-400">Compras</p><p class="mt-1 truncate font-black tabular-nums" :title="String(selectedTransactions.length)">{{ selectedTransactions.length }}</p></div>
+            <div class="min-w-0 overflow-hidden rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><p class="truncate text-[11px] font-bold text-slate-400">Histórico</p><p class="mt-1 truncate font-black tabular-nums" :title="money(totalSpentCents)">{{ money(totalSpentCents) }}</p></div>
           </div>
 
           <div v-if="monthLimitCents" class="mt-4"><div class="mb-1.5 flex justify-between text-xs font-bold"><span>Controle mensal</span><span class="text-slate-500">{{ limitProgress.toFixed(0) }}%</span></div><div class="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div class="h-full rounded-full bg-emerald-400" :style="{ width: `${limitProgress}%` }"></div></div></div>

@@ -6,6 +6,7 @@ import { useFinanceStore } from '../stores/financeStore'
 import { localizedDecimalToStorage } from '../services/localizedNumber'
 import { localDateKey } from '../services/recurringDates'
 import LocalizedNumberInput from './LocalizedNumberInput.vue'
+import { useKeyboardAwareModal } from '../services/mobileViewport'
 
 const props = defineProps<{
   categories: Category[]
@@ -16,6 +17,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ close: []; save: [input: NewTransactionInput] }>()
 const store = useFinanceStore()
+const { overlayStyle, contentStyle, keepFocusedFieldVisible } = useKeyboardAwareModal()
 const amountInput = ref<InstanceType<typeof LocalizedNumberInput> | null>(null)
 const expenseCategories = computed(() => props.categories.filter((item) => item.kind === 'expense'))
 const defaultCategory = props.recentCategoryIds?.[0]
@@ -101,8 +103,8 @@ async function createCategory() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[70] flex items-end bg-slate-950/45 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-4" @click.self="emit('close')">
-    <form class="w-full rounded-t-[2rem] bg-white px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-[2rem] sm:p-5" @submit.prevent="submit">
+  <div class="keyboard-aware-modal fixed inset-0 z-[70] flex items-end bg-slate-950/45 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-4" :style="overlayStyle" @click.self="emit('close')" @focusin="keepFocusedFieldVisible">
+    <form class="w-full overflow-y-auto overscroll-contain rounded-t-[2rem] bg-white px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-[2rem] sm:p-5" :style="contentStyle" @submit.prevent="submit">
       <div class="mx-auto mb-3 h-1.5 w-12 rounded-full bg-slate-200 dark:bg-slate-700 sm:hidden"></div>
       <div class="flex items-center justify-between gap-3">
         <div>
