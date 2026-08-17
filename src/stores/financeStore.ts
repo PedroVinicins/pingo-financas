@@ -17,6 +17,7 @@ import type {
   NewRecurringRuleInput,
   NewTransactionInput,
   NewVaultInput,
+  PingoPreferences,
   RecurringRule,
   Transaction,
   TransactionFilters,
@@ -36,6 +37,7 @@ import {
   scheduleRecurringRuleNotification,
 } from '../services/notifications'
 import { pingoMessageForTransaction } from '../services/pingoMessages'
+import { loadPingoPreferences, savePingoPreferences } from '../services/pingoPreferences'
 import {
   daysAfterRecurringDueDate,
   isRecurringRuleDue,
@@ -91,6 +93,7 @@ export const useFinanceStore = defineStore('finance', () => {
     balanceHidden: false,
     migratedAt: new Date().toISOString(),
   })
+  const preferences = ref<PingoPreferences>(loadPingoPreferences())
   const clock = ref(new Date())
   const pingoMessage = ref('')
   const initialized = ref(false)
@@ -165,6 +168,13 @@ export const useFinanceStore = defineStore('finance', () => {
   })
   const dailySpendingAverageCents = computed(() => currentMonthExpenseCents.value
     / BigInt(Math.max(1, clock.value.getDate())))
+  const todayExpenseCents = computed(() => {
+    const today = localDateKey(clock.value)
+    return transactions.value.reduce((total, transaction) =>
+      transaction.kind === 'expense' && transaction.date === today
+        ? total + decimalToCents(transaction.amount)
+        : total, 0n)
+  })
   const dailyBudgetCents = computed(() => {
     const now = clock.value
     const daysRemaining = BigInt(Math.max(
@@ -334,14 +344,15 @@ export const useFinanceStore = defineStore('finance', () => {
     if (feedbackTimer !== undefined) window.clearTimeout(feedbackTimer)
     feedbackTimer = undefined
   }
-  function showFeedback(message: string, tone: AppFeedback['tone'] = 'info', duration = 4_500) {
+  function showFeedback(message: string, tone: AppFeedback['tone'] = 'info', duration?: number) {
     clearFeedback()
     feedback.value = { id: ++feedbackSequence, tone, message }
-    if (duration > 0) feedbackTimer = window.setTimeout(clearFeedback, duration)
+    const timeout = duration ?? preferences.value.feedbackDurationMs
+    if (timeout > 0) feedbackTimer = window.setTimeout(clearFeedback, timeout)
   }
   function reportError(cause: unknown, fallback = 'Não foi possível concluir esta ação.') {
     const message = cause instanceof Error ? cause.message : fallback
-    showFeedback(message, 'error', 6_000)
+    showFeedback(message, 'error', 5_000)
     return message
   }
 
@@ -426,9 +437,20 @@ export const useFinanceStore = defineStore('finance', () => {
   }
   async function createTransaction(input: NewTransactionInput) {
     validateTransactionInput(input)
+    const daysRemaining = BigInt(Math.max(
+      1, new Date(clock.value.getFullYear(), clock.value.getMonth() + 1, 0).getDate() - clock.value.getDate() + 1,
+    ))
+    const dailyLimitBefore = availableBalanceCents.value / daysRemaining
     const transaction = await repository.addTransaction(input)
     addTransaction(transaction)
-    pingoMessage.value = pingoMessageForTransaction(transaction, availableBalanceCents.value)
+    const reachedDailyAlert = transaction.kind === 'expense'
+      && transaction.date === localDateKey(clock.value)
+      && preferences.value.dailySpendingAlertsEnabled
+      && dailyLimitBefore > 0n
+      && todayExpenseCents.value * 100n >= dailyLimitBefore * BigInt(preferences.value.spendingAlertPercent)
+    pingoMessage.value = reachedDailyAlert
+      ? `Radar diário: você já usou ${preferences.value.spendingAlertPercent}% ou mais do valor seguro para hoje. ⚠️`
+      : pingoMessageForTransaction(transaction, availableBalanceCents.value)
     if (transaction.kind === 'income') {
       const [storedVaults, storedMovements] = await Promise.all([
         repository.listVaults(), repository.listVaultMovements(),
@@ -447,6 +469,10 @@ export const useFinanceStore = defineStore('finance', () => {
       ? 'Extrato conferido: 1 lançamento novo entrou no histórico. 📄'
       : `Extrato conferido: ${imported.length} lançamentos novos entraram no histórico. 📄`
     return imported.length
+  }
+  function updatePreferences(next: Partial<PingoPreferences>) {
+    preferences.value = savePingoPreferences({ ...preferences.value, ...next })
+    return preferences.value
   }
   async function editTransaction(input: UpdateTransactionInput) {
     const current = transactions.value.find((item) => item.id === input.id)
@@ -761,11 +787,11 @@ export const useFinanceStore = defineStore('finance', () => {
   return {
     transactions, categories, debitCards, vaults, vaultMovements, automaticReserveRules,
     monthlyReserveRules, digitalWalletItems, dashboardLayout, recurringRules,
-    filters, accountSettings, pingoMessage, initialized, isInitializing, initializationError, feedback,
+    filters, accountSettings, preferences, pingoMessage, initialized, isInitializing, initializationError, feedback,
     balanceHidden, transactionNetCents, balanceCents, vaultTotalCents,
     availableBalanceCents, currentMonthBalanceCents, currentMonthIncomeCents, currentMonthExpenseCents,
     currentMonthSavingsCents, currentMonthFixedExpenseCents, savingsRate, fixedCostRatio,
-    averageMonthlyExpenseCents, projectedMonthExpenseCents, dailySpendingAverageCents, dailyBudgetCents,
+    averageMonthlyExpenseCents, projectedMonthExpenseCents, dailySpendingAverageCents, todayExpenseCents, dailyBudgetCents,
     emergencyFundMonths, financialHealthScore, filteredTransactions, recentTransactions, recentExpenses,
     hasActiveFilters,
     recentExpenseCategoryIds, expensesByCategory, currentMonthExpensesByCategory, expensePercentages,
@@ -779,6 +805,6 @@ export const useFinanceStore = defineStore('finance', () => {
     saveAutomaticReserve, saveMonthlyReserve, saveDashboard, resetDashboard,
     createDigitalWalletItem, removeDigitalWalletItem, factoryReset, setAvailableBalance, toggleBalanceVisibility,
     createRecurringRule, settleRecurringRule, processRecurringRules, processScheduledAutomation, removeRecurringRule,
-    showFeedback, reportError, clearFeedback,
+    showFeedback, reportError, clearFeedback, updatePreferences,
   }
 })

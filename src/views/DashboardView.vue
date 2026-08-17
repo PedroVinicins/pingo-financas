@@ -7,6 +7,7 @@ import {
 import { useFinanceStore, centsToDecimal } from '../stores/financeStore'
 import type { BankStatementImportInput, DashboardWidgetId, DashboardWidgetSize, NewRecurringRuleInput, NewTransactionInput, Transaction } from '../types/finance'
 import { cloneDashboardLayout, DASHBOARD_WIDGETS } from '../services/dashboardLayout'
+import { greetingForHour } from '../services/deviceExperience'
 import TransactionList from '../components/TransactionList.vue'
 import AddTransactionModal from '../components/AddTransactionModal.vue'
 import EditBalanceModal from '../components/EditBalanceModal.vue'
@@ -44,6 +45,9 @@ const categoryRows = computed(() => [...store.currentMonthExpensesByCategory.ent
     percentage: store.currentMonthExpensePercentages.get(id) ?? 0,
   })))
 const historyTransactions = computed(() => showAllHistory.value ? store.filteredTransactions : store.recentTransactions)
+const greeting = computed(() => store.preferences.greetingEnabled
+  ? greetingForHour(new Date().getHours())
+  : 'Meu resumo')
 
 async function save(input: NewTransactionInput) {
   try {
@@ -150,7 +154,7 @@ onBeforeUnmount(() => window.removeEventListener('pointermove', pointerMove))
 
 <template>
   <main class="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8">
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-3"><div><p class="text-sm font-bold text-emerald-600">Meu resumo</p><h1 class="text-2xl font-black">O que importa para você</h1><p v-if="customizing" class="mt-1 text-xs font-bold text-emerald-600">Arraste, redimensione ou esconda. Tudo é salvo automaticamente.</p></div><div class="flex flex-wrap gap-2"><button v-if="!customizing" class="inline-flex items-center gap-2 rounded-2xl border border-sky-200 bg-white px-3 py-3 text-sm font-black text-sky-700 dark:border-sky-900 dark:bg-slate-900" @click="showStatementImport = true"><FileUp :size="17" /> Extrato</button><button class="inline-flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black" :class="customizing ? 'border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'" @click="customizing = !customizing"><X v-if="customizing" :size="17" /><LayoutGrid v-else :size="17" /> {{ customizing ? 'Concluir' : 'Personalizar' }}</button><button v-if="!customizing" class="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-black text-emerald-950" @click="showModal = true"><Plus :size="18" /> <span class="hidden sm:inline">Transação</span></button></div></div>
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3"><div><p class="text-sm font-bold text-emerald-600">Meu resumo</p><h1 class="text-2xl font-black">{{ greeting }}</h1><p class="mt-0.5 text-sm text-slate-500">O que importa para você, do seu jeito.</p><p v-if="customizing" class="mt-1 text-xs font-bold text-emerald-600">Arraste, redimensione ou esconda. Tudo é salvo automaticamente.</p></div><div class="flex flex-wrap gap-2"><button v-if="!customizing" class="inline-flex items-center gap-2 rounded-2xl border border-sky-200 bg-white px-3 py-3 text-sm font-black text-sky-700 dark:border-sky-900 dark:bg-slate-900" @click="showStatementImport = true"><FileUp :size="17" /> Extrato</button><button class="inline-flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black" :class="customizing ? 'border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'" @click="customizing = !customizing"><X v-if="customizing" :size="17" /><LayoutGrid v-else :size="17" /> {{ customizing ? 'Concluir' : 'Personalizar' }}</button><button v-if="!customizing" class="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-black text-emerald-950" @click="showModal = true"><Plus :size="18" /> <span class="hidden sm:inline">Transação</span></button></div></div>
 
     <section v-if="customizing && hiddenWidgets.length" class="mb-4 rounded-2xl border border-dashed border-slate-300 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><p class="text-xs font-black uppercase tracking-wider text-slate-400">Ocultos</p><div class="mt-2 flex flex-wrap gap-2"><button v-for="widget in hiddenWidgets" :key="widget.id" class="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-xs font-black dark:bg-slate-800" @click="setVisibility(widget.id, true)"><Plus :size="14" /> {{ DASHBOARD_WIDGETS[widget.id].label }}</button></div></section>
 

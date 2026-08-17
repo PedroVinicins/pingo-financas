@@ -4,7 +4,7 @@ import { Banknote, Check, ChevronDown, CreditCard, Plus, X, Zap } from 'lucide-v
 import type { Category, DebitCard, NewTransactionInput } from '../types/finance'
 import { useFinanceStore } from '../stores/financeStore'
 import { localizedDecimalToStorage } from '../services/localizedNumber'
-import { localDateKey } from '../services/recurringDates'
+import { localDateKey, localDateTimeKey } from '../services/recurringDates'
 import LocalizedNumberInput from './LocalizedNumberInput.vue'
 import { useKeyboardAwareModal } from '../services/mobileViewport'
 
@@ -73,10 +73,12 @@ function submit() {
   if (!form.categoryId) { formError.value = 'Escolha uma categoria.'; return }
   const category = props.categories.find((item) => item.id === form.categoryId)
 
+  const occurredAt = new Date()
   emit('save', {
     kind: 'expense',
     amount,
-    date: localDateKey(new Date()),
+    date: localDateKey(occurredAt),
+    occurredAt: localDateTimeKey(occurredAt),
     categoryId: form.categoryId,
     debitCardId: form.debitCardId || null,
     description: form.description.trim() || category?.name || 'Compra rápida',
