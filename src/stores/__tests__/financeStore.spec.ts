@@ -180,6 +180,24 @@ describe('financeStore', () => {
     })).rejects.toThrow(/não deixa sua conta ficar negativa/i)
   })
 
+  it('persiste as preferências e alerta ao atingir o radar diário', async () => {
+    const store = useFinanceStore()
+    const expenseCategory = category()
+    localStorage.setItem('cashew-clone:categories', JSON.stringify([expenseCategory]))
+    store.setCategories([expenseCategory])
+    await store.setAvailableBalance('200.00')
+    store.updatePreferences({ dailySpendingAlertsEnabled: true, spendingAlertPercent: 80 })
+
+    await store.createTransaction({
+      kind: 'expense', amount: '8.00', date: '2026-08-12', occurredAt: '2026-08-12T10:00:00',
+      categoryId: expenseCategory.id, debitCardId: null, description: 'Café', recurrence: 'variable',
+    })
+
+    expect(store.todayExpenseCents).toBe(800n)
+    expect(store.pingoMessage).toMatch(/radar diário/i)
+    expect(JSON.parse(localStorage.getItem('pingo:preferences') ?? '{}')).toMatchObject({ spendingAlertPercent: 80 })
+  })
+
   it('aplica o limite mensal configurado no cartão', async () => {
     const store = useFinanceStore()
     const expenseCategory = category()

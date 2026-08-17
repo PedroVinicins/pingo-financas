@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
-  Bell, ChartPie, Download, LayoutDashboard, Moon, PiggyBank, RefreshCw, Settings,
+  Bell, ChartPie, Download, LayoutDashboard, Mic, Moon, PiggyBank, RefreshCw, Settings,
   Sparkles, Sun, WalletCards, WifiOff, X, Zap,
 } from 'lucide-vue-next'
 import DashboardView from './views/DashboardView.vue'
@@ -9,12 +9,12 @@ import ExpensesSavingsView from './views/ExpensesSavingsView.vue'
 import WalletView from './views/WalletView.vue'
 import VaultsView from './views/VaultsView.vue'
 import AppFeedback from './components/AppFeedback.vue'
-import NotificationSettings from './components/NotificationSettings.vue'
 import QuickExpenseSheet from './components/QuickExpenseSheet.vue'
 import AppSettings from './components/AppSettings.vue'
 import { useFinanceStore } from './stores/financeStore'
 import { defaultCategories } from './data/defaultCategories'
 import { listenForQuickLaunch } from './services/quickLaunch'
+import { startShakeListener, startVoiceShortcut, type VoiceShortcut } from './services/deviceExperience'
 import { startWebReminderWatcher } from './services/notifications'
 import {
   applyWebUpdate, canInstallWebApp, hasWebUpdate, installWebApp, isOnline, setupWebApp,
@@ -31,8 +31,8 @@ const activeView = ref<ViewName>(['dashboard', 'expenses', 'wallet', 'vaults'].i
   ? storedView as ViewName
   : 'dashboard')
 const showQuickExpense = ref(false)
-const showNotificationSettings = ref(false)
 const showAppSettings = ref(false)
+const voiceListening = ref(false)
 const quickCardId = ref<string | undefined>()
 const walletFocusCardId = ref<string | undefined>()
 const bootError = ref('')
@@ -47,6 +47,9 @@ let stopReminderWatcher: (() => void) | undefined
 let stopWebApp: (() => void) | undefined
 let recurringWatcher: number | undefined
 let pingoMessageTimer: number | undefined
+let stopShakeListener: (() => void) | undefined
+let stopVoiceListener: (() => void) | undefined
+let voiceTimer: number | undefined
 
 const pageTitle = computed(() => ({
   dashboard: 'Meu dinheiro', expenses: 'Gastos e economias', wallet: 'Carteira', vaults: 'Cofres',
@@ -69,6 +72,28 @@ function handleLaunch(action: QuickLaunchAction) {
   if (action.type === 'wallet') { navigate('wallet'); walletFocusCardId.value = action.cardId }
   if (action.type === 'vaults') navigate('vaults')
   if (action.type === 'dashboard') navigate('dashboard')
+}
+function handleVoiceShortcut(shortcut: VoiceShortcut) {
+  voiceListening.value = false
+  if (!shortcut) {
+    store.showFeedback('Não entendi. Tente “novo gasto”, “carteira”, “porquinhos” ou “resumo”.', 'info')
+    return
+  }
+  handleLaunch({ type: shortcut })
+}
+function listenVoice() {
+  stopVoiceListener?.()
+  if (voiceTimer !== undefined) window.clearTimeout(voiceTimer)
+  try {
+    voiceListening.value = true
+    stopVoiceListener = startVoiceShortcut(handleVoiceShortcut)
+    voiceTimer = window.setTimeout(() => {
+      stopVoiceListener?.(); stopVoiceListener = undefined; voiceListening.value = false
+    }, 7_000)
+  } catch (cause) {
+    voiceListening.value = false
+    store.reportError(cause, 'Não foi possível ouvir o atalho.')
+  }
 }
 async function saveQuickExpense(input: NewTransactionInput) {
   try {
@@ -99,12 +124,25 @@ watch(activeView, (view) => {
   document.title = `${pageTitle.value} · Pingo`
 }, { immediate: true })
 
-watch(() => store.pingoMessage, (message) => {
+watch([() => store.pingoMessage, () => store.preferences.feedbackDurationMs], ([message, duration]) => {
   if (pingoMessageTimer !== undefined) window.clearTimeout(pingoMessageTimer)
   pingoMessageTimer = message
-    ? window.setTimeout(() => store.dismissPingoMessage(), 4_500)
+    ? window.setTimeout(() => store.dismissPingoMessage(), duration)
     : undefined
 })
+
+watch([
+  () => store.preferences.shakeToExpenseEnabled,
+  () => store.preferences.shakeSensitivity,
+  activeView,
+  showQuickExpense,
+], ([enabled, sensitivity, view, expenseOpen]) => {
+  stopShakeListener?.()
+  stopShakeListener = undefined
+  if (enabled && view === 'dashboard' && !expenseOpen) {
+    stopShakeListener = startShakeListener(() => openQuickExpense(), sensitivity)
+  }
+}, { immediate: true })
 
 onMounted(async () => {
   applyTheme()
@@ -117,11 +155,14 @@ onBeforeUnmount(() => {
   stopWebApp?.()
   if (recurringWatcher) window.clearInterval(recurringWatcher)
   if (pingoMessageTimer !== undefined) window.clearTimeout(pingoMessageTimer)
+  if (voiceTimer !== undefined) window.clearTimeout(voiceTimer)
+  stopShakeListener?.()
+  stopVoiceListener?.()
 })
 </script>
 
 <template>
-  <div class="min-h-dvh bg-slate-50 pb-28 transition-colors dark:bg-slate-950 sm:pb-0">
+  <div class="min-h-dvh bg-slate-50 pb-28 transition-colors dark:bg-slate-950 sm:pb-0" :class="store.preferences.economyMode ? 'pingo-economy' : ''">
     <a href="#main-content" class="fixed left-3 top-3 z-[150] -translate-y-24 rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white transition focus:translate-y-0 dark:bg-white dark:text-slate-950">Pular para o conteúdo</a>
 
     <div v-if="!isOnline" class="safe-top sticky top-0 z-[60] flex items-center justify-center gap-2 bg-amber-300 px-4 py-2 text-center text-xs font-black text-amber-950" role="status"><WifiOff :size="15" /> Sem internet — seus dados locais continuam disponíveis.</div>
@@ -140,7 +181,8 @@ onBeforeUnmount(() => {
         <div class="flex items-center gap-2">
           <button v-if="canInstallWebApp" class="hidden items-center gap-2 rounded-2xl border border-emerald-300 px-3 py-2.5 text-sm font-black text-emerald-700 dark:border-emerald-800 dark:text-emerald-300 lg:flex" @click="installApp"><Download :size="17" /> Instalar</button>
           <button class="hidden items-center gap-2 rounded-2xl bg-emerald-400 px-4 py-2.5 text-sm font-black text-slate-950 sm:flex" @click="openQuickExpense()"><Zap :size="17" fill="currentColor" /> Gasto rápido</button>
-          <button class="grid size-11 place-items-center rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" aria-label="Configurar alertas" @click="showNotificationSettings = true"><Bell :size="18" /></button>
+          <button v-if="store.preferences.voiceShortcutsEnabled" class="grid size-11 place-items-center rounded-xl border bg-white dark:bg-slate-900" :class="voiceListening ? 'border-violet-500 text-violet-600' : 'border-slate-200 dark:border-slate-800'" :aria-label="voiceListening ? 'Ouvindo atalho de voz' : 'Usar atalho de voz'" @click="listenVoice"><Mic :size="18" /></button>
+          <button class="grid size-11 place-items-center rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" aria-label="Abrir central de alertas e configurações" @click="showAppSettings = true"><Bell :size="18" /></button>
           <button class="grid size-11 place-items-center rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" aria-label="Dados e configurações" @click="showAppSettings = true"><Settings :size="18" /></button>
           <button class="grid size-11 place-items-center rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" :aria-label="dark ? 'Usar tema claro' : 'Usar tema escuro'" @click="toggleTheme"><Sun v-if="dark" :size="18" /><Moon v-else :size="18" /></button>
         </div>
@@ -172,7 +214,6 @@ onBeforeUnmount(() => {
     </nav>
 
     <QuickExpenseSheet v-if="showQuickExpense && store.initialized" :key="quickCardId ?? 'generic'" :categories="store.categories" :cards="store.debitCards" :recent-category-ids="store.recentExpenseCategoryIds" :initial-card-id="quickCardId" @close="closeQuickExpense" @save="saveQuickExpense" />
-    <NotificationSettings v-if="showNotificationSettings" @close="showNotificationSettings = false" />
     <AppSettings v-if="showAppSettings" @close="showAppSettings = false" />
 
     <Transition enter-active-class="transition duration-300" enter-from-class="translate-y-5 opacity-0" leave-active-class="transition duration-200" leave-to-class="translate-y-5 opacity-0">
@@ -181,3 +222,14 @@ onBeforeUnmount(() => {
     <AppFeedback />
   </div>
 </template>
+
+<style>
+.pingo-economy *, .pingo-economy *::before, .pingo-economy *::after {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+}
+.pingo-economy .backdrop-blur-xl,
+.pingo-economy .backdrop-blur-sm,
+.pingo-economy .backdrop-blur-\[2px\] { backdrop-filter: none !important; }
+</style>

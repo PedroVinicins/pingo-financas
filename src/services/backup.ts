@@ -1,6 +1,6 @@
 import type {
   AccountSettings, AutomaticReserveRule, Category, DashboardLayout, DebitCard,
-  DigitalWalletItem, MonthlyReserveRule, RecurringRule, Transaction, Vault, VaultMovement,
+  DigitalWalletItem, MonthlyReserveRule, PingoPreferences, RecurringRule, Transaction, Vault, VaultMovement,
 } from '../types/finance'
 
 export interface PingoBackup {
@@ -20,6 +20,7 @@ export interface PingoBackup {
     dashboardLayout: DashboardLayout
     recurringRules: RecurringRule[]
     accountSettings: AccountSettings
+    preferences: PingoPreferences
   }
 }
 

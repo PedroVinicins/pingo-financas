@@ -21,6 +21,19 @@ export type DashboardWidgetId =
 export type DashboardWidgetSize = 'small' | 'medium' | 'large'
 export type DigitalWalletItemKind = 'ticket' | 'document' | 'qr_code' | 'other'
 export type BankPaymentMethod = 'pix' | 'debit' | 'credit' | 'card' | 'unknown'
+export type ShakeSensitivity = 'low' | 'medium' | 'high'
+export type FeedbackDurationMs = 3000 | 4000 | 5000
+
+export interface PingoPreferences {
+  voiceShortcutsEnabled: boolean
+  shakeToExpenseEnabled: boolean
+  shakeSensitivity: ShakeSensitivity
+  dailySpendingAlertsEnabled: boolean
+  spendingAlertPercent: number
+  greetingEnabled: boolean
+  economyMode: boolean
+  feedbackDurationMs: FeedbackDurationMs
+}
 
 export interface Category {
   id: string
