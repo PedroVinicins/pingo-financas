@@ -1,10 +1,80 @@
 # Pingo
 
+[![CI](https://github.com/PedroVinicins/pingo-financas/actions/workflows/ci.yml/badge.svg)](https://github.com/PedroVinicins/pingo-financas/actions/workflows/ci.yml)
+
 **Pingo** é um gerenciador de finanças pessoais mobile-first em Rust + Tauri + Vue 3.
 
 > Registre um gasto enquanto ele ainda está fresco na cabeça.
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
+
+## Destaques da versão 0.11.0
+
+- nova identidade minimalista e responsiva com tokens semânticos, cartão preto de saldo e roxo como destaque;
+- navegação unificada em Contas, Início, Análises e Ajustes, com barra flutuante no mobile e sidebar no desktop;
+- gesto horizontal para avançar ou voltar entre seções, sem conflitar com formulários e carrosséis;
+- Início reorganizado com saudação, seletor de período, saldo disponível, patrimônio, ações rápidas e últimas transações;
+- seletor de mês ligado à Pinia para manter saldo do período, entradas, saídas, histórico e Análises na mesma fonte;
+- Ajustes em grupos com perfil, limite mensal, tema Claro/Escuro/Sistema, notificações, privacidade e central do Pingo;
+- exportação real das transações em CSV, backup JSON com restauração confirmada e reset total;
+- histórico dos cartões protegido contra textos e valores extensos em telas a partir de 320 px;
+- Android `versionCode` 11000 e cache Web renovado para a nova release.
+
+## Destaques da versão 0.10.0
+
+- Resumo personalizável em grid P/M/G com arraste fluido por mouse e toque e salvamento automático;
+- layout mobile protegido contra textos longos e formulários que se ajustam ao teclado nativo;
+- Central do Pingo com voz, gesto de agitar, radar diário, limites, widgets, economia, lembretes, backup e reset total;
+- saudação por horário local e abertura do Gasto rápido ao agitar o aparelho enquanto o Resumo está aberto;
+- cartões ao vivo com foto própria, contraste automático e visualizador da imagem original em tela cheia;
+- transferência direta e atômica do saldo disponível para um Porquinho sem alterar o patrimônio;
+- parser bancário com data/hora, limpeza de códigos, detecção de PIX/débito/crédito/cartão e sugestão de vínculo;
+- Android `versionCode` 10000 e cache Web renovado para a nova release.
+
+## Destaques da versão 0.9.0
+
+- importação local de extratos CSV/TSV, OFX e PDF textual, com suporte ao formato do Banco Inter;
+- prévia dos lançamentos, categorias para entradas e saídas, proteção contra duplicatas e conciliação do saldo;
+- porquinhos criados já com reserva automática por entrada ou por mês, sem duplicar o valor inicial;
+- correção direta do saldo do porquinho preservando o patrimônio;
+- patrimônio e saldo da carteira em destaque no Resumo;
+- valor, data, categoria e descrição das compras editáveis também dentro dos cartões;
+- Android `versionCode` 9000 e cache Web renovado para a nova release.
+
+## Destaques da versão 0.8.0
+
+- painel principal personalizável direto na tela: arraste, redimensione ou esconda indicadores com salvamento automático;
+- cartões de débito, ingressos, documentos, imagens, PDFs e QR Codes reunidos na mesma carteira;
+- reserva mensal por porquinho com dia, valor fixo ou porcentagem do saldo disponível;
+- reset total nas configurações, com confirmação digitada, para apagar todos os dados e restaurar o estado inicial;
+- Android `versionCode` 8000 e cache Web renovado para a nova release.
+
+## Destaques da versão 0.7.0
+
+- todos os dados financeiros e preferências ficam juntos no SQLite quando o app roda no Tauri;
+- migração automática preserva recorrências, ajustes de saldo e históricos das versões anteriores;
+- regras de saldo, cofres, reservas automáticas e limites de cartões são validadas no core Rust;
+- versão Web instalável e com funcionamento offline após o primeiro acesso;
+- busca e filtros no histórico, exclusão segura e backup local em JSON;
+- carregamento, falhas, confirmações e avisos integrados à interface;
+- melhorias de acessibilidade, privacidade e navegação em celulares, tablets e desktop;
+- Android `versionCode` 7000, atalhos ampliados e build debug instalável em paralelo.
+
+## Destaques da versão 0.6.0
+
+- Piloto Mensal integrado ao formulário de transações;
+- nova aba Gastos & economias com meta mensal e análise por categoria;
+- visão exclusiva das despesas recentes e compromissos recorrentes;
+- leitura conjunta do que foi economizado e do saldo nos porquinhos;
+- novas reações e comentários divertidos do Pingo;
+- navegação mobile ampliada sem perder o atalho central de Gasto rápido.
+
+## Correções da versão 0.5.1
+
+- confirmação de conta e salário disponível somente no vencimento ou depois dele;
+- prazo automático de três dias contado a partir da data escolhida;
+- próximo vencimento preservado corretamente entre os meses;
+- transferência da conta principal disponível já na criação de um porquinho.
 
 ## Destaques da versão 0.5.0
 
@@ -39,7 +109,7 @@ A proposta é unir a velocidade de um app de carteira no celular com ferramentas
 - defina meta, cor, ícone e rentabilidade anual estimada;
 - acompanhe progresso, rendimento projetado e meses de cobertura da reserva;
 - veja o saldo livre separado do dinheiro reservado;
-- todos os registros funcionam no SQLite do Tauri e no fallback `localStorage` do navegador.
+- transações, categorias, cartões e cofres funcionam no SQLite do Tauri e possuem fallback Web.
 
 O Pingo apenas acompanha os valores informados: ele não acessa nem movimenta contas bancárias.
 
@@ -86,7 +156,7 @@ pingo://dashboard
 pingo://vaults
 ```
 
-Há também um script para instalar atalhos estáticos do Android (`Novo gasto`, `Carteira` e `Cofres`) depois do `tauri android init`.
+Há também um script para instalar quatro atalhos estáticos do Android (`Novo gasto`, `Carteira`, `Cofres` e `Resumo`) depois do `tauri android init`.
 
 Veja [MOBILE_QUICK_ACCESS.md](./MOBILE_QUICK_ACCESS.md).
 
@@ -136,6 +206,8 @@ npm run dev
 
 Quando não está dentro do runtime do Tauri, o frontend usa `localStorage` como fallback para facilitar testes de interface.
 
+A build Web é um PWA: pode ser instalada pelo navegador e, após o primeiro carregamento, o shell do aplicativo continua disponível sem internet. Os dados permanecem somente no navegador/dispositivo.
+
 ## Rodar no desktop
 
 Instale primeiro as dependências do Tauri para sua distribuição Linux.
@@ -164,10 +236,19 @@ npm run tauri:dev
 
 ## Android
 
+Use o JDK 17 no build Android. Versões mais novas do Java podem não ser compatíveis com a versão do Gradle usada pelo projeto.
+
 ```bash
+export JAVA_HOME=/caminho/para/o/jdk-17
 npm run tauri android init
 npm run android:shortcuts
 npm run android:dev
+```
+
+Para gerar um APK de desenvolvimento ARM64 instalável ao lado da versão de produção:
+
+```bash
+npm run android:build -- --debug --apk --target aarch64 --ci
 ```
 
 ## Testes
@@ -187,6 +268,8 @@ cargo test
 
 ## Persistência
 
+No Tauri, transações, categorias, cartões, cofres, movimentos, ajustes de saldo, reservas automáticas, carteira ao vivo, painel e recorrências são persistidos no SQLite. Ao abrir a versão 0.7.0 pela primeira vez, dados auxiliares das versões anteriores são importados automaticamente da WebView. No navegador, todos os dados continuam no `localStorage`.
+
 O SQLite é inicializado no diretório de dados da aplicação. As migrations atuais são:
 
 ```text
@@ -195,9 +278,23 @@ O SQLite é inicializado no diretório de dados da aplicação. As migrations at
 0003_card_personalization.sql
 0004_vaults_and_card_backgrounds.sql
 0005_category_kinds.sql
+0006_category_scope.sql
+0007_persisted_app_state.sql
+0008_personal_dashboard_wallet.sql
+0009_transaction_time.sql
 ```
 
 Valores monetários são persistidos como texto e tratados com `rust_decimal` no core Rust. No frontend, cálculos reativos usam centavos em `bigint`.
+
+O menu de configurações permite exportar uma cópia local em JSON. Como esse arquivo contém dados financeiros, ele deve ser guardado em local seguro. O mesmo menu oferece um reset total que apaga permanentemente os dados locais depois que o usuário digita `APAGAR`.
+
+## Segurança, privacidade e contribuição
+
+- [Política de privacidade](./PRIVACY.md)
+- [Política de segurança](./SECURITY.md)
+- [Como contribuir](./CONTRIBUTING.md)
+
+O projeto ainda não possui uma licença de código aberto definida. Até uma licença ser escolhida, o código continua protegido pelos direitos autorais do autor.
 
 ## Arquitetura
 
@@ -218,5 +315,5 @@ pingo/
     ├── services/
     ├── stores/
     ├── types/
-    └── views/                 # resumo, carteira e cofres
+    └── views/                 # resumo, gastos, carteira e cofres
 ```

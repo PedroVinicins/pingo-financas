@@ -1,0 +1,31 @@
+name: Sugerir uma melhoria
+description: Proponha uma função ou melhoria de experiência.
+title: "[Melhoria]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: Qual problema essa melhoria resolve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Como você imagina a solução?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área do aplicativo
+      options:
+        - Resumo
+        - Gastos e economias
+        - Piloto Mensal
+        - Carteira
+        - Porquinhos
+        - Notificações
+        - Outra

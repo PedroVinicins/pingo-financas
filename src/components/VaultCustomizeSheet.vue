@@ -3,10 +3,10 @@ import { reactive, ref } from 'vue'
 import { Paintbrush, Sparkles, X } from 'lucide-vue-next'
 import LocalizedNumberInput from './LocalizedNumberInput.vue'
 import { localizedDecimalToStorage, storageDecimalToLocalized } from '../services/localizedNumber'
-import type { AutomaticReserveMode, AutomaticReserveRule, UpdateVaultInput, Vault } from '../types/finance'
+import type { AutomaticReserveMode, AutomaticReserveRule, MonthlyReserveRule, UpdateVaultInput, Vault } from '../types/finance'
 
-const props = defineProps<{ vault: Vault; automaticRule: AutomaticReserveRule | null }>()
-const emit = defineEmits<{ close: []; save: [vault: UpdateVaultInput, reserve: AutomaticReserveRule] }>()
+const props = defineProps<{ vault: Vault; automaticRule: AutomaticReserveRule | null; monthlyRule: MonthlyReserveRule | null }>()
+const emit = defineEmits<{ close: []; save: [vault: UpdateVaultInput, reserve: AutomaticReserveRule, monthly: MonthlyReserveRule] }>()
 const error = ref('')
 const form = reactive({
   name: props.vault.name,
@@ -18,6 +18,10 @@ const form = reactive({
   automaticEnabled: props.automaticRule?.enabled ?? false,
   automaticMode: (props.automaticRule?.mode ?? 'percentage') as AutomaticReserveMode,
   automaticValue: props.automaticRule ? storageDecimalToLocalized(props.automaticRule.value) : '10,00',
+  monthlyEnabled: props.monthlyRule?.enabled ?? false,
+  monthlyMode: (props.monthlyRule?.mode ?? 'fixed') as AutomaticReserveMode,
+  monthlyValue: props.monthlyRule ? storageDecimalToLocalized(props.monthlyRule.value) : '50,00',
+  monthlyDay: props.monthlyRule?.dayOfMonth ?? 5,
 })
 const colors = ['#F97316', '#F43F5E', '#8B5CF6', '#0EA5E9', '#10B981', '#EAB308', '#0F172A']
 
@@ -30,9 +34,13 @@ function submit() {
     const targetAmount = optionalDecimal(form.targetAmount)
     const annualYieldRate = optionalDecimal(form.annualYieldRate)
     const automaticValue = localizedDecimalToStorage(form.automaticValue)
+    const monthlyValue = localizedDecimalToStorage(form.monthlyValue)
     if (!form.name.trim() || !form.institution.trim()) throw new Error('Preencha nome e instituição.')
     if (form.automaticEnabled && Number(automaticValue) <= 0) throw new Error('Informe o valor da reserva automática.')
     if (form.automaticMode === 'percentage' && Number(automaticValue) > 100) throw new Error('A porcentagem máxima é 100%.')
+    if (form.monthlyEnabled && Number(monthlyValue) <= 0) throw new Error('Informe o valor da reserva mensal.')
+    if (form.monthlyMode === 'percentage' && Number(monthlyValue) > 100) throw new Error('A porcentagem mensal máxima é 100%.')
+    if (!Number.isInteger(form.monthlyDay) || form.monthlyDay < 1 || form.monthlyDay > 28) throw new Error('Escolha um dia entre 1 e 28.')
     emit('save', {
       id: props.vault.id,
       name: form.name.trim(),
@@ -46,6 +54,13 @@ function submit() {
       enabled: form.automaticEnabled,
       mode: form.automaticMode,
       value: automaticValue,
+    }, {
+      vaultId: props.vault.id,
+      enabled: form.monthlyEnabled,
+      mode: form.monthlyMode,
+      value: monthlyValue,
+      dayOfMonth: form.monthlyDay,
+      lastProcessedPeriod: props.monthlyRule?.lastProcessedPeriod ?? null,
     })
   } catch (cause) { error.value = cause instanceof Error ? cause.message : 'Confira os dados.' }
 }
@@ -61,7 +76,8 @@ function submit() {
       <div class="mt-5 grid gap-4 sm:grid-cols-2"><label class="grid gap-1.5 text-sm font-bold sm:col-span-2">Nome<input v-model="form.name" maxlength="50" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" /></label><label class="grid gap-1.5 text-sm font-bold sm:col-span-2">Banco / instituição<input v-model="form.institution" maxlength="60" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" /></label><label class="grid gap-1.5 text-sm font-bold">Meta<LocalizedNumberInput v-model="form.targetAmount" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" placeholder="Opcional" /></label><label class="grid gap-1.5 text-sm font-bold">Rendimento % a.a.<LocalizedNumberInput v-model="form.annualYieldRate" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" placeholder="Opcional" /></label></div>
       <div class="mt-5"><p class="text-sm font-black">Cor e carinha</p><div class="mt-2 flex flex-wrap gap-2"><button v-for="color in colors" :key="color" type="button" class="size-10 rounded-full border-4" :class="form.color === color ? 'border-slate-950 dark:border-white' : 'border-transparent'" :style="{ backgroundColor: color }" @click="form.color = color"></button><input v-model="form.emoji" maxlength="4" class="h-10 w-16 rounded-xl border border-slate-200 bg-transparent text-center text-xl dark:border-slate-700" /></div></div>
 
-      <section class="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/25"><label class="flex cursor-pointer items-start gap-3"><input v-model="form.automaticEnabled" type="checkbox" class="mt-1 size-4 accent-emerald-600" /><span><strong class="block text-sm">Reserva automática</strong><span class="mt-1 block text-xs text-slate-500">Sempre que uma entrada cair, o Pingo separa uma parte neste cofre.</span></span></label><div v-if="form.automaticEnabled" class="mt-4 grid grid-cols-2 gap-2"><select v-model="form.automaticMode" class="rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm font-bold dark:border-emerald-900 dark:bg-slate-900"><option value="percentage">Percentual da entrada</option><option value="fixed">Valor fixo</option></select><LocalizedNumberInput v-model="form.automaticValue" class="rounded-xl border border-emerald-200 bg-white px-3 py-2.5 font-bold dark:border-emerald-900 dark:bg-slate-900" :placeholder="form.automaticMode === 'percentage' ? '10,00%' : '50,00'" /></div></section>
+      <section class="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/25"><label class="flex cursor-pointer items-start gap-3"><input v-model="form.automaticEnabled" type="checkbox" class="mt-1 size-4 accent-emerald-600" /><span><strong class="block text-sm">Ao receber uma entrada</strong><span class="mt-1 block text-xs text-slate-500">Sempre que dinheiro entrar, o Pingo separa uma parte neste porquinho.</span></span></label><div v-if="form.automaticEnabled" class="mt-4 grid grid-cols-2 gap-2"><select v-model="form.automaticMode" class="rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm font-bold dark:border-emerald-900 dark:bg-slate-900"><option value="percentage">Percentual da entrada</option><option value="fixed">Valor fixo</option></select><LocalizedNumberInput v-model="form.automaticValue" class="rounded-xl border border-emerald-200 bg-white px-3 py-2.5 font-bold dark:border-emerald-900 dark:bg-slate-900" :placeholder="form.automaticMode === 'percentage' ? '10,00%' : '50,00'" /></div></section>
+      <section class="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/25"><label class="flex cursor-pointer items-start gap-3"><input v-model="form.monthlyEnabled" type="checkbox" class="mt-1 size-4 accent-amber-600" /><span><strong class="block text-sm">Guardar todo mês</strong><span class="mt-1 block text-xs text-slate-500">No dia escolhido, separa um valor ou porcentagem do saldo disponível. Ativar não transfere nada imediatamente.</span></span></label><div v-if="form.monthlyEnabled" class="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_100px]"><select v-model="form.monthlyMode" class="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-sm font-bold dark:border-amber-900 dark:bg-slate-900"><option value="fixed">Valor fixo</option><option value="percentage">% do saldo</option></select><LocalizedNumberInput v-model="form.monthlyValue" class="rounded-xl border border-amber-200 bg-white px-3 py-2.5 font-bold dark:border-amber-900 dark:bg-slate-900" :placeholder="form.monthlyMode === 'percentage' ? '10,00%' : '50,00'" /><label class="grid gap-1 text-xs font-bold">Dia<input v-model.number="form.monthlyDay" type="number" min="1" max="28" class="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-sm dark:border-amber-900 dark:bg-slate-900" /></label></div></section>
       <p v-if="error" class="mt-3 text-sm font-bold text-rose-600">{{ error }}</p>
       <button class="mt-5 w-full rounded-2xl bg-amber-400 py-3.5 font-black text-slate-950">Salvar personalização</button>
     </form>

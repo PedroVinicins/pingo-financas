@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Relatar vulnerabilidade
+    url: https://github.com/PedroVinicins/pingo-financas/security/advisories/new
+    about: Não publique falhas de segurança como issues abertas.

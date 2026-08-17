@@ -1,89 +1,243 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import {
-  CalendarClock, Eye, EyeOff, Gauge, Landmark, Pencil, PiggyBank, Plus,
-  ShieldCheck, Sparkles, TrendingDown,
+  ArrowDownLeft, ArrowRightLeft, ArrowUpRight, CalendarClock, EyeOff, FileUp, Gauge,
+  GripVertical, Landmark, LayoutGrid, Maximize2, Pencil, PiggyBank, Plus, ReceiptText,
+  ShieldCheck, Sparkles, TrendingDown, WalletCards, X,
 } from 'lucide-vue-next'
-import { useFinanceStore, centsToDecimal } from '../stores/financeStore'
-import type { NewTransactionInput, Transaction } from '../types/finance'
-import SummaryCard from '../components/SummaryCard.vue'
+import { centsToDecimal, decimalToCents, useFinanceStore } from '../stores/financeStore'
+import type {
+  BankStatementImportInput, DashboardWidgetId, DashboardWidgetSize, NewRecurringRuleInput,
+  NewTransactionInput, Transaction, TransactionType,
+} from '../types/finance'
+import { cloneDashboardLayout, DASHBOARD_WIDGETS } from '../services/dashboardLayout'
+import { greetingForHour } from '../services/deviceExperience'
+import BalanceHeroCard from '../components/BalanceHeroCard.vue'
+import MonthSelector from '../components/MonthSelector.vue'
 import TransactionList from '../components/TransactionList.vue'
 import AddTransactionModal from '../components/AddTransactionModal.vue'
 import EditBalanceModal from '../components/EditBalanceModal.vue'
 import RecurringSection from '../components/RecurringSection.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import BankStatementImport from '../components/BankStatementImport.vue'
 
 const store = useFinanceStore()
+const emit = defineEmits<{
+  newTransaction: [kind?: TransactionType, flow?: 'transaction' | 'recurring' | 'vault']
+  navigate: [view: 'accounts' | 'home' | 'analytics' | 'settings']
+}>()
 const showModal = ref(false)
 const showBalanceEditor = ref(false)
+const showStatementImport = ref(false)
+const importingStatement = ref(false)
+const customizing = ref(false)
+const draggingWidget = ref<DashboardWidgetId | null>(null)
+const touchDropTarget = ref<DashboardWidgetId | null>(null)
 const editingTransaction = ref<Transaction | null>(null)
 const showAllHistory = ref(false)
+const deletingTransaction = ref<Transaction | null>(null)
+const deleting = ref(false)
 
-function money(value: bigint) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(centsToDecimal(value)))
-}
+function money(value: bigint) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(centsToDecimal(value))) }
 function privateMoney(value: bigint) { return store.balanceHidden ? 'R$ •••••' : money(value) }
-const monthBalance = computed(() => privateMoney(store.currentMonthBalanceCents))
-const dailyBudget = computed(() => privateMoney(store.dailyBudgetCents))
-const projectedExpenses = computed(() => privateMoney(store.projectedMonthExpenseCents))
-const dailyAverage = computed(() => privateMoney(store.dailySpendingAverageCents))
-const scoreLabel = computed(() => {
-  if (store.financialHealthScore >= 80) return 'Excelente'
-  if (store.financialHealthScore >= 60) return 'Boa'
-  if (store.financialHealthScore >= 40) return 'Em atenção'
-  return 'Precisa de cuidado'
-})
-const categoryRows = computed(() => [...store.currentMonthExpensesByCategory.entries()]
-  .sort((a, b) => Number(b[1] - a[1]))
-  .slice(0, 5)
-  .map(([id, amount]) => ({
-    id,
-    amount,
-    category: store.categories.find((item) => item.id === id),
-    percentage: store.currentMonthExpensePercentages.get(id) ?? 0,
-  })))
-const historyTransactions = computed(() => showAllHistory.value ? store.filteredTransactions : store.recentTransactions)
+function widgetVisible(id: DashboardWidgetId) { return store.dashboardLayout.widgets.find((item) => item.id === id)?.visible !== false }
+function widgetClass(size: DashboardWidgetSize) {
+  return size === 'small' ? 'col-span-1 xl:col-span-3' : size === 'medium' ? 'col-span-2 xl:col-span-6' : 'col-span-2 xl:col-span-12'
+}
 
+const displayName = computed(() => store.preferences.displayName || 'Você')
+const greeting = computed(() => store.preferences.greetingEnabled ? greetingForHour(new Date().getHours()) : 'Seu resumo')
+const monthLabel = computed(() => new Intl.DateTimeFormat('pt-BR', { month: 'short', year: 'numeric' })
+  .format(new Date(store.reportingYear, store.reportingMonth - 1, 1)).replace('.', ''))
+const visibleOptionalWidgets = computed(() => store.dashboardLayout.widgets.filter((item) =>
+  item.visible && !['available_balance', 'net_worth', 'history'].includes(item.id)))
+const hiddenWidgets = computed(() => store.dashboardLayout.widgets.filter((item) => !item.visible))
+const historyTransactions = computed(() => showAllHistory.value ? store.reportingTransactions : store.reportingTransactions.slice(0, 5))
+const categoryRows = computed(() => {
+  const totals = new Map<string, bigint>()
+  for (const transaction of store.reportingTransactions) {
+    if (transaction.kind !== 'expense' || !transaction.categoryId) continue
+    totals.set(transaction.categoryId, (totals.get(transaction.categoryId) ?? 0n) + decimalToCents(transaction.amount))
+  }
+  const total = [...totals.values()].reduce((sum, value) => sum + value, 0n)
+  return [...totals.entries()].sort((a, b) => Number(b[1] - a[1])).slice(0, 3).map(([id, amount]) => ({
+    id, amount, category: store.categories.find((item) => item.id === id),
+    percentage: total > 0n ? Number((amount * 10_000n) / total) / 100 : 0,
+  }))
+})
+const budgetProgress = computed<number | null>(() => {
+  if (!store.preferences.monthlyBudget) return null
+  try {
+    const limit = decimalToCents(store.preferences.monthlyBudget)
+    return limit > 0n ? Number((store.reportingExpenseCents * 10_000n) / limit) / 100 : null
+  } catch { return null }
+})
+const scoreLabel = computed(() => store.financialHealthScore >= 80 ? 'Excelente' : store.financialHealthScore >= 60 ? 'Boa' : store.financialHealthScore >= 40 ? 'Em atenção' : 'Precisa de cuidado')
+
+function changePeriod(year: number, month: number) { store.setReportingPeriod(year, month) }
 async function save(input: NewTransactionInput) {
   try {
     if (editingTransaction.value) await store.editTransaction({ id: editingTransaction.value.id, ...input })
     else await store.createTransaction(input)
-    showModal.value = false
-    editingTransaction.value = null
-  } catch (cause) { window.alert(cause instanceof Error ? cause.message : 'Não foi possível salvar.') }
+    showModal.value = false; editingTransaction.value = null
+  } catch (cause) { store.reportError(cause, 'Não foi possível salvar.') }
+}
+async function saveRecurring(input: NewRecurringRuleInput) {
+  try { await store.createRecurringRule(input); showModal.value = false }
+  catch (cause) { store.reportError(cause, 'Não foi possível ligar o Piloto Mensal.') }
+}
+async function sendToVault(input: { vaultId: string; amount: string }) {
+  try { await store.moveVaultMoney({ id: input.vaultId, kind: 'deposit', amount: input.amount }); showModal.value = false }
+  catch (cause) { store.reportError(cause, 'Não foi possível enviar o valor ao Porquinho.') }
 }
 function edit(transaction: Transaction) { editingTransaction.value = transaction; showModal.value = true }
-function editBalance(amount: string) { store.setAvailableBalance(amount); showBalanceEditor.value = false }
+async function confirmDelete() {
+  if (!deletingTransaction.value) return
+  deleting.value = true
+  try { await store.deleteTransaction(deletingTransaction.value.id); deletingTransaction.value = null; store.showFeedback('Transação excluída e saldos recalculados.', 'success') }
+  catch (cause) { store.reportError(cause, 'Não foi possível excluir a transação.') }
+  finally { deleting.value = false }
+}
+async function editBalance(amount: string) {
+  try { await store.setAvailableBalance(amount); showBalanceEditor.value = false }
+  catch (cause) { store.reportError(cause, 'Não foi possível ajustar o saldo.') }
+}
+async function importStatement(input: BankStatementImportInput) {
+  importingStatement.value = true
+  try {
+    const count = await store.importBankStatement(input)
+    showStatementImport.value = false
+    store.showFeedback(`${count} lançamento${count === 1 ? '' : 's'} importado${count === 1 ? '' : 's'} e saldo conferido.`, 'success')
+  } catch (cause) { store.reportError(cause, 'Não foi possível importar o extrato.') }
+  finally { importingStatement.value = false }
+}
+function persistLayout(change: (layout: ReturnType<typeof cloneDashboardLayout>) => void) {
+  const next = cloneDashboardLayout(store.dashboardLayout)
+  change(next)
+  void store.saveDashboard(next).catch((cause) => store.reportError(cause, 'Não foi possível salvar o painel.'))
+}
+function moveWidget(from: DashboardWidgetId, to: DashboardWidgetId) {
+  if (from === to) return
+  persistLayout((layout) => {
+    const fromIndex = layout.widgets.findIndex((item) => item.id === from)
+    const toIndex = layout.widgets.findIndex((item) => item.id === to)
+    if (fromIndex < 0 || toIndex < 0) return
+    const [item] = layout.widgets.splice(fromIndex, 1)
+    layout.widgets.splice(toIndex, 0, item)
+  })
+}
+function cycleSize(id: DashboardWidgetId) {
+  const sizes: DashboardWidgetSize[] = ['small', 'medium', 'large']
+  persistLayout((layout) => {
+    const widget = layout.widgets.find((item) => item.id === id)
+    if (widget) widget.size = sizes[(sizes.indexOf(widget.size) + 1) % sizes.length]
+  })
+}
+function setVisibility(id: DashboardWidgetId, visible: boolean) {
+  persistLayout((layout) => {
+    const widget = layout.widgets.find((item) => item.id === id)
+    if (widget) widget.visible = visible
+  })
+}
+function dragStart(id: DashboardWidgetId, event: DragEvent) {
+  draggingWidget.value = id
+  event.dataTransfer?.setData('text/plain', id)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+}
+function dropWidget(id: DashboardWidgetId, event: DragEvent) {
+  const from = event.dataTransfer?.getData('text/plain') as DashboardWidgetId
+  if (from) moveWidget(from, id)
+  draggingWidget.value = null
+}
+function pointerStart(id: DashboardWidgetId, event: PointerEvent) {
+  if (event.pointerType === 'mouse') return
+  draggingWidget.value = id; touchDropTarget.value = id
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  window.addEventListener('pointermove', pointerMove, { passive: false })
+  window.addEventListener('pointerup', pointerEnd, { once: true })
+}
+function pointerMove(event: PointerEvent) {
+  if (!draggingWidget.value) return
+  event.preventDefault()
+  const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-dashboard-widget]')
+  const id = target?.dataset.dashboardWidget as DashboardWidgetId | undefined
+  if (id && id !== touchDropTarget.value) { touchDropTarget.value = id; if (id !== draggingWidget.value) moveWidget(draggingWidget.value, id) }
+}
+function pointerEnd() { draggingWidget.value = null; touchDropTarget.value = null; window.removeEventListener('pointermove', pointerMove) }
+onBeforeUnmount(() => window.removeEventListener('pointermove', pointerMove))
 </script>
 
 <template>
-  <main class="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8">
-    <section class="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-slate-950 via-emerald-950 to-emerald-700 p-6 text-white shadow-2xl sm:p-8">
-      <div class="absolute -right-14 -top-16 size-52 rounded-full bg-emerald-300/15 blur-2xl"></div><div class="absolute -bottom-20 left-1/3 size-44 rounded-full bg-lime-300/10 blur-2xl"></div>
-      <div class="relative flex items-start justify-between gap-3"><div class="grid size-12 place-items-center rounded-[1.1rem] bg-emerald-300 text-xl font-black text-emerald-950 shadow-lg">P</div><button class="grid size-11 place-items-center rounded-2xl bg-white/10 text-white hover:bg-white/20" :aria-label="store.balanceHidden ? 'Mostrar saldos' : 'Esconder saldos'" @click="store.toggleBalanceVisibility"><Eye v-if="store.balanceHidden" :size="20" /><EyeOff v-else :size="20" /></button></div>
-      <div class="relative mt-7"><p class="text-sm font-bold text-emerald-200">Patrimônio total</p><h2 class="mt-1 text-4xl font-black tracking-tight sm:text-5xl">{{ privateMoney(store.balanceCents) }}</h2><p class="mt-2 max-w-lg text-sm text-emerald-100/75">Conta principal + todos os porquinhos. Transferir entre eles não altera este total.</p></div>
-      <div class="relative mt-6 grid grid-cols-2 gap-3"><div class="rounded-2xl bg-white/10 p-4 backdrop-blur"><div class="flex items-center gap-2 text-xs font-bold text-emerald-100/70"><Landmark :size="15" /> Na conta</div><p class="mt-2 text-lg font-black sm:text-xl">{{ privateMoney(store.availableBalanceCents) }}</p></div><div class="rounded-2xl bg-white/10 p-4 backdrop-blur"><div class="flex items-center gap-2 text-xs font-bold text-emerald-100/70"><PiggyBank :size="15" /> Guardado</div><p class="mt-2 text-lg font-black sm:text-xl">{{ privateMoney(store.vaultTotalCents) }}</p></div></div>
-      <div class="relative mt-4 grid gap-2 sm:flex"><button class="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-300 px-5 py-3 font-black text-emerald-950 hover:bg-emerald-200" @click="showModal = true"><Plus :size="19" /> Adicionar transação</button><button class="inline-flex items-center justify-center gap-2 rounded-2xl bg-white/10 px-5 py-3 text-sm font-black hover:bg-white/20" @click="showBalanceEditor = true"><Pencil :size="17" /> Editar saldo</button></div>
+  <main class="mx-auto max-w-[1440px] px-5 pb-8 pt-[calc(1.25rem+env(safe-area-inset-top))] sm:px-7 lg:px-10 lg:py-9">
+    <header class="flex min-w-0 items-center gap-3">
+      <img src="/pingo-icon.svg" alt="" class="size-10 shrink-0 rounded-2xl sm:size-11" />
+      <div class="min-w-0 flex-1">
+        <p class="text-sm font-medium text-subtle">{{ greeting }},</p>
+        <h1 class="truncate text-[clamp(1.9rem,8vw,2.65rem)] font-extrabold leading-none tracking-[-0.045em]">{{ displayName }}</h1>
+      </div>
+      <MonthSelector :year="store.reportingYear" :month="store.reportingMonth" @change="changePeriod" />
+      <button class="pingo-interactive grid size-11 shrink-0 place-items-center rounded-full bg-brand text-white shadow-lg shadow-violet-500/25" aria-label="Nova transação" @click="emit('newTransaction', 'expense', 'transaction')"><Plus :size="22" stroke-width="2.5" /></button>
+    </header>
+
+    <div v-if="customizing" class="mt-5 rounded-[1.5rem] border border-brand/30 bg-brand-soft p-4 text-sm">
+      <div class="flex items-start justify-between gap-3"><div><strong class="text-brand">Personalize do seu jeito</strong><p class="mt-1 text-xs text-subtle">Arraste, altere o tamanho ou oculte. Cada mudança é salva automaticamente.</p></div><button class="grid size-10 shrink-0 place-items-center rounded-xl bg-surface" aria-label="Concluir personalização" @click="customizing = false"><X :size="18" /></button></div>
+      <div v-if="hiddenWidgets.length" class="mt-3 flex flex-wrap gap-2"><button v-for="widget in hiddenWidgets" :key="widget.id" class="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-surface px-3 text-xs font-bold" @click="setVisibility(widget.id, true)"><Plus :size="14" /> {{ DASHBOARD_WIDGETS[widget.id].label }}</button></div>
+    </div>
+
+    <section class="mt-7 grid gap-5 lg:grid-cols-12">
+      <div v-if="widgetVisible('available_balance') || widgetVisible('net_worth')" class="min-w-0 lg:col-span-8">
+        <div v-if="customizing" class="mb-2 flex items-center gap-2 rounded-2xl border border-line bg-surface p-2"><span class="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand"><GripVertical :size="18" /></span><strong class="min-w-0 flex-1 truncate text-xs">Saldo e patrimônio</strong><button class="grid size-10 place-items-center rounded-xl text-subtle hover:bg-muted" aria-label="Ocultar saldo" @click="setVisibility('available_balance', false); setVisibility('net_worth', false)"><EyeOff :size="16" /></button></div>
+        <BalanceHeroCard :balance="privateMoney(store.availableBalanceCents)" :month="monthLabel" :income="privateMoney(store.reportingIncomeCents)" :expense="privateMoney(store.reportingExpenseCents)" :net-worth="widgetVisible('net_worth') ? privateMoney(store.balanceCents) : ''" :hidden="store.balanceHidden" :budget-progress="budgetProgress" @toggle-privacy="store.toggleBalanceVisibility" @details="emit('navigate', 'analytics')" />
+      </div>
+
+      <aside class="pingo-card min-w-0 p-5 lg:col-span-4 lg:p-6">
+        <div class="flex items-start justify-between gap-3"><div><p class="text-sm font-semibold text-brand">Ações rápidas</p><h2 class="mt-1 text-xl font-extrabold">O que aconteceu?</h2></div><button class="grid size-10 place-items-center rounded-xl bg-muted text-subtle" aria-label="Personalizar início" @click="customizing = !customizing"><LayoutGrid :size="19" /></button></div>
+        <div class="mt-5 grid grid-cols-3 gap-2">
+          <button class="pingo-interactive grid min-h-24 place-items-center content-center gap-2 rounded-2xl bg-muted px-2 text-xs font-bold" @click="emit('newTransaction', 'expense', 'transaction')"><ArrowUpRight :size="20" /> Gasto</button>
+          <button class="pingo-interactive grid min-h-24 place-items-center content-center gap-2 rounded-2xl bg-brand-soft px-2 text-xs font-bold text-brand" @click="emit('newTransaction', 'income', 'transaction')"><ArrowDownLeft :size="20" /> Entrada</button>
+          <button class="pingo-interactive grid min-h-24 place-items-center content-center gap-2 rounded-2xl bg-muted px-2 text-xs font-bold" @click="emit('newTransaction', 'expense', 'vault')"><ArrowRightLeft :size="20" /> Transferir</button>
+        </div>
+        <button class="mt-5 flex min-h-12 w-full items-center justify-between rounded-2xl border border-line px-4 text-sm font-bold hover:bg-muted" @click="showStatementImport = true"><span class="flex items-center gap-2"><FileUp :size="18" class="text-brand" /> Importar extrato</span><span class="text-xs font-medium text-subtle">CSV · OFX · PDF</span></button>
+        <button class="mt-2 flex min-h-12 w-full items-center justify-between rounded-2xl border border-line px-4 text-sm font-bold hover:bg-muted" @click="showBalanceEditor = true"><span class="flex items-center gap-2"><Pencil :size="18" class="text-brand" /> Corrigir saldo</span><span class="text-xs text-subtle">Carteira</span></button>
+      </aside>
     </section>
 
-    <section class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <SummaryCard label="Balanço do mês" :value="monthBalance" hint="Entradas menos gastos" />
-      <SummaryCard label="Média por dia" :value="dailyAverage" hint="Como o dinheiro está indo" />
-      <SummaryCard label="Projeção do mês" :value="projectedExpenses" hint="Se mantiver este ritmo" />
-      <SummaryCard label="Transações" :value="String(store.transactions.length)" :hint="`${store.recurringRules.length} recorrência(s)`" />
+    <section class="mt-7 grid gap-5 lg:grid-cols-12">
+      <article v-if="widgetVisible('history')" class="pingo-card min-w-0 p-4 sm:p-6 lg:col-span-8">
+        <div class="mb-4 flex items-center justify-between gap-3"><div class="min-w-0"><p class="text-sm font-semibold text-subtle">{{ monthLabel }}</p><h2 class="truncate text-2xl font-extrabold tracking-tight">Últimas transações</h2></div><button class="min-h-11 shrink-0 px-2 text-sm font-bold text-brand" @click="showAllHistory = !showAllHistory">{{ showAllHistory ? 'Ver 5' : 'Ver todas' }}</button></div>
+        <TransactionList :transactions="historyTransactions" :categories="store.categories" :cards="store.debitCards" editable @edit="edit" />
+      </article>
+
+      <aside class="pingo-card min-w-0 p-5 sm:p-6 lg:col-span-4">
+        <p class="text-sm font-semibold text-brand">Resumo do mês</p><h2 class="mt-1 text-xl font-extrabold">Seu ritmo financeiro</h2>
+        <dl class="mt-5 grid gap-3">
+          <div class="flex items-center justify-between gap-3"><dt class="text-sm text-subtle">Entradas</dt><dd class="truncate font-bold tabular-nums">{{ privateMoney(store.reportingIncomeCents) }}</dd></div>
+          <div class="flex items-center justify-between gap-3"><dt class="text-sm text-subtle">Saídas</dt><dd class="truncate font-bold tabular-nums">{{ privateMoney(store.reportingExpenseCents) }}</dd></div>
+          <div class="flex items-center justify-between gap-3 border-t border-line pt-3"><dt class="text-sm text-subtle">Economia</dt><dd class="truncate font-extrabold tabular-nums" :class="store.reportingBalanceCents >= 0n ? 'text-brand' : 'text-red-500'">{{ privateMoney(store.reportingBalanceCents) }}</dd></div>
+        </dl>
+        <div v-if="categoryRows.length" class="mt-6 grid gap-4"><div v-for="row in categoryRows" :key="row.id"><div class="mb-1.5 flex min-w-0 justify-between gap-3 text-xs"><strong class="truncate">{{ row.category?.name ?? 'Sem categoria' }}</strong><span class="shrink-0 text-subtle">{{ row.percentage.toFixed(0) }}%</span></div><div class="h-1.5 overflow-hidden rounded-full bg-muted"><div class="h-full rounded-full bg-brand" :style="{ width: `${row.percentage}%` }"></div></div></div></div>
+        <p v-else class="mt-6 rounded-2xl bg-muted p-4 text-sm text-subtle">Nenhuma movimentação neste mês.</p>
+      </aside>
     </section>
 
-    <RecurringSection />
+    <TransitionGroup v-if="visibleOptionalWidgets.length" tag="section" class="mt-5 grid grid-cols-2 gap-4 xl:grid-cols-12" move-class="transition-transform duration-300 ease-pingo">
+      <div v-for="widget in visibleOptionalWidgets" :key="widget.id" :data-dashboard-widget="widget.id" class="relative min-w-0" :class="[widgetClass(widget.size), draggingWidget === widget.id ? 'z-10 scale-[1.02] opacity-70' : '']" @dragover.prevent @drop="dropWidget(widget.id, $event)">
+        <div v-if="customizing" class="mb-2 flex items-center gap-2 rounded-2xl border border-brand/25 bg-surface p-2 shadow-sm"><button draggable="true" class="grid size-10 touch-none place-items-center rounded-xl bg-brand-soft text-brand" :aria-label="`Arrastar ${DASHBOARD_WIDGETS[widget.id].label}`" @dragstart="dragStart(widget.id, $event)" @dragend="draggingWidget = null" @pointerdown="pointerStart(widget.id, $event)"><GripVertical :size="18" /></button><strong class="min-w-0 flex-1 truncate text-xs">{{ DASHBOARD_WIDGETS[widget.id].label }}</strong><button class="inline-flex h-10 items-center gap-1 rounded-xl bg-muted px-2 text-[10px] font-bold" @click="cycleSize(widget.id)"><Maximize2 :size="14" /> {{ widget.size === 'small' ? 'P' : widget.size === 'medium' ? 'M' : 'G' }}</button><button class="grid size-10 place-items-center rounded-xl text-subtle hover:bg-muted" @click="setVisibility(widget.id, false)"><EyeOff :size="16" /></button></div>
 
-    <section class="mt-5 rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-6">
-      <div class="flex items-start justify-between gap-4"><div><p class="text-sm font-bold text-emerald-600">Inteligência financeira</p><h3 class="text-xl font-black">Para onde o dinheiro está indo?</h3></div><div class="grid size-12 place-items-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"><Gauge :size="23" /></div></div>
-      <div class="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4"><div class="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950"><div class="flex items-center gap-2 text-xs font-bold text-slate-400"><ShieldCheck :size="15" /> Saúde financeira</div><p class="mt-2 text-2xl font-black">{{ store.financialHealthScore }}<span class="text-sm text-slate-400">/100</span></p><p class="mt-1 text-xs font-bold text-emerald-600">{{ scoreLabel }}</p></div><div class="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950"><div class="flex items-center gap-2 text-xs font-bold text-slate-400"><CalendarClock :size="15" /> Pode gastar por dia</div><p class="mt-2 text-xl font-black">{{ dailyBudget }}</p><p class="mt-1 text-xs text-slate-500">Sem tocar nos cofres</p></div><div class="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950"><div class="flex items-center gap-2 text-xs font-bold text-slate-400"><TrendingDown :size="15" /> Maior ralo do mês</div><p class="mt-2 truncate text-lg font-black">{{ store.topExpenseCategory.category?.name ?? 'Sem gastos' }}</p><p class="mt-1 text-xs text-slate-500">{{ store.topExpenseCategory.percentage.toFixed(1) }}% das despesas</p></div><div class="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950"><div class="flex items-center gap-2 text-xs font-bold text-slate-400"><Sparkles :size="15" /> Assinaturas e fixos</div><p class="mt-2 text-xl font-black">{{ privateMoney(store.fixedMonthlyCommitmentCents) }}</p><p class="mt-1 text-xs text-slate-500">Compromisso mensal previsto</p></div></div>
-      <div v-if="categoryRows.length" class="mt-5 grid gap-3"><div v-for="row in categoryRows" :key="row.id"><div class="mb-1.5 flex items-center justify-between gap-3 text-sm"><span class="truncate font-bold">{{ row.category?.name ?? 'Sem categoria' }}</span><span class="shrink-0 font-black">{{ privateMoney(row.amount) }} · {{ row.percentage.toFixed(0) }}%</span></div><div class="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div class="h-full rounded-full" :style="{ width: `${row.percentage}%`, backgroundColor: row.category?.color ?? '#10B981' }"></div></div></div></div>
-      <div class="mt-5 grid gap-3 sm:grid-cols-2"><div class="rounded-2xl border border-slate-200 p-4 dark:border-slate-800"><div class="flex items-center justify-between text-sm font-bold"><span>Taxa de economia</span><span :class="store.savingsRate >= 20 ? 'text-emerald-600' : 'text-amber-600'">{{ store.savingsRate.toFixed(1) }}%</span></div><p class="mt-1 text-xs text-slate-500">Meta inicial: guardar pelo menos 20% das entradas.</p></div><div class="rounded-2xl border border-slate-200 p-4 dark:border-slate-800"><div class="flex items-center justify-between text-sm font-bold"><span>Gastos fixos já pagos</span><span :class="store.fixedCostRatio <= 50 ? 'text-emerald-600' : 'text-rose-600'">{{ store.fixedCostRatio.toFixed(1) }}%</span></div><p class="mt-1 text-xs text-slate-500">Percentual da renda consumido por despesas fixas.</p></div></div>
-    </section>
+        <article v-if="widget.id === 'vault_total'" class="pingo-card min-h-40 p-5"><PiggyBank :size="21" class="text-brand" /><p class="mt-5 text-xs font-semibold text-subtle">Nos porquinhos</p><p class="mt-1 truncate text-2xl font-extrabold tabular-nums" :title="privateMoney(store.vaultTotalCents)">{{ privateMoney(store.vaultTotalCents) }}</p></article>
+        <article v-else-if="widget.id === 'month_expenses'" class="pingo-card min-h-40 p-5"><TrendingDown :size="21" class="text-brand" /><p class="mt-5 text-xs font-semibold text-subtle">Gastos no período</p><p class="mt-1 truncate text-2xl font-extrabold tabular-nums">{{ privateMoney(store.reportingExpenseCents) }}</p></article>
+        <article v-else-if="widget.id === 'daily_budget'" class="min-h-40 rounded-pingo-lg bg-brand p-5 text-white shadow-card"><CalendarClock :size="21" /><p class="mt-5 text-xs font-semibold text-white/60">Posso gastar hoje</p><p class="mt-1 truncate text-2xl font-extrabold tabular-nums">{{ privateMoney(store.dailyBudgetCents) }}</p></article>
+        <article v-else-if="widget.id === 'month_balance'" class="pingo-card min-h-40 p-5"><Landmark :size="21" class="text-brand" /><p class="mt-5 text-xs font-semibold text-subtle">Resultado do período</p><p class="mt-1 truncate text-2xl font-extrabold tabular-nums">{{ privateMoney(store.reportingBalanceCents) }}</p></article>
+        <div v-else-if="widget.id === 'recurring'"><RecurringSection /></div>
+        <article v-else-if="widget.id === 'insights'" class="pingo-card p-5"><div class="flex items-start justify-between"><div><p class="text-sm font-semibold text-brand">Leituras do Pingo</p><h3 class="text-xl font-extrabold">Saúde financeira</h3></div><Gauge :size="23" /></div><div class="mt-5 grid grid-cols-2 gap-3"><div class="rounded-2xl bg-muted p-4"><ShieldCheck :size="16" class="text-subtle" /><p class="mt-2 text-2xl font-extrabold">{{ store.financialHealthScore }}<span class="text-sm text-subtle">/100</span></p><p class="text-xs font-bold text-brand">{{ scoreLabel }}</p></div><div class="rounded-2xl bg-muted p-4"><Sparkles :size="16" class="text-subtle" /><p class="mt-2 truncate text-lg font-extrabold">{{ privateMoney(store.fixedMonthlyCommitmentCents) }}</p><p class="text-xs text-subtle">Fixos previstos</p></div></div></article>
+      </div>
+    </TransitionGroup>
 
-    <section class="mt-5 rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-6"><div class="mb-2 flex items-center justify-between gap-3"><div><p class="text-sm font-medium text-slate-500">Histórico editável</p><h3 class="text-xl font-black">{{ showAllHistory ? 'Todas as transações' : 'Transações recentes' }}</h3></div><button class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-black dark:border-slate-700" @click="showAllHistory = !showAllHistory">{{ showAllHistory ? 'Mostrar recentes' : 'Ver histórico completo' }}</button></div><TransactionList :transactions="historyTransactions" :categories="store.categories" :cards="store.debitCards" @edit="edit" /></section>
+    <section v-if="!widgetVisible('available_balance') && !widgetVisible('net_worth') && !widgetVisible('history') && !visibleOptionalWidgets.length" class="mt-8 grid min-h-72 place-items-center rounded-[2rem] border border-dashed border-line bg-surface p-8 text-center"><div><LayoutGrid :size="38" class="mx-auto text-brand" /><h2 class="mt-4 text-xl font-extrabold">Seu início está vazio</h2><p class="mt-1 text-sm text-subtle">Reative apenas os blocos que você quer acompanhar.</p><button class="mt-4 rounded-2xl bg-brand px-5 py-3 font-bold text-white" @click="customizing = true">Personalizar</button></div></section>
   </main>
 
-  <AddTransactionModal v-if="showModal" :categories="store.categories" :cards="store.debitCards" :transaction="editingTransaction" @close="showModal = false; editingTransaction = null" @save="save" />
+  <AddTransactionModal v-if="showModal" :categories="store.categories" :cards="store.debitCards" :vaults="store.vaults" :transaction="editingTransaction" @close="showModal = false; editingTransaction = null" @save="save" @save-recurring="saveRecurring" @send-to-vault="sendToVault" @delete="deletingTransaction = $event" />
   <EditBalanceModal v-if="showBalanceEditor" :current-balance="centsToDecimal(store.availableBalanceCents)" @close="showBalanceEditor = false" @save="editBalance" />
+  <ConfirmDialog v-if="deletingTransaction" title="Excluir transação?" :message="`“${deletingTransaction.description}” será removida e os saldos serão recalculados.`" confirm-label="Excluir transação" :busy="deleting" @cancel="deletingTransaction = null" @confirm="confirmDelete" />
+  <BankStatementImport v-if="showStatementImport" :categories="store.categories" :cards="store.debitCards" :transactions="store.transactions" :busy="importingStatement" @close="showStatementImport = false" @import="importStatement" />
 </template>

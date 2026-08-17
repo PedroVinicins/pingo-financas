@@ -1,0 +1,48 @@
+name: Relatar um problema
+description: Informe um erro de funcionamento do Pingo.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: O que aconteceu?
+      description: Explique o problema e o resultado esperado.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Como reproduzir?
+      placeholder: |
+        1. Abra...
+        2. Toque em...
+        3. Observe...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Plataforma
+      options:
+        - Android
+        - Linux
+        - Windows
+        - Navegador
+        - Outra
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Versão do Pingo
+      placeholder: v0.7.0
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs ou imagens
+      description: Não envie saldos reais, dados bancários ou outras informações pessoais.

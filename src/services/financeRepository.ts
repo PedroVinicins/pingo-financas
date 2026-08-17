@@ -1,15 +1,21 @@
 import type {
   AccountSettings,
   AutomaticReserveRule,
+  BankStatementImportInput,
   Category,
+  DashboardLayout,
   DebitCard,
+  DigitalWalletItem,
+  MonthlyReserveRule,
   MoveVaultMoneyInput,
   NewCategoryInput,
   NewDebitCardInput,
+  NewDigitalWalletItemInput,
   NewRecurringRuleInput,
   NewTransactionInput,
   NewVaultInput,
   RecurringRule,
+  RecurringSettlement,
   Transaction,
   UpdateTransactionInput,
   UpdateDebitCardStyleInput,
@@ -18,6 +24,9 @@ import type {
   VaultMovement,
   VaultMovementSource,
 } from '../types/finance'
+import { DEFAULT_DASHBOARD_LAYOUT, normalizeDashboardLayout } from './dashboardLayout'
+import { firstRecurringDueDate, followingRecurringDueDate, localDateKey } from './recurringDates'
+import { validateBackupData, type PingoBackup } from './backup'
 
 // Mantidos para preservar dados de quem já usou as versões 0.1/0.2 no navegador.
 const TRANSACTIONS_KEY = 'cashew-clone:transactions'
@@ -28,6 +37,10 @@ const VAULT_MOVEMENTS_KEY = 'pingo:vault-movements'
 const AUTOMATIC_RESERVE_KEY = 'pingo:automatic-reserve-rules'
 const ACCOUNT_SETTINGS_KEY = 'pingo:account-settings'
 const RECURRING_RULES_KEY = 'pingo:recurring-rules'
+const DASHBOARD_LAYOUT_KEY = 'pingo:dashboard-layout'
+const DIGITAL_WALLET_KEY = 'pingo:digital-wallet-items'
+const MONTHLY_RESERVE_KEY = 'pingo:monthly-reserve-rules'
+const SQLITE_MIGRATION_KEY = 'pingo:sqlite-state-migrated-v0.7'
 
 export function isTauriRuntime() {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
@@ -39,12 +52,65 @@ async function tauriInvoke<T>(command: string, args?: Record<string, unknown>): 
 }
 
 function readLocal<T>(key: string, fallback: T): T {
-  const value = localStorage.getItem(key)
-  return value ? (JSON.parse(value) as T) : fallback
+  try {
+    const value = localStorage.getItem(key)
+    return value ? (JSON.parse(value) as T) : fallback
+  } catch {
+    const corrupted = localStorage.getItem(key)
+    if (corrupted) {
+      try { localStorage.setItem(`${key}:recovery:${Date.now()}`, corrupted) } catch { /* sem espaço */ }
+    }
+    return fallback
+  }
 }
 
 function writeLocal<T>(key: string, value: T) {
-  localStorage.setItem(key, JSON.stringify(value))
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    throw new Error('Não foi possível salvar os dados neste dispositivo. Verifique o espaço disponível.')
+  }
+}
+
+function localRecurringRules(): RecurringRule[] {
+  return readLocal<RecurringRule[]>(RECURRING_RULES_KEY, [])
+    .map((rule) => {
+      let nextDueDate = rule.nextDueDate
+      if (!nextDueDate) {
+        nextDueDate = firstRecurringDueDate(rule.dayOfMonth, new Date(rule.createdAt))
+        if (rule.lastProcessedPeriod) {
+          const processedDueDate = `${rule.lastProcessedPeriod}-${String(Math.min(rule.dayOfMonth, 28)).padStart(2, '0')}`
+          nextDueDate = followingRecurringDueDate(rule.dayOfMonth, processedDueDate)
+        }
+      }
+      return { ...rule, nextDueDate, autoProcessAfterDays: rule.autoProcessAfterDays ?? 3 }
+    })
+    .sort((a, b) => a.dayOfMonth - b.dayOfMonth || a.description.localeCompare(b.description, 'pt-BR'))
+}
+
+export async function migrateLegacyAppData(): Promise<void> {
+  if (!isTauriRuntime() || localStorage.getItem(SQLITE_MIGRATION_KEY)) return
+
+  const [vaults, categories, cards] = await Promise.all([
+    tauriInvoke<Vault[]>('list_vaults'),
+    tauriInvoke<Category[]>('list_categories'),
+    tauriInvoke<DebitCard[]>('list_debit_cards'),
+  ])
+  const vaultIds = new Set(vaults.map((item) => item.id))
+  const categoryIds = new Set(categories.map((item) => item.id))
+  const cardIds = new Set(cards.map((item) => item.id))
+
+  const data = {
+    accountSettings: readLocal<AccountSettings | null>(ACCOUNT_SETTINGS_KEY, null),
+    vaultMovements: readLocal<VaultMovement[]>(VAULT_MOVEMENTS_KEY, [])
+      .filter((item) => vaultIds.has(item.vaultId)),
+    automaticReserveRules: readLocal<AutomaticReserveRule[]>(AUTOMATIC_RESERVE_KEY, [])
+      .filter((item) => vaultIds.has(item.vaultId)),
+    recurringRules: localRecurringRules().filter((item) =>
+      categoryIds.has(item.categoryId) && (!item.debitCardId || cardIds.has(item.debitCardId))),
+  }
+  await tauriInvoke<void>('import_legacy_app_data', { data })
+  localStorage.setItem(SQLITE_MIGRATION_KEY, new Date().toISOString())
 }
 
 function normalizeCard(card: DebitCard): DebitCard {
@@ -63,56 +129,229 @@ function normalizeCategory(category: Category): Category {
   }
 }
 
+function transactionEffectCents(transaction: Pick<Transaction, 'kind' | 'amount'>) {
+  const amount = moneyToCents(transaction.amount)
+  return transaction.kind === 'income' ? amount : -amount
+}
+
+function localAvailableBalanceCents(transactions = readLocal<Transaction[]>(TRANSACTIONS_KEY, [])) {
+  const settings = readLocal<AccountSettings | null>(ACCOUNT_SETTINGS_KEY, null)
+  const transactionTotal = transactions.reduce(
+    (total, item) => total + transactionEffectCents(item), 0n,
+  )
+  const vaultTotal = readLocal<Vault[]>(VAULTS_KEY, [])
+    .reduce((total, vault) => total + moneyToCents(vault.balance), 0n)
+  return transactionTotal
+    + signedMoneyToCents(settings?.openingBalanceAdjustment ?? '0.00')
+    - vaultTotal
+}
+
+function applyLocalAutomaticReserves(incomeCents: bigint) {
+  const vaults = readLocal<Vault[]>(VAULTS_KEY, [])
+  const rules = readLocal<AutomaticReserveRule[]>(AUTOMATIC_RESERVE_KEY, [])
+    .filter((rule) => rule.enabled)
+  if (!vaults.length || !rules.length) return
+
+  let available = localAvailableBalanceCents()
+  if (available <= 0n) return
+
+  const now = new Date().toISOString()
+  const movements = readLocal<VaultMovement[]>(VAULT_MOVEMENTS_KEY, [])
+  let remainingIncome = incomeCents
+  for (const rule of rules) {
+    const vault = vaults.find((item) => item.id === rule.vaultId)
+    if (!vault) continue
+    const desired = rule.mode === 'percentage'
+      ? (incomeCents * moneyToCents(rule.value)) / 10_000n
+      : moneyToCents(rule.value)
+    const availableAmount = desired > available ? available : desired
+    const amount = availableAmount > remainingIncome ? remainingIncome : availableAmount
+    if (amount <= 0n) continue
+    vault.balance = centsToMoney(moneyToCents(vault.balance) + amount)
+    vault.updatedAt = now
+    movements.unshift({
+      id: crypto.randomUUID(), vaultId: vault.id, kind: 'deposit', amount: centsToMoney(amount),
+      source: 'automatic', occurredAt: now,
+    })
+    available -= amount
+    remainingIncome -= amount
+    if (available <= 0n || remainingIncome <= 0n) break
+  }
+  writeLocal(VAULTS_KEY, vaults)
+  writeLocal(VAULT_MOVEMENTS_KEY, movements.slice(0, 500))
+}
+
 export async function listTransactions(): Promise<Transaction[]> {
   if (isTauriRuntime()) return tauriInvoke<Transaction[]>('list_transactions')
-  return readLocal<Transaction[]>(TRANSACTIONS_KEY, [])
+  return readLocal<Transaction[]>(TRANSACTIONS_KEY, []).map((item) => ({
+    ...item,
+    occurredAt: item.occurredAt ?? null,
+  }))
 }
 
 export async function addTransaction(input: NewTransactionInput): Promise<Transaction> {
   if (isTauriRuntime()) return tauriInvoke<Transaction>('add_transaction', { input })
 
+  const amount = moneyToCents(input.amount)
+  if (amount <= 0n) throw new Error('O valor deve ser maior que zero')
+  if (input.kind === 'income' && input.debitCardId) {
+    throw new Error('Um cartão de débito só pode ser associado a uma despesa')
+  }
   if (!input.categoryId) throw new Error('Selecione uma categoria')
   const category = (await listCategories([])).find((item) => item.id === input.categoryId)
   if (!category || category.kind !== input.kind) {
     throw new Error('A categoria não corresponde ao tipo da transação')
   }
 
-  if (input.debitCardId) {
+  const transactions = await listTransactions()
+  if (input.kind === 'expense' && amount > localAvailableBalanceCents(transactions)) {
+    throw new Error('Saldo insuficiente. O Pingo não deixa sua conta ficar negativa.')
+  }
+
+  if (input.kind === 'expense' && input.debitCardId) {
     const card = (await listDebitCards()).find((item) => item.id === input.debitCardId)
-    if (card?.isFrozen) throw new Error('Este cartão está congelado')
+    if (!card) throw new Error('Cartão não encontrado')
+    if (card.isFrozen) throw new Error('Este cartão está congelado')
+    if (card.monthlySpendingLimit) {
+      const used = transactions.reduce((total, item) =>
+        item.kind === 'expense'
+        && item.debitCardId === card.id
+        && item.date.slice(0, 7) === input.date.slice(0, 7)
+          ? total + moneyToCents(item.amount)
+          : total, 0n)
+      if (used + amount > moneyToCents(card.monthlySpendingLimit)) {
+        throw new Error(`Esta compra ultrapassa o limite mensal de ${card.monthlySpendingLimit} definido para o cartão`)
+      }
+    }
   }
 
   const transaction: Transaction = {
     ...input,
+    occurredAt: input.occurredAt ?? null,
+    debitCardId: input.kind === 'income' ? null : input.debitCardId,
     id: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
   }
-  const transactions = await listTransactions()
   transactions.push(transaction)
   writeLocal(TRANSACTIONS_KEY, transactions)
+  if (transaction.kind === 'income') applyLocalAutomaticReserves(moneyToCents(transaction.amount))
   return transaction
+}
+
+export async function importBankStatement(input: BankStatementImportInput): Promise<Transaction[]> {
+  if (!input.transactions.length) throw new Error('Selecione pelo menos um lançamento para importar')
+  if (input.transactions.length > 2_000) throw new Error('Importe no máximo 2.000 lançamentos por arquivo')
+  if (input.closingBalance !== null && signedMoneyToCents(input.closingBalance) < 0n) {
+    throw new Error('O Pingo ainda não reconcilia extratos com saldo negativo')
+  }
+  if (isTauriRuntime()) {
+    return tauriInvoke<Transaction[]>('import_transactions', {
+      inputs: input.transactions,
+      closingBalance: input.closingBalance,
+    })
+  }
+
+  const [categories, cards] = await Promise.all([listCategories([]), listDebitCards()])
+  const now = new Date().toISOString()
+  const imported = input.transactions.map((item, index) => {
+    const amount = moneyToCents(item.amount)
+    if (amount <= 0n) throw new Error('O extrato contém um valor inválido')
+    if (!item.description.trim() || item.description.trim().length > 160) {
+      throw new Error('O extrato contém uma descrição inválida')
+    }
+    const category = categories.find((candidate) => candidate.id === item.categoryId)
+    if (!category || category.kind !== item.kind) {
+      throw new Error('Escolha categorias compatíveis com as entradas e saídas')
+    }
+    if (item.kind === 'expense' && item.debitCardId
+      && !cards.some((candidate) => candidate.id === item.debitCardId)) {
+      throw new Error('O extrato referencia um cartão que não existe mais')
+    }
+    return {
+      ...item,
+      occurredAt: item.occurredAt ?? null,
+      debitCardId: item.kind === 'expense' ? item.debitCardId : null,
+      id: crypto.randomUUID(),
+      description: item.description.trim(),
+      createdAt: new Date(new Date(now).getTime() + index).toISOString(),
+    } satisfies Transaction
+  })
+  const previousTransactions = localStorage.getItem(TRANSACTIONS_KEY)
+  const previousSettings = localStorage.getItem(ACCOUNT_SETTINGS_KEY)
+  const transactions = [...await listTransactions(), ...imported]
+  try {
+    writeLocal(TRANSACTIONS_KEY, transactions)
+    const projectedBalance = localAvailableBalanceCents(transactions)
+    if (input.closingBalance === null) {
+      if (projectedBalance < 0n) {
+        throw new Error('O extrato deixaria o saldo negativo. Ative a conciliação com o saldo do arquivo.')
+      }
+    } else {
+      const settings = readLocal<AccountSettings | null>(ACCOUNT_SETTINGS_KEY, null) ?? {
+        openingBalanceAdjustment: '0.00', balanceHidden: false, migratedAt: now,
+      }
+      const desired = signedMoneyToCents(input.closingBalance)
+      settings.openingBalanceAdjustment = centsToMoney(
+        signedMoneyToCents(settings.openingBalanceAdjustment) + desired - projectedBalance,
+      )
+      writeLocal(ACCOUNT_SETTINGS_KEY, settings)
+    }
+  } catch (cause) {
+    if (previousTransactions === null) localStorage.removeItem(TRANSACTIONS_KEY)
+    else localStorage.setItem(TRANSACTIONS_KEY, previousTransactions)
+    if (previousSettings === null) localStorage.removeItem(ACCOUNT_SETTINGS_KEY)
+    else localStorage.setItem(ACCOUNT_SETTINGS_KEY, previousSettings)
+    throw cause
+  }
+  return imported
 }
 
 export async function updateTransaction(input: UpdateTransactionInput): Promise<Transaction> {
   if (isTauriRuntime()) return tauriInvoke<Transaction>('update_transaction', { id: input.id, input })
 
+  const amount = moneyToCents(input.amount)
+  if (amount <= 0n) throw new Error('O valor deve ser maior que zero')
+  if (input.kind === 'income' && input.debitCardId) {
+    throw new Error('Um cartão de débito só pode ser associado a uma despesa')
+  }
   if (!input.categoryId) throw new Error('Selecione uma categoria')
   const category = (await listCategories([])).find((item) => item.id === input.categoryId)
   if (!category || category.kind !== input.kind) {
     throw new Error('A categoria não corresponde ao tipo da transação')
   }
 
-  if (input.debitCardId) {
-    const card = (await listDebitCards()).find((item) => item.id === input.debitCardId)
-    if (card?.isFrozen) throw new Error('Este cartão está congelado')
-  }
-
   const transactions = await listTransactions()
   const index = transactions.findIndex((item) => item.id === input.id)
   if (index < 0) throw new Error('Transação não encontrada')
+  const projected = localAvailableBalanceCents(transactions)
+    - transactionEffectCents(transactions[index])
+    + transactionEffectCents(input)
+  if (projected < 0n) throw new Error('Essa alteração deixaria a conta negativa.')
+
+  if (input.kind === 'expense' && input.debitCardId) {
+    const card = (await listDebitCards()).find((item) => item.id === input.debitCardId)
+    if (!card) throw new Error('Cartão não encontrado')
+    if (card.isFrozen && transactions[index].debitCardId !== input.debitCardId) {
+      throw new Error('Este cartão está congelado')
+    }
+    if (card.monthlySpendingLimit) {
+      const used = transactions.reduce((total, item) =>
+        item.id !== input.id
+        && item.kind === 'expense'
+        && item.debitCardId === card.id
+        && item.date.slice(0, 7) === input.date.slice(0, 7)
+          ? total + moneyToCents(item.amount)
+          : total, 0n)
+      if (used + amount > moneyToCents(card.monthlySpendingLimit)) {
+        throw new Error(`Esta compra ultrapassa o limite mensal de ${card.monthlySpendingLimit} definido para o cartão`)
+      }
+    }
+  }
+
   const updated: Transaction = {
     ...transactions[index],
     ...input,
+    occurredAt: input.occurredAt ?? null,
     categoryId: input.categoryId,
     debitCardId: input.kind === 'income' ? null : input.debitCardId,
   }
@@ -126,7 +365,13 @@ export async function deleteTransaction(id: string): Promise<void> {
     await tauriInvoke<void>('delete_transaction', { id })
     return
   }
-  writeLocal(TRANSACTIONS_KEY, (await listTransactions()).filter((item) => item.id !== id))
+  const transactions = await listTransactions()
+  const transaction = transactions.find((item) => item.id === id)
+  if (!transaction) throw new Error('Transação não encontrada')
+  if (localAvailableBalanceCents(transactions) - transactionEffectCents(transaction) < 0n) {
+    throw new Error('Excluir essa entrada deixaria a conta negativa.')
+  }
+  writeLocal(TRANSACTIONS_KEY, transactions.filter((item) => item.id !== id))
 }
 
 export async function listCategories(fallback: Category[]): Promise<Category[]> {
@@ -220,7 +465,8 @@ export async function setDebitCardFrozen(id: string, frozen: boolean): Promise<v
 
   const cards = await listDebitCards()
   const card = cards.find((item) => item.id === id)
-  if (card) card.isFrozen = frozen
+  if (!card) throw new Error('Cartão não encontrado')
+  card.isFrozen = frozen
   writeLocal(DEBIT_CARDS_KEY, cards)
 }
 
@@ -231,6 +477,7 @@ export async function setDefaultDebitCard(id: string): Promise<void> {
   }
 
   const cards = await listDebitCards()
+  if (!cards.some((card) => card.id === id)) throw new Error('Cartão não encontrado')
   cards.forEach((card) => { card.isDefault = card.id === id })
   writeLocal(DEBIT_CARDS_KEY, cards)
 }
@@ -241,7 +488,9 @@ export async function deleteDebitCard(id: string): Promise<void> {
     return
   }
 
-  writeLocal(DEBIT_CARDS_KEY, (await listDebitCards()).filter((card) => card.id !== id))
+  const cards = await listDebitCards()
+  if (!cards.some((card) => card.id === id)) throw new Error('Cartão não encontrado')
+  writeLocal(DEBIT_CARDS_KEY, cards.filter((card) => card.id !== id))
   const transactions = (await listTransactions()).map((transaction) =>
     transaction.debitCardId === id ? { ...transaction, debitCardId: null } : transaction,
   )
@@ -256,6 +505,10 @@ export async function listVaults(): Promise<Vault[]> {
 export async function addVault(input: NewVaultInput): Promise<Vault> {
   if (isTauriRuntime()) return tauriInvoke<Vault>('add_vault', { input })
 
+  const initialBalance = moneyToCents(input.initialBalance)
+  if (initialBalance > localAvailableBalanceCents()) {
+    throw new Error('Não há saldo suficiente na conta para começar esse cofre')
+  }
   const now = new Date().toISOString()
   const vault: Vault = {
     id: crypto.randomUUID(),
@@ -273,11 +526,26 @@ export async function addVault(input: NewVaultInput): Promise<Vault> {
   const vaults = await listVaults()
   vaults.push(vault)
   writeLocal(VAULTS_KEY, vaults)
+  if (initialBalance > 0n) {
+    const movements = readLocal<VaultMovement[]>(VAULT_MOVEMENTS_KEY, [])
+    movements.unshift({
+      id: crypto.randomUUID(),
+      vaultId: vault.id,
+      kind: 'deposit',
+      amount: input.initialBalance,
+      source: 'manual',
+      occurredAt: now,
+    })
+    writeLocal(VAULT_MOVEMENTS_KEY, movements.slice(0, 500))
+  }
   return vault
 }
 
-export async function moveVaultMoney(input: MoveVaultMoneyInput): Promise<Vault> {
-  if (isTauriRuntime()) return tauriInvoke<Vault>('move_vault_money', { input })
+export async function moveVaultMoney(
+  input: MoveVaultMoneyInput,
+  source: VaultMovementSource = 'manual',
+): Promise<Vault> {
+  if (isTauriRuntime()) return tauriInvoke<Vault>('move_vault_money', { input, source })
 
   const vaults = await listVaults()
   const vault = vaults.find((item) => item.id === input.id)
@@ -286,12 +554,35 @@ export async function moveVaultMoney(input: MoveVaultMoneyInput): Promise<Vault>
   const current = moneyToCents(vault.balance)
   const amount = moneyToCents(input.amount)
   if (amount <= 0n) throw new Error('O valor deve ser maior que zero')
+  if (input.kind === 'deposit' && amount > localAvailableBalanceCents()) {
+    throw new Error('Saldo insuficiente na conta principal para guardar esse valor')
+  }
   const next = input.kind === 'deposit' ? current + amount : current - amount
   if (next < 0n) throw new Error('O cofre não tem saldo suficiente')
 
+  const previousVaults = localStorage.getItem(VAULTS_KEY)
+  const previousMovements = localStorage.getItem(VAULT_MOVEMENTS_KEY)
   vault.balance = centsToMoney(next)
   vault.updatedAt = new Date().toISOString()
-  writeLocal(VAULTS_KEY, vaults)
+  const movements = readLocal<VaultMovement[]>(VAULT_MOVEMENTS_KEY, [])
+  movements.unshift({
+    id: crypto.randomUUID(),
+    vaultId: input.id,
+    kind: input.kind,
+    amount: input.amount,
+    source,
+    occurredAt: vault.updatedAt,
+  })
+  try {
+    writeLocal(VAULTS_KEY, vaults)
+    writeLocal(VAULT_MOVEMENTS_KEY, movements.slice(0, 500))
+  } catch (cause) {
+    if (previousVaults === null) localStorage.removeItem(VAULTS_KEY)
+    else localStorage.setItem(VAULTS_KEY, previousVaults)
+    if (previousMovements === null) localStorage.removeItem(VAULT_MOVEMENTS_KEY)
+    else localStorage.setItem(VAULT_MOVEMENTS_KEY, previousMovements)
+    throw cause
+  }
   return { ...vault }
 }
 
@@ -317,61 +608,242 @@ export async function deleteVault(id: string): Promise<void> {
     await tauriInvoke<void>('delete_vault', { id })
     return
   }
-  writeLocal(VAULTS_KEY, (await listVaults()).filter((vault) => vault.id !== id))
+  const vaults = await listVaults()
+  if (!vaults.some((vault) => vault.id === id)) throw new Error('Cofre não encontrado')
+  writeLocal(VAULTS_KEY, vaults.filter((vault) => vault.id !== id))
+  writeLocal(VAULT_MOVEMENTS_KEY, readLocal<VaultMovement[]>(VAULT_MOVEMENTS_KEY, [])
+    .filter((movement) => movement.vaultId !== id))
+  writeLocal(AUTOMATIC_RESERVE_KEY, readLocal<AutomaticReserveRule[]>(AUTOMATIC_RESERVE_KEY, [])
+    .filter((rule) => rule.vaultId !== id))
+  writeLocal(MONTHLY_RESERVE_KEY, readLocal<MonthlyReserveRule[]>(MONTHLY_RESERVE_KEY, [])
+    .filter((rule) => rule.vaultId !== id))
 }
 
-export function loadAccountSettings(): AccountSettings | null {
+export async function loadAccountSettings(): Promise<AccountSettings | null> {
+  if (isTauriRuntime()) return tauriInvoke<AccountSettings | null>('get_account_settings')
   return readLocal<AccountSettings | null>(ACCOUNT_SETTINGS_KEY, null)
 }
 
-export function saveAccountSettings(settings: AccountSettings) {
+export async function saveAccountSettings(settings: AccountSettings): Promise<void> {
+  if (isTauriRuntime()) return tauriInvoke<void>('save_account_settings', { settings })
   writeLocal(ACCOUNT_SETTINGS_KEY, settings)
 }
 
-export function listVaultMovements(): VaultMovement[] {
+export async function listVaultMovements(): Promise<VaultMovement[]> {
+  if (isTauriRuntime()) return tauriInvoke<VaultMovement[]>('list_vault_movements')
   return readLocal<VaultMovement[]>(VAULT_MOVEMENTS_KEY, [])
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
 }
 
-export function addVaultMovement(
-  input: MoveVaultMoneyInput,
-  source: VaultMovementSource = 'manual',
-): VaultMovement {
-  const movement: VaultMovement = {
-    id: crypto.randomUUID(),
-    vaultId: input.id,
-    kind: input.kind,
-    amount: input.amount,
-    source,
-    occurredAt: new Date().toISOString(),
-  }
-  const movements = listVaultMovements()
-  movements.unshift(movement)
-  writeLocal(VAULT_MOVEMENTS_KEY, movements.slice(0, 500))
-  return movement
-}
-
-export function listAutomaticReserveRules(): AutomaticReserveRule[] {
+export async function listAutomaticReserveRules(): Promise<AutomaticReserveRule[]> {
+  if (isTauriRuntime()) return tauriInvoke<AutomaticReserveRule[]>('list_automatic_reserve_rules')
   return readLocal<AutomaticReserveRule[]>(AUTOMATIC_RESERVE_KEY, [])
 }
 
-export function saveAutomaticReserveRule(rule: AutomaticReserveRule) {
-  const rules = listAutomaticReserveRules().filter((item) => item.vaultId !== rule.vaultId)
+export async function saveAutomaticReserveRule(rule: AutomaticReserveRule): Promise<void> {
+  if (isTauriRuntime()) return tauriInvoke<void>('save_automatic_reserve_rule', { rule })
+  const value = moneyToCents(rule.value)
+  if (value <= 0n) throw new Error('O valor da reserva automática deve ser maior que zero')
+  if (rule.mode === 'percentage' && value > 10_000n) {
+    throw new Error('A porcentagem da reserva automática deve ficar entre 0% e 100%')
+  }
+  if (!(await listVaults()).some((vault) => vault.id === rule.vaultId)) {
+    throw new Error('Cofre não encontrado')
+  }
+  const rules = (await listAutomaticReserveRules()).filter((item) => item.vaultId !== rule.vaultId)
   rules.push(rule)
   writeLocal(AUTOMATIC_RESERVE_KEY, rules)
 }
 
-export function removeAutomaticReserveRule(vaultId: string) {
-  writeLocal(AUTOMATIC_RESERVE_KEY, listAutomaticReserveRules().filter((item) => item.vaultId !== vaultId))
+export async function removeAutomaticReserveRule(vaultId: string): Promise<void> {
+  if (isTauriRuntime()) return tauriInvoke<void>('remove_automatic_reserve_rule', { vaultId })
+  writeLocal(AUTOMATIC_RESERVE_KEY, (await listAutomaticReserveRules())
+    .filter((item) => item.vaultId !== vaultId))
 }
 
-export function listRecurringRules(): RecurringRule[] {
-  return readLocal<RecurringRule[]>(RECURRING_RULES_KEY, [])
-    .map((rule) => ({ ...rule, autoProcessAfterDays: rule.autoProcessAfterDays ?? 3 }))
-    .sort((a, b) => a.dayOfMonth - b.dayOfMonth || a.description.localeCompare(b.description, 'pt-BR'))
+export async function loadDashboardLayout(): Promise<DashboardLayout> {
+  if (isTauriRuntime()) {
+    const raw = await tauriInvoke<string | null>('get_dashboard_layout')
+    if (!raw) return normalizeDashboardLayout(DEFAULT_DASHBOARD_LAYOUT)
+    try { return normalizeDashboardLayout(JSON.parse(raw)) } catch { return normalizeDashboardLayout(null) }
+  }
+  return normalizeDashboardLayout(readLocal<DashboardLayout | null>(DASHBOARD_LAYOUT_KEY, null))
 }
 
-export function addRecurringRule(input: NewRecurringRuleInput): RecurringRule {
+export async function saveDashboardLayout(layout: DashboardLayout): Promise<void> {
+  const normalized = normalizeDashboardLayout(layout)
+  if (isTauriRuntime()) return tauriInvoke<void>('save_dashboard_layout', { layoutJson: JSON.stringify(normalized) })
+  writeLocal(DASHBOARD_LAYOUT_KEY, normalized)
+}
+
+export async function resetDashboardLayout(): Promise<DashboardLayout> {
+  if (isTauriRuntime()) await tauriInvoke<void>('reset_dashboard_layout')
+  else localStorage.removeItem(DASHBOARD_LAYOUT_KEY)
+  return normalizeDashboardLayout(DEFAULT_DASHBOARD_LAYOUT)
+}
+
+export async function listDigitalWalletItems(): Promise<DigitalWalletItem[]> {
+  if (isTauriRuntime()) return tauriInvoke<DigitalWalletItem[]>('list_digital_wallet_items')
+  return readLocal<DigitalWalletItem[]>(DIGITAL_WALLET_KEY, [])
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+}
+
+export async function addDigitalWalletItem(input: NewDigitalWalletItemInput): Promise<DigitalWalletItem> {
+  if (isTauriRuntime()) return tauriInvoke<DigitalWalletItem>('add_digital_wallet_item', { input })
+  if (!input.title.trim()) throw new Error('Informe um nome para o item da carteira')
+  if (input.title.trim().length > 100 || input.issuer.trim().length > 100 || input.notes.trim().length > 500) {
+    throw new Error('Um dos textos ultrapassa o limite permitido')
+  }
+  if ((input.fileDataUrl?.length ?? 0) > 4_200_000) throw new Error('O arquivo ultrapassa o limite local de 3 MB')
+  if (input.mimeType && !['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(input.mimeType)) {
+    throw new Error('Tipo de arquivo não permitido; use imagem ou PDF')
+  }
+  if ((input.fileDataUrl || input.mimeType)
+    && (!input.fileDataUrl?.startsWith(`data:${input.mimeType};base64,`) || !input.mimeType)) {
+    throw new Error('Conteúdo do arquivo inválido')
+  }
+  const now = new Date().toISOString()
+  const item: DigitalWalletItem = {
+    ...input, id: crypto.randomUUID(), title: input.title.trim(), issuer: input.issuer.trim(),
+    notes: input.notes.trim(), qrValue: input.qrValue?.trim() || null, createdAt: now, updatedAt: now,
+  }
+  const items = await listDigitalWalletItems()
+  items.unshift(item)
+  writeLocal(DIGITAL_WALLET_KEY, items)
+  return item
+}
+
+export async function deleteDigitalWalletItem(id: string): Promise<void> {
+  if (isTauriRuntime()) return tauriInvoke<void>('delete_digital_wallet_item', { id })
+  const items = await listDigitalWalletItems()
+  if (!items.some((item) => item.id === id)) throw new Error('Item da carteira não encontrado')
+  writeLocal(DIGITAL_WALLET_KEY, items.filter((item) => item.id !== id))
+}
+
+export async function listMonthlyReserveRules(): Promise<MonthlyReserveRule[]> {
+  if (isTauriRuntime()) return tauriInvoke<MonthlyReserveRule[]>('list_monthly_reserve_rules')
+  return readLocal<MonthlyReserveRule[]>(MONTHLY_RESERVE_KEY, [])
+}
+
+export async function saveMonthlyReserveRule(rule: MonthlyReserveRule): Promise<void> {
+  if (isTauriRuntime()) return tauriInvoke<void>('save_monthly_reserve_rule', { rule })
+  if (moneyToCents(rule.value) <= 0n) throw new Error('Informe um valor maior que zero')
+  if (rule.mode === 'percentage' && moneyToCents(rule.value) > 10_000n) throw new Error('A porcentagem deve ser de no máximo 100%')
+  if (!Number.isInteger(rule.dayOfMonth) || rule.dayOfMonth < 1 || rule.dayOfMonth > 28) throw new Error('Escolha um dia entre 1 e 28')
+  const rules = (await listMonthlyReserveRules()).filter((item) => item.vaultId !== rule.vaultId)
+  rules.push(rule)
+  writeLocal(MONTHLY_RESERVE_KEY, rules)
+}
+
+export async function removeMonthlyReserveRule(vaultId: string): Promise<void> {
+  if (isTauriRuntime()) return tauriInvoke<void>('remove_monthly_reserve_rule', { vaultId })
+  writeLocal(MONTHLY_RESERVE_KEY, (await listMonthlyReserveRules()).filter((item) => item.vaultId !== vaultId))
+}
+
+export async function processMonthlyReserves(today = localDateKey(new Date())): Promise<number> {
+  if (isTauriRuntime()) return tauriInvoke<number>('process_monthly_reserves', { today })
+  const period = today.slice(0, 7)
+  const day = Number(today.slice(8, 10))
+  const rules = await listMonthlyReserveRules()
+  const vaults = await listVaults()
+  const movements = readLocal<VaultMovement[]>(VAULT_MOVEMENTS_KEY, [])
+  let available = localAvailableBalanceCents()
+  let processed = 0
+  for (const rule of rules) {
+    if (!rule.enabled || rule.dayOfMonth > day || rule.lastProcessedPeriod === period) continue
+    const vault = vaults.find((item) => item.id === rule.vaultId)
+    if (!vault) continue
+    const amount = rule.mode === 'fixed'
+      ? moneyToCents(rule.value)
+      : (available * moneyToCents(rule.value)) / 10_000n
+    if (amount <= 0n || amount > available) continue
+    const now = new Date().toISOString()
+    vault.balance = centsToMoney(moneyToCents(vault.balance) + amount)
+    vault.updatedAt = now
+    movements.unshift({
+      id: crypto.randomUUID(), vaultId: vault.id, kind: 'deposit', amount: centsToMoney(amount),
+      source: 'automatic', occurredAt: now,
+    })
+    rule.lastProcessedPeriod = period
+    available -= amount
+    processed += 1
+  }
+  writeLocal(VAULTS_KEY, vaults)
+  writeLocal(VAULT_MOVEMENTS_KEY, movements.slice(0, 500))
+  writeLocal(MONTHLY_RESERVE_KEY, rules)
+  return processed
+}
+
+export async function factoryReset(): Promise<void> {
+  if (isTauriRuntime()) await tauriInvoke<void>('factory_reset')
+  const keys: string[] = []
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index)
+    if (key && (key.startsWith('pingo:') || key.startsWith('cashew-clone:') || key === 'theme')) {
+      keys.push(key)
+    }
+  }
+  keys.forEach((key) => localStorage.removeItem(key))
+  sessionStorage.removeItem('pingo:active-view')
+}
+
+export async function restoreBackup(data: PingoBackup['data']): Promise<void> {
+  validateBackupData(data)
+  const preferenceKey = 'pingo:preferences'
+  const preferenceSnapshot = localStorage.getItem(preferenceKey)
+  if (isTauriRuntime()) {
+    try {
+      localStorage.setItem(preferenceKey, JSON.stringify(data.preferences))
+      await tauriInvoke<void>('restore_backup', { data })
+    } catch (cause) {
+      if (preferenceSnapshot === null) localStorage.removeItem(preferenceKey)
+      else localStorage.setItem(preferenceKey, preferenceSnapshot)
+      throw cause
+    }
+    return
+  }
+
+  const existingKeys: string[] = []
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index)
+    if (key && (key.startsWith('pingo:') || key.startsWith('cashew-clone:') || key === 'theme')) existingKeys.push(key)
+  }
+  const snapshot = new Map(existingKeys.map((key) => [key, localStorage.getItem(key)]))
+  try {
+    existingKeys.forEach((key) => localStorage.removeItem(key))
+    writeLocal(TRANSACTIONS_KEY, data.transactions)
+    writeLocal(CATEGORIES_KEY, data.categories)
+    writeLocal(DEBIT_CARDS_KEY, data.debitCards)
+    writeLocal(VAULTS_KEY, data.vaults)
+    writeLocal(VAULT_MOVEMENTS_KEY, data.vaultMovements)
+    writeLocal(AUTOMATIC_RESERVE_KEY, data.automaticReserveRules)
+    writeLocal(MONTHLY_RESERVE_KEY, data.monthlyReserveRules)
+    writeLocal(DIGITAL_WALLET_KEY, data.digitalWalletItems)
+    writeLocal(DASHBOARD_LAYOUT_KEY, normalizeDashboardLayout(data.dashboardLayout))
+    writeLocal(RECURRING_RULES_KEY, data.recurringRules)
+    writeLocal(ACCOUNT_SETTINGS_KEY, data.accountSettings)
+    writeLocal(preferenceKey, data.preferences)
+  } catch (cause) {
+    const restoredKeys: string[] = []
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index)
+      if (key && (key.startsWith('pingo:') || key.startsWith('cashew-clone:') || key === 'theme')) restoredKeys.push(key)
+    }
+    restoredKeys.forEach((key) => localStorage.removeItem(key))
+    snapshot.forEach((value, key) => { if (value !== null) localStorage.setItem(key, value) })
+    throw cause
+  }
+}
+
+export async function listRecurringRules(): Promise<RecurringRule[]> {
+  if (isTauriRuntime()) return tauriInvoke<RecurringRule[]>('list_recurring_rules')
+  return localRecurringRules()
+}
+
+export async function addRecurringRule(input: NewRecurringRuleInput): Promise<RecurringRule> {
+  if (isTauriRuntime()) {
+    return tauriInvoke<RecurringRule>('add_recurring_rule', { input, today: localDateKey(new Date()) })
+  }
   const now = new Date().toISOString()
   const rule: RecurringRule = {
     ...input,
@@ -379,17 +851,19 @@ export function addRecurringRule(input: NewRecurringRuleInput): RecurringRule {
     autoProcessAfterDays: 3,
     active: true,
     lastProcessedPeriod: null,
+    nextDueDate: firstRecurringDueDate(input.dayOfMonth),
     createdAt: now,
     updatedAt: now,
   }
-  const rules = listRecurringRules()
+  const rules = localRecurringRules()
   rules.push(rule)
   writeLocal(RECURRING_RULES_KEY, rules)
   return rule
 }
 
-export function updateRecurringRule(rule: RecurringRule): RecurringRule {
-  const rules = listRecurringRules()
+export async function updateRecurringRule(rule: RecurringRule): Promise<RecurringRule> {
+  if (isTauriRuntime()) return tauriInvoke<RecurringRule>('update_recurring_rule', { rule })
+  const rules = localRecurringRules()
   const index = rules.findIndex((item) => item.id === rule.id)
   if (index < 0) throw new Error('Renda ou despesa fixa não encontrada')
   const updated = { ...rule, updatedAt: new Date().toISOString() }
@@ -398,8 +872,39 @@ export function updateRecurringRule(rule: RecurringRule): RecurringRule {
   return updated
 }
 
-export function deleteRecurringRule(id: string) {
-  writeLocal(RECURRING_RULES_KEY, listRecurringRules().filter((item) => item.id !== id))
+export async function settleRecurringRule(id: string, today: string): Promise<RecurringSettlement> {
+  if (isTauriRuntime()) {
+    return tauriInvoke<RecurringSettlement>('settle_recurring_rule', { id, today })
+  }
+
+  const rule = localRecurringRules().find((item) => item.id === id)
+  if (!rule) throw new Error('Renda ou despesa fixa não encontrada')
+  if (!rule.active || today < rule.nextDueDate) {
+    throw new Error(`A confirmação ficará disponível em ${rule.nextDueDate.split('-').reverse().join('/')}.`)
+  }
+  const processedDueDate = rule.nextDueDate
+  const transaction = await addTransaction({
+    kind: rule.kind,
+    amount: rule.amount,
+    date: today,
+    categoryId: rule.categoryId,
+    debitCardId: rule.kind === 'expense' ? rule.debitCardId : null,
+    description: rule.description,
+    recurrence: 'fixed',
+  })
+  const updated = await updateRecurringRule({
+    ...rule,
+    lastProcessedPeriod: processedDueDate.slice(0, 7),
+    nextDueDate: followingRecurringDueDate(rule.dayOfMonth, processedDueDate),
+  })
+  return { transaction, rule: updated }
+}
+
+export async function deleteRecurringRule(id: string): Promise<void> {
+  if (isTauriRuntime()) return tauriInvoke<void>('delete_recurring_rule', { id })
+  const rules = localRecurringRules()
+  if (!rules.some((item) => item.id === id)) throw new Error('Renda ou despesa fixa não encontrada')
+  writeLocal(RECURRING_RULES_KEY, rules.filter((item) => item.id !== id))
 }
 
 function moneyToCents(value: string): bigint {
@@ -409,6 +914,15 @@ function moneyToCents(value: string): bigint {
   return BigInt(whole) * 100n + BigInt((fraction + '00').slice(0, 2))
 }
 
+function signedMoneyToCents(value: string): bigint {
+  const normalized = value.trim().replace(',', '.')
+  const negative = normalized.startsWith('-')
+  const cents = moneyToCents(negative ? normalized.slice(1) : normalized)
+  return negative ? -cents : cents
+}
+
 function centsToMoney(value: bigint): string {
-  return `${value / 100n}.${(value % 100n).toString().padStart(2, '0')}`
+  const negative = value < 0n
+  const absolute = negative ? -value : value
+  return `${negative ? '-' : ''}${absolute / 100n}.${(absolute % 100n).toString().padStart(2, '0')}`
 }

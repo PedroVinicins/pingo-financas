@@ -57,7 +57,9 @@ impl Category {
 fn is_hex_color(value: &str) -> bool {
     value.len() == 7
         && value.starts_with('#')
-        && value[1..].chars().all(|character| character.is_ascii_hexdigit())
+        && value[1..]
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
 }
 
 #[cfg(test)]

@@ -7,6 +7,40 @@ export type VaultType = 'piggy_bank' | 'box' | 'savings' | 'investment' | 'cash'
 export type VaultMovementType = 'deposit' | 'withdraw'
 export type VaultMovementSource = 'manual' | 'automatic'
 export type AutomaticReserveMode = 'fixed' | 'percentage'
+export type FeedbackTone = 'success' | 'error' | 'info'
+export type DashboardWidgetId =
+  | 'net_worth'
+  | 'available_balance'
+  | 'vault_total'
+  | 'month_expenses'
+  | 'daily_budget'
+  | 'month_balance'
+  | 'recurring'
+  | 'insights'
+  | 'history'
+export type DashboardWidgetSize = 'small' | 'medium' | 'large'
+export type DigitalWalletItemKind = 'ticket' | 'document' | 'qr_code' | 'other'
+export type BankPaymentMethod = 'pix' | 'debit' | 'credit' | 'card' | 'unknown'
+export type ShakeSensitivity = 'low' | 'medium' | 'high'
+export type FeedbackDurationMs = 3000 | 4000 | 5000
+export type ThemeMode = 'light' | 'dark' | 'system'
+
+export interface PingoPreferences {
+  displayName: string
+  themeMode: ThemeMode
+  monthlyBudget: string | null
+  billsDueNotifications: boolean
+  weeklySummaryNotifications: boolean
+  expenseReminderNotifications: boolean
+  voiceShortcutsEnabled: boolean
+  shakeToExpenseEnabled: boolean
+  shakeSensitivity: ShakeSensitivity
+  dailySpendingAlertsEnabled: boolean
+  spendingAlertPercent: number
+  greetingEnabled: boolean
+  economyMode: boolean
+  feedbackDurationMs: FeedbackDurationMs
+}
 
 export interface Category {
   id: string
@@ -123,11 +157,54 @@ export interface AutomaticReserveRule {
   value: string
 }
 
+export interface MonthlyReserveRule extends AutomaticReserveRule {
+  dayOfMonth: number
+  lastProcessedPeriod: string | null
+}
+
+export interface DashboardWidgetPreference {
+  id: DashboardWidgetId
+  visible: boolean
+  size: DashboardWidgetSize
+}
+
+export interface DashboardLayout {
+  widgets: DashboardWidgetPreference[]
+}
+
+export interface DigitalWalletItem {
+  id: string
+  kind: DigitalWalletItemKind
+  title: string
+  issuer: string
+  notes: string
+  qrValue: string | null
+  fileName: string | null
+  mimeType: string | null
+  fileDataUrl: string | null
+  expiresAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface NewDigitalWalletItemInput {
+  kind: DigitalWalletItemKind
+  title: string
+  issuer: string
+  notes: string
+  qrValue: string | null
+  fileName: string | null
+  mimeType: string | null
+  fileDataUrl: string | null
+  expiresAt: string | null
+}
+
 export interface Transaction {
   id: string
   kind: TransactionType
   amount: string
   date: string
+  occurredAt: string | null
   categoryId: string | null
   debitCardId: string | null
   description: string
@@ -139,6 +216,7 @@ export interface NewTransactionInput {
   kind: TransactionType
   amount: string
   date: string
+  occurredAt?: string | null
   categoryId: string | null
   debitCardId: string | null
   description: string
@@ -147,6 +225,33 @@ export interface NewTransactionInput {
 
 export interface UpdateTransactionInput extends NewTransactionInput {
   id: string
+}
+
+export type BankStatementFormat = 'csv' | 'ofx' | 'pdf'
+
+export interface ParsedBankStatementTransaction {
+  kind: TransactionType
+  amount: string
+  date: string
+  occurredAt: string | null
+  description: string
+  balance: string | null
+  externalId: string | null
+  paymentMethod: BankPaymentMethod
+  suggestedCardLink: boolean
+}
+
+export interface ParsedBankStatement {
+  format: BankStatementFormat
+  fileName: string
+  transactions: ParsedBankStatementTransaction[]
+  closingBalance: string | null
+  warnings: string[]
+}
+
+export interface BankStatementImportInput {
+  transactions: NewTransactionInput[]
+  closingBalance: string | null
 }
 
 export interface AccountSettings {
@@ -167,6 +272,7 @@ export interface RecurringRule {
   autoProcessAfterDays: number
   active: boolean
   lastProcessedPeriod: string | null
+  nextDueDate: string
   createdAt: string
   updatedAt: string
 }
@@ -181,7 +287,19 @@ export interface NewRecurringRuleInput {
   reminderEnabled: boolean
 }
 
+export interface RecurringSettlement {
+  transaction: Transaction
+  rule: RecurringRule
+}
+
+export interface AppFeedback {
+  id: number
+  tone: FeedbackTone
+  message: string
+}
+
 export interface TransactionFilters {
+  query?: string
   year?: number
   month?: number
   kind?: TransactionType

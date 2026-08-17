@@ -1,7 +1,7 @@
 {
   "name": "pingo-financas",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.11.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,18 +9,23 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "check": "npm test && npm run build",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "android:shortcuts": "node scripts/setup-android-shortcuts.mjs",
+    "preandroid:build": "npm run android:shortcuts",
+    "preandroid:dev": "npm run android:shortcuts",
     "android:dev": "tauri android dev",
-    "android:build": "tauri android build"
+    "android:build": "tauri android build",
+    "validate": "npm run check && cargo test --locked --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-deep-link": "^2.0.0",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "lucide-vue-next": "^0.468.0",
+    "pdfjs-dist": "^6.2.108",
     "pinia": "^3.0.3",
     "vue": "^3.5.18"
   },

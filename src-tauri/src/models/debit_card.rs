@@ -206,14 +206,21 @@ pub fn validate_new_debit_card(input: &NewDebitCard) -> Result<(), DebitCardErro
         return Err(DebitCardError::InvalidLastFour);
     }
     validate_style(&input.color_from, &input.color_to, input.emoji.as_deref())?;
-    if input.monthly_spending_limit.is_some_and(|value| value <= Decimal::ZERO) {
+    if input
+        .monthly_spending_limit
+        .is_some_and(|value| value <= Decimal::ZERO)
+    {
         return Err(DebitCardError::NonPositiveLimit);
     }
 
     Ok(())
 }
 
-pub fn validate_style(color_from: &str, color_to: &str, emoji: Option<&str>) -> Result<(), DebitCardError> {
+pub fn validate_style(
+    color_from: &str,
+    color_to: &str,
+    emoji: Option<&str>,
+) -> Result<(), DebitCardError> {
     if !is_hex_color(color_from) || !is_hex_color(color_to) {
         return Err(DebitCardError::InvalidColor);
     }
@@ -224,8 +231,13 @@ pub fn validate_style(color_from: &str, color_to: &str, emoji: Option<&str>) -> 
 }
 
 pub fn clean_emoji(emoji: Option<String>) -> Result<Option<String>, DebitCardError> {
-    let value = emoji.map(|value| value.trim().to_owned()).filter(|value| !value.is_empty());
-    if value.as_ref().is_some_and(|value| value.chars().count() > 4) {
+    let value = emoji
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    if value
+        .as_ref()
+        .is_some_and(|value| value.chars().count() > 4)
+    {
         return Err(DebitCardError::EmojiTooLong);
     }
     Ok(value)
@@ -234,7 +246,9 @@ pub fn clean_emoji(emoji: Option<String>) -> Result<Option<String>, DebitCardErr
 fn is_hex_color(value: &str) -> bool {
     value.len() == 7
         && value.starts_with('#')
-        && value[1..].chars().all(|character| character.is_ascii_hexdigit())
+        && value[1..]
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
 }
 
 #[cfg(test)]
@@ -263,14 +277,20 @@ mod tests {
     fn rejects_sensitive_or_invalid_card_number_input() {
         let mut invalid = input();
         invalid.last_four = "1234567890123456".into();
-        assert_eq!(DebitCard::new(invalid).unwrap_err(), DebitCardError::InvalidLastFour);
+        assert_eq!(
+            DebitCard::new(invalid).unwrap_err(),
+            DebitCardError::InvalidLastFour
+        );
     }
 
     #[test]
     fn rejects_non_positive_spending_limit() {
         let mut invalid = input();
         invalid.monthly_spending_limit = Some(Decimal::ZERO);
-        assert_eq!(DebitCard::new(invalid).unwrap_err(), DebitCardError::NonPositiveLimit);
+        assert_eq!(
+            DebitCard::new(invalid).unwrap_err(),
+            DebitCardError::NonPositiveLimit
+        );
     }
 
     #[test]

@@ -1,0 +1,52 @@
+{
+  "name": "Pingo — Finanças pessoais",
+  "short_name": "Pingo",
+  "description": "Importe extratos e controle entradas, gastos, cartões, compromissos mensais e cofres sem conectar sua conta bancária.",
+  "lang": "pt-BR",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F7F7FA",
+  "theme_color": "#7C3AED",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    {
+      "src": "/img.png",
+      "sizes": "300x300",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pingo-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Registrar gasto",
+      "short_name": "Novo gasto",
+      "url": "/?quick=expense",
+      "icons": [{ "src": "/pingo-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Abrir carteira",
+      "short_name": "Carteira",
+      "url": "/?view=wallet",
+      "icons": [{ "src": "/pingo-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Ver cofres",
+      "short_name": "Cofres",
+      "url": "/?view=vaults",
+      "icons": [{ "src": "/pingo-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Abrir resumo",
+      "short_name": "Resumo",
+      "url": "/?view=dashboard",
+      "icons": [{ "src": "/pingo-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}

@@ -1,3 +1,3 @@
 fn main() {
-    cashew_clone_lib::run();
+    pingo_financas_lib::run();
 }

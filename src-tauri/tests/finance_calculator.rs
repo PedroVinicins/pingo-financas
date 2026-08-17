@@ -3,17 +3,23 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use uuid::Uuid;
 
-use cashew_clone_lib::{
+use pingo_financas_lib::{
     models::{NewTransaction, RecurrenceType, Transaction, TransactionError, TransactionType},
     services::finance::{calculate_balance, filter_transactions, TransactionFilter},
 };
 
-fn transaction(kind: TransactionType, amount: Decimal, category: Option<Uuid>, day: u32) -> Transaction {
+fn transaction(
+    kind: TransactionType,
+    amount: Decimal,
+    category: Option<Uuid>,
+    day: u32,
+) -> Transaction {
     Transaction {
         id: Uuid::new_v4(),
         kind,
         amount,
         date: NaiveDate::from_ymd_opt(2026, 8, day).unwrap(),
+        occurred_at: None,
         category_id: category,
         debit_card_id: None,
         description: "Teste".into(),
@@ -66,11 +72,15 @@ fn rejects_non_positive_amounts() {
         kind: TransactionType::Expense,
         amount: dec!(-1.00),
         date: NaiveDate::from_ymd_opt(2026, 8, 9).unwrap(),
+        occurred_at: None,
         category_id: Some(Uuid::new_v4()),
         debit_card_id: None,
         description: "Inválida".into(),
         recurrence: RecurrenceType::Variable,
     };
 
-    assert_eq!(Transaction::new(input).unwrap_err(), TransactionError::NonPositiveAmount);
+    assert_eq!(
+        Transaction::new(input).unwrap_err(),
+        TransactionError::NonPositiveAmount
+    );
 }
