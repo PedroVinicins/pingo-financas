@@ -58,8 +58,10 @@ if (!manifest.includes('android.app.shortcuts')) {
   if (activityEnd === -1) throw new Error('Não foi possível localizar a MainActivity no AndroidManifest.xml')
   const metadata = '      <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />\n    '
   manifest = manifest.slice(0, activityEnd) + metadata + manifest.slice(activityEnd)
-  fs.writeFileSync(manifestPath, manifest)
+}
+if (!manifest.includes('android:windowSoftInputMode=')) {
+  manifest = manifest.replace('<activity', '<activity\n            android:windowSoftInputMode="adjustResize"')
 }
 fs.writeFileSync(manifestPath, manifest)
 
-console.log('Android configurado: backup externo desativado e atalhos Novo gasto, Carteira, Cofres e Resumo.')
+console.log('Android configurado: teclado em adjustResize, backup externo desativado e atalhos Novo gasto, Carteira, Cofres e Resumo.')

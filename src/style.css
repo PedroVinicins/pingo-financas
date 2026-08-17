@@ -19,6 +19,7 @@
 @layer utilities {
   .safe-top { padding-top: env(safe-area-inset-top); }
   .touch-pan-x { touch-action: pan-x; }
+  .keyboard-aware-modal { overscroll-behavior: contain; }
 }
 
 @media (prefers-reduced-motion: reduce) {
