@@ -14,8 +14,8 @@ const emit = defineEmits<{ details: []; togglePrivacy: [] }>()
 </script>
 
 <template>
-  <article class="relative min-h-[310px] overflow-hidden rounded-[2rem] bg-hero p-6 text-white shadow-float sm:p-8 lg:min-h-[330px]">
-    <div class="absolute -right-20 -top-20 size-64 rounded-full bg-brand/10 blur-3xl"></div>
+  <article class="relative min-h-[310px] rounded-[2rem] bg-hero p-6 text-white shadow-float sm:p-8 lg:min-h-[330px]">
+    <div class="absolute right-0 top-0 size-52 rounded-full bg-brand/10 blur-3xl"></div>
     <div class="relative flex items-start justify-between gap-3">
       <div><p class="text-sm font-semibold text-white/65">Saldo disponível</p><p class="mt-1 text-xs font-bold uppercase tracking-[.12em] text-white/35">{{ month }}</p></div>
       <button class="grid size-11 place-items-center rounded-full bg-white/10 text-white/75 transition hover:bg-white/15 hover:text-white" :aria-label="hidden ? 'Mostrar valores' : 'Ocultar valores'" @click="emit('togglePrivacy')"><Eye v-if="hidden" :size="19" /><EyeOff v-else :size="19" /></button>
@@ -31,6 +31,6 @@ const emit = defineEmits<{ details: []; togglePrivacy: [] }>()
       <div class="min-w-0 text-right"><p class="text-xs text-white/45">Saídas</p><strong class="mt-1 block truncate text-base tabular-nums sm:text-lg" :title="expense">{{ expense }}</strong></div>
     </div>
     <div v-if="netWorth" class="relative mt-4 flex min-w-0 items-center justify-between gap-3 border-t border-white/10 pt-4 text-xs"><span class="text-white/45">Patrimônio total</span><strong class="truncate tabular-nums" :title="netWorth">{{ netWorth }}</strong></div>
-    <button class="absolute -bottom-0 left-1/2 min-h-11 -translate-x-1/2 translate-y-1/2 whitespace-nowrap rounded-full bg-white px-6 text-sm font-bold text-[#171719] shadow-lg transition hover:px-7 active:scale-[.98]" @click="emit('details')">Ver detalhes</button>
+    <button class="absolute -bottom-5 left-1/2 min-h-11 -translate-x-1/2 whitespace-nowrap rounded-full bg-white px-6 text-sm font-bold text-[#171719] shadow-lg transition hover:px-7 active:scale-[.98]" @click="emit('details')">Ver detalhes</button>
   </article>
 </template>

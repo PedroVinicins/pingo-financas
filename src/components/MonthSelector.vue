@@ -16,7 +16,7 @@ function moveYear(offset: number) { emit('change', props.year + offset, props.mo
   <div class="relative" data-no-page-swipe>
     <button class="pingo-interactive flex min-h-11 items-center gap-1.5 rounded-full bg-muted px-4 text-xs font-extrabold tracking-[0.08em]" :aria-expanded="open" aria-haspopup="dialog" @click="open = !open">{{ label }} <ChevronDown :size="14" /></button>
     <Transition enter-active-class="transition duration-200 ease-pingo" enter-from-class="-translate-y-2 opacity-0" leave-active-class="transition duration-150" leave-to-class="-translate-y-2 opacity-0">
-      <section v-if="open" class="absolute right-0 top-13 z-50 w-[280px] rounded-[1.5rem] border border-line bg-surface p-3 shadow-float" aria-label="Selecionar mês e ano">
+      <section v-if="open" class="absolute right-0 top-12 z-50 w-[280px] rounded-[1.5rem] border border-line bg-surface p-3 shadow-float" aria-label="Selecionar mês e ano">
         <div class="flex items-center justify-between">
           <button class="grid size-11 place-items-center rounded-xl hover:bg-muted" aria-label="Ano anterior" @click="moveYear(-1)"><ChevronLeft :size="18" /></button>
           <strong>{{ year }}</strong>

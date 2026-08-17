@@ -21,15 +21,9 @@ function money(value: bigint) {
     .format(Number(centsToDecimal(value)))
 }
 function privateMoney(value: bigint) { return store.balanceHidden ? 'R$ •••••' : money(value) }
-function isCurrentMonth(transaction: Transaction) {
-  const now = new Date()
-  const date = new Date(`${transaction.date}T12:00:00`)
-  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()
-}
-
-const safeSavingsCents = computed(() => store.currentMonthSavingsCents > 0n ? store.currentMonthSavingsCents : 0n)
-const deficitCents = computed(() => store.currentMonthSavingsCents < 0n ? -store.currentMonthSavingsCents : 0n)
-const savingTargetCents = computed(() => store.currentMonthIncomeCents / 5n)
+const safeSavingsCents = computed(() => store.reportingBalanceCents > 0n ? store.reportingBalanceCents : 0n)
+const deficitCents = computed(() => store.reportingBalanceCents < 0n ? -store.reportingBalanceCents : 0n)
+const savingTargetCents = computed(() => store.reportingIncomeCents / 5n)
 const remainingTargetCents = computed(() => {
   const remaining = savingTargetCents.value - safeSavingsCents.value
   return remaining > 0n ? remaining : 0n
@@ -37,30 +31,33 @@ const remainingTargetCents = computed(() => {
 const savingsProgress = computed(() => savingTargetCents.value > 0n
   ? Math.min(100, Number((safeSavingsCents.value * 10_000n) / savingTargetCents.value) / 100)
   : 0)
-const currentExpenses = computed(() => store.transactions
-  .filter((transaction) => transaction.kind === 'expense' && isCurrentMonth(transaction))
-  .sort((a, b) => (b.occurredAt ?? b.date).localeCompare(a.occurredAt ?? a.date)
-    || b.createdAt.localeCompare(a.createdAt)))
+const currentExpenses = computed(() => store.reportingTransactions.filter((transaction) => transaction.kind === 'expense'))
 const expenseRules = computed(() => store.recurringRules
   .filter((rule) => rule.active && rule.kind === 'expense')
   .sort((a, b) => a.nextDueDate.localeCompare(b.nextDueDate)))
-const categoryRows = computed(() => [...store.currentMonthExpensesByCategory.entries()]
-  .sort((a, b) => Number(b[1] - a[1]))
-  .map(([id, amount]) => ({
+const categoryRows = computed(() => {
+  const totals = new Map<string, bigint>()
+  for (const transaction of currentExpenses.value) {
+    if (transaction.categoryId) totals.set(transaction.categoryId, (totals.get(transaction.categoryId) ?? 0n) + decimalToCents(transaction.amount))
+  }
+  const total = [...totals.values()].reduce((sum, value) => sum + value, 0n)
+  return [...totals.entries()].sort((a, b) => Number(b[1] - a[1])).map(([id, amount]) => ({
     id,
     amount,
     category: store.categories.find((category) => category.id === id),
-    percentage: store.currentMonthExpensePercentages.get(id) ?? 0,
-  })))
+    percentage: total > 0n ? Number((amount * 10_000n) / total) / 100 : 0,
+  }))
+})
 const pingoRadarMessage = computed(() => {
-  if (store.currentMonthIncomeCents === 0n && store.currentMonthExpenseCents === 0n) {
+  if (store.reportingIncomeCents === 0n && store.reportingExpenseCents === 0n) {
     return 'Está quieto demais por aqui… ou você virou monge, ou esqueceu de registrar os gastos. 👀'
   }
   if (deficitCents.value > 0n) {
     return `Alerta porquinho: os gastos passaram das entradas em ${privateMoney(deficitCents.value)}. A carteira está pedindo um intervalo. 🫠`
   }
-  if (store.savingsRate >= 20) return 'Você guardou 20% ou mais. O porquinho está ficando forte e já quer foto de academia. 🐷💪'
-  if (store.savingsRate >= 10) return 'Tem economia acontecendo! Mais um esforço e o porquinho sai do modo “quase lá”. 😅'
+  const rate = store.reportingIncomeCents > 0n ? Number((safeSavingsCents.value * 10_000n) / store.reportingIncomeCents) / 100 : 0
+  if (rate >= 20) return 'Você guardou 20% ou mais. O porquinho está ficando forte e já quer foto de academia. 🐷💪'
+  if (rate >= 10) return 'Tem economia acontecendo! Mais um esforço e o porquinho sai do modo “quase lá”. 😅'
   return 'O dinheiro está escorrendo pelos cantos. Vamos fechar uma torneira antes que vire cachoeira? 🚰'
 })
 
@@ -95,42 +92,41 @@ function dueDate(value: string) { return value.split('-').reverse().join('/') }
 </script>
 
 <template>
-  <main class="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8">
-    <section class="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-slate-950 via-rose-950 to-orange-700 p-6 text-white shadow-2xl sm:p-8">
-      <div class="absolute -right-12 -top-16 size-48 rounded-full bg-amber-300/20 blur-2xl"></div>
-      <div class="absolute -bottom-20 left-1/3 size-48 rounded-full bg-rose-300/15 blur-2xl"></div>
+  <main class="mx-auto max-w-[1440px] px-5 pb-8 pt-[calc(1.25rem+env(safe-area-inset-top))] sm:px-7 sm:py-8 lg:px-10">
+    <section class="relative overflow-hidden rounded-[2rem] bg-hero p-6 text-white shadow-float sm:p-8">
+      <div class="absolute right-0 top-0 size-52 rounded-full bg-brand/15 blur-3xl"></div>
       <div class="relative flex items-start justify-between gap-4">
         <div>
-          <p class="flex items-center gap-2 text-sm font-black text-amber-300"><ChartPie :size="17" /> Radar do Pingo</p>
-          <h2 class="mt-2 text-3xl font-black tracking-tight sm:text-4xl">Gastos & economias</h2>
-          <p class="mt-2 max-w-xl text-sm text-orange-100/75">Um lugar só para descobrir para onde o dinheiro foi e quanto conseguiu ficar.</p>
+          <p class="flex items-center gap-2 text-sm font-bold text-violet-300"><ChartPie :size="17" /> Análises</p>
+          <h2 class="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">Gastos & economias</h2>
+          <p class="mt-2 max-w-xl text-sm text-white/55">Descubra para onde o dinheiro foi e quanto conseguiu ficar.</p>
         </div>
         <button class="hidden shrink-0 items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-950 sm:flex" @click="showModal = true"><Plus :size="18" /> Registrar</button>
       </div>
       <div class="relative mt-6 flex items-start gap-3 rounded-2xl bg-white/10 p-4 backdrop-blur">
-        <div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-amber-300 font-black text-slate-950">P</div>
-        <div><p class="text-xs font-black uppercase tracking-wider text-amber-300"><Sparkles :size="13" class="mr-1 inline" /> Pingo analisou</p><p class="mt-1 text-sm font-semibold leading-relaxed">{{ pingoRadarMessage }}</p></div>
+        <img src="/pingo-icon.svg" alt="" class="size-11 shrink-0 rounded-2xl" />
+        <div><p class="text-xs font-bold uppercase tracking-wider text-violet-300"><Sparkles :size="13" class="mr-1 inline" /> Pingo analisou</p><p class="mt-1 text-sm font-semibold leading-relaxed">{{ pingoRadarMessage }}</p></div>
       </div>
     </section>
 
     <section class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <article class="rounded-2xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-900 dark:bg-rose-950/25"><div class="flex items-center gap-2 text-xs font-black text-rose-600"><Flame :size="15" /> Gastou no mês</div><p class="mt-2 text-xl font-black">{{ privateMoney(store.currentMonthExpenseCents) }}</p></article>
-      <article class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/25"><div class="flex items-center gap-2 text-xs font-black text-emerald-600"><ShieldCheck :size="15" /> Economizou</div><p class="mt-2 text-xl font-black">{{ privateMoney(safeSavingsCents) }}</p></article>
-      <article class="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/25"><div class="flex items-center gap-2 text-xs font-black text-amber-700"><PiggyBank :size="15" /> Nos porquinhos</div><p class="mt-2 text-xl font-black">{{ privateMoney(store.vaultTotalCents) }}</p></article>
-      <article class="rounded-2xl border border-violet-200 bg-violet-50 p-4 dark:border-violet-900 dark:bg-violet-950/25"><div class="flex items-center gap-2 text-xs font-black text-violet-600"><TrendingDown :size="15" /> Média diária</div><p class="mt-2 text-xl font-black">{{ privateMoney(store.dailySpendingAverageCents) }}</p></article>
+      <article class="pingo-card p-4"><div class="flex items-center gap-2 text-xs font-bold text-brand"><Flame :size="15" /> Gastou no período</div><p class="mt-2 truncate text-xl font-extrabold">{{ privateMoney(store.reportingExpenseCents) }}</p></article>
+      <article class="pingo-card p-4"><div class="flex items-center gap-2 text-xs font-bold text-brand"><ShieldCheck :size="15" /> Economizou</div><p class="mt-2 truncate text-xl font-extrabold">{{ privateMoney(safeSavingsCents) }}</p></article>
+      <article class="pingo-card p-4"><div class="flex items-center gap-2 text-xs font-bold text-brand"><PiggyBank :size="15" /> Nos porquinhos</div><p class="mt-2 truncate text-xl font-extrabold">{{ privateMoney(store.vaultTotalCents) }}</p></article>
+      <article class="pingo-card p-4"><div class="flex items-center gap-2 text-xs font-bold text-brand"><TrendingDown :size="15" /> Média diária</div><p class="mt-2 truncate text-xl font-extrabold">{{ privateMoney(store.dailySpendingAverageCents) }}</p></article>
     </section>
 
-    <section class="mt-5 overflow-hidden rounded-[1.75rem] border border-emerald-200 bg-white shadow-card dark:border-emerald-900 dark:bg-slate-900">
+    <section class="mt-5 overflow-hidden rounded-[1.75rem] border border-line bg-surface shadow-card">
       <div class="grid gap-5 p-5 sm:grid-cols-[1fr_auto] sm:items-center sm:p-6">
         <div>
-          <p class="flex items-center gap-2 text-sm font-black text-emerald-600"><Target :size="17" /> Missão: guardar 20%</p>
+          <p class="flex items-center gap-2 text-sm font-bold text-brand"><Target :size="17" /> Missão: guardar 20%</p>
           <h3 class="mt-1 text-2xl font-black">{{ savingsProgress.toFixed(0) }}% da missão concluída</h3>
           <p v-if="savingTargetCents > 0n" class="mt-1 text-sm text-slate-500">Meta {{ privateMoney(savingTargetCents) }} · faltam {{ privateMoney(remainingTargetCents) }}</p>
           <p v-else class="mt-1 text-sm text-slate-500">Registre uma entrada para o Pingo calcular a meta do mês.</p>
         </div>
-        <div class="grid size-20 place-items-center rounded-[1.5rem] bg-emerald-100 text-3xl dark:bg-emerald-950">🐷</div>
+        <div class="grid size-20 place-items-center rounded-[1.5rem] bg-brand-soft text-3xl">🐷</div>
       </div>
-      <div class="h-3 bg-emerald-100 dark:bg-emerald-950"><div class="h-full rounded-r-full bg-gradient-to-r from-emerald-400 to-lime-400 transition-all" :style="{ width: `${savingsProgress}%` }"></div></div>
+      <div class="h-3 bg-muted"><div class="h-full rounded-r-full bg-brand transition-all" :style="{ width: `${savingsProgress}%` }"></div></div>
     </section>
 
     <div class="mt-5 grid gap-5 lg:grid-cols-[1.35fr_.65fr]">
