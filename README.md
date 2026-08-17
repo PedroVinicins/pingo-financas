@@ -8,6 +8,17 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
+## Destaques da versão 0.10.0
+
+- Resumo personalizável em grid P/M/G com arraste fluido por mouse e toque e salvamento automático;
+- layout mobile protegido contra textos longos e formulários que se ajustam ao teclado nativo;
+- Central do Pingo com voz, gesto de agitar, radar diário, limites, widgets, economia, lembretes, backup e reset total;
+- saudação por horário local e abertura do Gasto rápido ao agitar o aparelho enquanto o Resumo está aberto;
+- cartões ao vivo com foto própria, contraste automático e visualizador da imagem original em tela cheia;
+- transferência direta e atômica do saldo disponível para um Porquinho sem alterar o patrimônio;
+- parser bancário com data/hora, limpeza de códigos, detecção de PIX/débito/crédito/cartão e sugestão de vínculo;
+- Android `versionCode` 10000 e cache Web renovado para a nova release.
+
 ## Destaques da versão 0.9.0
 
 - importação local de extratos CSV/TSV, OFX e PDF textual, com suporte ao formato do Banco Inter;
@@ -258,6 +269,7 @@ O SQLite é inicializado no diretório de dados da aplicação. As migrations at
 0006_category_scope.sql
 0007_persisted_app_state.sql
 0008_personal_dashboard_wallet.sql
+0009_transaction_time.sql
 ```
 
 Valores monetários são persistidos como texto e tratados com `rust_decimal` no core Rust. No frontend, cálculos reativos usam centavos em `bigint`.
