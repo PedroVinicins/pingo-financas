@@ -22,7 +22,9 @@ const props = withDefaults(defineProps<{
   cards: DebitCard[]
   vaults?: Vault[]
   transaction?: Transaction | null
-}>(), { vaults: () => [] })
+  initialKind?: TransactionType
+  initialFlow?: 'transaction' | 'recurring' | 'vault'
+}>(), { vaults: () => [], initialKind: 'expense', initialFlow: 'transaction' })
 const store = useFinanceStore()
 const { overlayStyle, contentStyle, keepFocusedFieldVisible } = useKeyboardAwareModal()
 const emit = defineEmits<{
@@ -38,8 +40,8 @@ const defaultExpenseCategoryId = props.categories.find((category) => category.ki
 
 const now = new Date()
 const form = reactive({
-  flow: 'transaction' as 'transaction' | 'recurring' | 'vault',
-  kind: (props.transaction?.kind ?? 'expense') as TransactionType,
+  flow: props.initialFlow as 'transaction' | 'recurring' | 'vault',
+  kind: (props.transaction?.kind ?? props.initialKind) as TransactionType,
   amount: props.transaction ? storageDecimalToLocalized(props.transaction.amount) : '',
   date: props.transaction?.date ?? localDateKey(new Date()),
   time: props.transaction?.occurredAt?.slice(11, 16)

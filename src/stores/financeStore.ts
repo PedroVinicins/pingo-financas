@@ -95,6 +95,8 @@ export const useFinanceStore = defineStore('finance', () => {
   })
   const preferences = ref<PingoPreferences>(loadPingoPreferences())
   const clock = ref(new Date())
+  const reportingYear = ref(clock.value.getFullYear())
+  const reportingMonth = ref(clock.value.getMonth() + 1)
   const pingoMessage = ref('')
   const initialized = ref(false)
   const isInitializing = ref(false)
@@ -198,6 +200,15 @@ export const useFinanceStore = defineStore('finance', () => {
   const sortedTransactions = computed(() => [...transactions.value]
     .sort((a, b) => transactionMoment(b).localeCompare(transactionMoment(a))
       || b.createdAt.localeCompare(a.createdAt)))
+  const reportingTransactions = computed(() => sortedTransactions.value.filter((transaction) => {
+    const date = new Date(`${transaction.date}T12:00:00`)
+    return date.getFullYear() === reportingYear.value && date.getMonth() + 1 === reportingMonth.value
+  }))
+  const reportingIncomeCents = computed(() => reportingTransactions.value.reduce((total, transaction) =>
+    transaction.kind === 'income' ? total + decimalToCents(transaction.amount) : total, 0n))
+  const reportingExpenseCents = computed(() => reportingTransactions.value.reduce((total, transaction) =>
+    transaction.kind === 'expense' ? total + decimalToCents(transaction.amount) : total, 0n))
+  const reportingBalanceCents = computed(() => reportingIncomeCents.value - reportingExpenseCents.value)
   const filteredTransactions = computed(() => {
     const result = transactions.value.filter((transaction) => {
       const date = new Date(`${transaction.date}T12:00:00`)
@@ -338,6 +349,11 @@ export const useFinanceStore = defineStore('finance', () => {
   function setDebitCards(items: DebitCard[]) { debitCards.value = [...items] }
   function setVaults(items: Vault[]) { vaults.value = [...items] }
   function setFilters(next: TransactionFilters) { filters.value = { ...next } }
+  function setReportingPeriod(year: number, month: number) {
+    if (!Number.isInteger(year) || year < 2000 || year > 2200 || !Number.isInteger(month) || month < 1 || month > 12) return
+    reportingYear.value = year
+    reportingMonth.value = month
+  }
   function dismissPingoMessage() { pingoMessage.value = '' }
   function clearFeedback() {
     feedback.value = null
@@ -787,19 +803,20 @@ export const useFinanceStore = defineStore('finance', () => {
   return {
     transactions, categories, debitCards, vaults, vaultMovements, automaticReserveRules,
     monthlyReserveRules, digitalWalletItems, dashboardLayout, recurringRules,
-    filters, accountSettings, preferences, pingoMessage, initialized, isInitializing, initializationError, feedback,
+    filters, accountSettings, preferences, reportingYear, reportingMonth, pingoMessage, initialized, isInitializing, initializationError, feedback,
     balanceHidden, transactionNetCents, balanceCents, vaultTotalCents,
     availableBalanceCents, currentMonthBalanceCents, currentMonthIncomeCents, currentMonthExpenseCents,
     currentMonthSavingsCents, currentMonthFixedExpenseCents, savingsRate, fixedCostRatio,
     averageMonthlyExpenseCents, projectedMonthExpenseCents, dailySpendingAverageCents, todayExpenseCents, dailyBudgetCents,
     emergencyFundMonths, financialHealthScore, filteredTransactions, recentTransactions, recentExpenses,
+    reportingTransactions, reportingIncomeCents, reportingExpenseCents, reportingBalanceCents,
     hasActiveFilters,
     recentExpenseCategoryIds, expensesByCategory, currentMonthExpensesByCategory, expensePercentages,
     currentMonthExpensePercentages, topExpenseCategory, expensesByDebitCard, currentMonthExpensesByDebitCard,
     unassignedExpenseCents, defaultDebitCard, fixedMonthlyCommitmentCents, expectedMonthlyIncomeCents,
     dueRecurringRules, upcomingRecurringRules, getTransactionsForCard, getMovementsForVault,
     getAutomaticReserveRule, getMonthlyReserveRule, addTransaction, removeTransaction, setTransactions, setCategories,
-    setDebitCards, setVaults, setFilters, dismissPingoMessage, initialize, createTransaction, importBankStatement,
+    setDebitCards, setVaults, setFilters, setReportingPeriod, dismissPingoMessage, initialize, createTransaction, importBankStatement,
     editTransaction, createCategory, deleteTransaction, createDebitCard, updateCardStyle, setCardFrozen,
     makeDefaultCard, removeDebitCard, createVault, moveVaultMoney, correctVaultBalance, customizeVault, removeVault,
     saveAutomaticReserve, saveMonthlyReserve, saveDashboard, resetDashboard,

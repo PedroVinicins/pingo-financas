@@ -1,23 +1,31 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import {
-  CalendarClock, Eye, EyeOff, FileUp, Gauge, GripVertical, Landmark, LayoutGrid, Maximize2,
-  Pencil, PiggyBank, Plus, ShieldCheck, Sparkles, TrendingDown, WalletCards, X,
+  ArrowDownLeft, ArrowRightLeft, ArrowUpRight, CalendarClock, EyeOff, FileUp, Gauge,
+  GripVertical, Landmark, LayoutGrid, Maximize2, Pencil, PiggyBank, Plus, ReceiptText,
+  ShieldCheck, Sparkles, TrendingDown, WalletCards, X,
 } from 'lucide-vue-next'
-import { useFinanceStore, centsToDecimal } from '../stores/financeStore'
-import type { BankStatementImportInput, DashboardWidgetId, DashboardWidgetSize, NewRecurringRuleInput, NewTransactionInput, Transaction } from '../types/finance'
+import { centsToDecimal, decimalToCents, useFinanceStore } from '../stores/financeStore'
+import type {
+  BankStatementImportInput, DashboardWidgetId, DashboardWidgetSize, NewRecurringRuleInput,
+  NewTransactionInput, Transaction, TransactionType,
+} from '../types/finance'
 import { cloneDashboardLayout, DASHBOARD_WIDGETS } from '../services/dashboardLayout'
 import { greetingForHour } from '../services/deviceExperience'
+import BalanceHeroCard from '../components/BalanceHeroCard.vue'
+import MonthSelector from '../components/MonthSelector.vue'
 import TransactionList from '../components/TransactionList.vue'
 import AddTransactionModal from '../components/AddTransactionModal.vue'
 import EditBalanceModal from '../components/EditBalanceModal.vue'
 import RecurringSection from '../components/RecurringSection.vue'
-import TransactionFiltersBar from '../components/TransactionFiltersBar.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import BankStatementImport from '../components/BankStatementImport.vue'
 
 const store = useFinanceStore()
-defineEmits<{ newTransaction: []; navigate: [view: 'accounts' | 'home' | 'analytics' | 'settings'] }>()
+const emit = defineEmits<{
+  newTransaction: [kind?: TransactionType, flow?: 'transaction' | 'recurring' | 'vault']
+  navigate: [view: 'accounts' | 'home' | 'analytics' | 'settings']
+}>()
 const showModal = ref(false)
 const showBalanceEditor = ref(false)
 const showStatementImport = ref(false)
@@ -32,24 +40,41 @@ const deleting = ref(false)
 
 function money(value: bigint) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(centsToDecimal(value))) }
 function privateMoney(value: bigint) { return store.balanceHidden ? 'R$ •••••' : money(value) }
-function widgetClass(size: string) {
-  return size === 'small'
-    ? 'col-span-1 lg:col-span-3'
-    : size === 'medium' ? 'col-span-2 lg:col-span-6' : 'col-span-2 lg:col-span-12'
+function widgetVisible(id: DashboardWidgetId) { return store.dashboardLayout.widgets.find((item) => item.id === id)?.visible !== false }
+function widgetClass(size: DashboardWidgetSize) {
+  return size === 'small' ? 'col-span-1 xl:col-span-3' : size === 'medium' ? 'col-span-2 xl:col-span-6' : 'col-span-2 xl:col-span-12'
 }
-const visibleWidgets = computed(() => store.dashboardLayout.widgets.filter((item) => item.visible))
-const hiddenWidgets = computed(() => store.dashboardLayout.widgets.filter((item) => !item.visible))
-const scoreLabel = computed(() => store.financialHealthScore >= 80 ? 'Excelente' : store.financialHealthScore >= 60 ? 'Boa' : store.financialHealthScore >= 40 ? 'Em atenção' : 'Precisa de cuidado')
-const categoryRows = computed(() => [...store.currentMonthExpensesByCategory.entries()]
-  .sort((a, b) => Number(b[1] - a[1])).slice(0, 5).map(([id, amount]) => ({
-    id, amount, category: store.categories.find((item) => item.id === id),
-    percentage: store.currentMonthExpensePercentages.get(id) ?? 0,
-  })))
-const historyTransactions = computed(() => showAllHistory.value ? store.filteredTransactions : store.recentTransactions)
-const greeting = computed(() => store.preferences.greetingEnabled
-  ? greetingForHour(new Date().getHours())
-  : 'Meu resumo')
 
+const displayName = computed(() => store.preferences.displayName || 'Você')
+const greeting = computed(() => store.preferences.greetingEnabled ? greetingForHour(new Date().getHours()) : 'Seu resumo')
+const monthLabel = computed(() => new Intl.DateTimeFormat('pt-BR', { month: 'short', year: 'numeric' })
+  .format(new Date(store.reportingYear, store.reportingMonth - 1, 1)).replace('.', ''))
+const visibleOptionalWidgets = computed(() => store.dashboardLayout.widgets.filter((item) =>
+  item.visible && !['available_balance', 'net_worth', 'history'].includes(item.id)))
+const hiddenWidgets = computed(() => store.dashboardLayout.widgets.filter((item) => !item.visible))
+const historyTransactions = computed(() => showAllHistory.value ? store.reportingTransactions : store.reportingTransactions.slice(0, 5))
+const categoryRows = computed(() => {
+  const totals = new Map<string, bigint>()
+  for (const transaction of store.reportingTransactions) {
+    if (transaction.kind !== 'expense' || !transaction.categoryId) continue
+    totals.set(transaction.categoryId, (totals.get(transaction.categoryId) ?? 0n) + decimalToCents(transaction.amount))
+  }
+  const total = [...totals.values()].reduce((sum, value) => sum + value, 0n)
+  return [...totals.entries()].sort((a, b) => Number(b[1] - a[1])).slice(0, 3).map(([id, amount]) => ({
+    id, amount, category: store.categories.find((item) => item.id === id),
+    percentage: total > 0n ? Number((amount * 10_000n) / total) / 100 : 0,
+  }))
+})
+const budgetProgress = computed<number | null>(() => {
+  if (!store.preferences.monthlyBudget) return null
+  try {
+    const limit = decimalToCents(store.preferences.monthlyBudget)
+    return limit > 0n ? Number((store.reportingExpenseCents * 10_000n) / limit) / 100 : null
+  } catch { return null }
+})
+const scoreLabel = computed(() => store.financialHealthScore >= 80 ? 'Excelente' : store.financialHealthScore >= 60 ? 'Boa' : store.financialHealthScore >= 40 ? 'Em atenção' : 'Precisa de cuidado')
+
+function changePeriod(year: number, month: number) { store.setReportingPeriod(year, month) }
 async function save(input: NewTransactionInput) {
   try {
     if (editingTransaction.value) await store.editTransaction({ id: editingTransaction.value.id, ...input })
@@ -62,11 +87,8 @@ async function saveRecurring(input: NewRecurringRuleInput) {
   catch (cause) { store.reportError(cause, 'Não foi possível ligar o Piloto Mensal.') }
 }
 async function sendToVault(input: { vaultId: string; amount: string }) {
-  try {
-    await store.moveVaultMoney({ id: input.vaultId, kind: 'deposit', amount: input.amount })
-    showModal.value = false
-    store.showFeedback('Valor protegido no Porquinho. O patrimônio total foi preservado.', 'success')
-  } catch (cause) { store.reportError(cause, 'Não foi possível enviar o valor ao Porquinho.') }
+  try { await store.moveVaultMoney({ id: input.vaultId, kind: 'deposit', amount: input.amount }); showModal.value = false }
+  catch (cause) { store.reportError(cause, 'Não foi possível enviar o valor ao Porquinho.') }
 }
 function edit(transaction: Transaction) { editingTransaction.value = transaction; showModal.value = true }
 async function confirmDelete() {
@@ -129,8 +151,7 @@ function dropWidget(id: DashboardWidgetId, event: DragEvent) {
 }
 function pointerStart(id: DashboardWidgetId, event: PointerEvent) {
   if (event.pointerType === 'mouse') return
-  draggingWidget.value = id
-  touchDropTarget.value = id
+  draggingWidget.value = id; touchDropTarget.value = id
   ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
   window.addEventListener('pointermove', pointerMove, { passive: false })
   window.addEventListener('pointerup', pointerEnd, { once: true })
@@ -140,42 +161,79 @@ function pointerMove(event: PointerEvent) {
   event.preventDefault()
   const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-dashboard-widget]')
   const id = target?.dataset.dashboardWidget as DashboardWidgetId | undefined
-  if (id && id !== touchDropTarget.value) {
-    touchDropTarget.value = id
-    if (id !== draggingWidget.value) moveWidget(draggingWidget.value, id)
-  }
+  if (id && id !== touchDropTarget.value) { touchDropTarget.value = id; if (id !== draggingWidget.value) moveWidget(draggingWidget.value, id) }
 }
-function pointerEnd() {
-  draggingWidget.value = null
-  touchDropTarget.value = null
-  window.removeEventListener('pointermove', pointerMove)
-}
+function pointerEnd() { draggingWidget.value = null; touchDropTarget.value = null; window.removeEventListener('pointermove', pointerMove) }
 onBeforeUnmount(() => window.removeEventListener('pointermove', pointerMove))
 </script>
 
 <template>
-  <main class="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8">
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-3"><div><p class="text-sm font-bold text-emerald-600">Meu resumo</p><h1 class="text-2xl font-black">{{ greeting }}</h1><p class="mt-0.5 text-sm text-slate-500">O que importa para você, do seu jeito.</p><p v-if="customizing" class="mt-1 text-xs font-bold text-emerald-600">Arraste, redimensione ou esconda. Tudo é salvo automaticamente.</p></div><div class="flex flex-wrap gap-2"><button v-if="!customizing" class="inline-flex items-center gap-2 rounded-2xl border border-sky-200 bg-white px-3 py-3 text-sm font-black text-sky-700 dark:border-sky-900 dark:bg-slate-900" @click="showStatementImport = true"><FileUp :size="17" /> Extrato</button><button class="inline-flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black" :class="customizing ? 'border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'" @click="customizing = !customizing"><X v-if="customizing" :size="17" /><LayoutGrid v-else :size="17" /> {{ customizing ? 'Concluir' : 'Personalizar' }}</button><button v-if="!customizing" class="inline-flex items-center gap-2 rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-black text-emerald-950" @click="showModal = true"><Plus :size="18" /> <span class="hidden sm:inline">Transação</span></button></div></div>
+  <main class="mx-auto max-w-[1440px] px-5 pb-8 pt-[calc(1.25rem+env(safe-area-inset-top))] sm:px-7 lg:px-10 lg:py-9">
+    <header class="flex min-w-0 items-center gap-3">
+      <img src="/pingo-icon.svg" alt="" class="size-10 shrink-0 rounded-2xl sm:size-11" />
+      <div class="min-w-0 flex-1">
+        <p class="text-sm font-medium text-subtle">{{ greeting }},</p>
+        <h1 class="truncate text-[clamp(1.9rem,8vw,2.65rem)] font-extrabold leading-none tracking-[-0.045em]">{{ displayName }}</h1>
+      </div>
+      <MonthSelector :year="store.reportingYear" :month="store.reportingMonth" @change="changePeriod" />
+      <button class="pingo-interactive grid size-11 shrink-0 place-items-center rounded-full bg-brand text-white shadow-lg shadow-violet-500/25" aria-label="Nova transação" @click="emit('newTransaction', 'expense', 'transaction')"><Plus :size="22" stroke-width="2.5" /></button>
+    </header>
 
-    <section v-if="customizing && hiddenWidgets.length" class="mb-4 rounded-2xl border border-dashed border-slate-300 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><p class="text-xs font-black uppercase tracking-wider text-slate-400">Ocultos</p><div class="mt-2 flex flex-wrap gap-2"><button v-for="widget in hiddenWidgets" :key="widget.id" class="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-xs font-black dark:bg-slate-800" @click="setVisibility(widget.id, true)"><Plus :size="14" /> {{ DASHBOARD_WIDGETS[widget.id].label }}</button></div></section>
+    <div v-if="customizing" class="mt-5 rounded-[1.5rem] border border-brand/30 bg-brand-soft p-4 text-sm">
+      <div class="flex items-start justify-between gap-3"><div><strong class="text-brand">Personalize do seu jeito</strong><p class="mt-1 text-xs text-subtle">Arraste, altere o tamanho ou oculte. Cada mudança é salva automaticamente.</p></div><button class="grid size-10 shrink-0 place-items-center rounded-xl bg-surface" aria-label="Concluir personalização" @click="customizing = false"><X :size="18" /></button></div>
+      <div v-if="hiddenWidgets.length" class="mt-3 flex flex-wrap gap-2"><button v-for="widget in hiddenWidgets" :key="widget.id" class="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-surface px-3 text-xs font-bold" @click="setVisibility(widget.id, true)"><Plus :size="14" /> {{ DASHBOARD_WIDGETS[widget.id].label }}</button></div>
+    </div>
 
-    <TransitionGroup v-if="visibleWidgets.length" tag="section" class="grid grid-cols-2 gap-4 lg:grid-cols-12" move-class="transition-transform duration-300 ease-out">
-      <div v-for="widget in visibleWidgets" :key="widget.id" :data-dashboard-widget="widget.id" class="relative min-w-0 transition-[transform,opacity] duration-200" :class="[widgetClass(widget.size), draggingWidget === widget.id ? 'z-10 scale-[1.02] rounded-[2rem] opacity-70 ring-2 ring-emerald-400 shadow-xl' : '', touchDropTarget === widget.id && draggingWidget !== widget.id ? 'scale-[.98]' : '']" @dragover.prevent @drop="dropWidget(widget.id, $event)">
-        <div v-if="customizing" class="relative z-20 mb-2 flex items-center gap-2 rounded-2xl border border-emerald-200 bg-white p-2 shadow-sm dark:border-emerald-900 dark:bg-slate-900"><button draggable="true" class="grid size-10 touch-none place-items-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950" :aria-label="`Arrastar ${DASHBOARD_WIDGETS[widget.id].label}`" @dragstart="dragStart(widget.id, $event)" @dragend="draggingWidget = null" @pointerdown="pointerStart(widget.id, $event)"><GripVertical :size="18" /></button><strong class="min-w-0 flex-1 truncate text-xs">{{ DASHBOARD_WIDGETS[widget.id].label }}</strong><button class="inline-flex h-10 items-center gap-1 rounded-xl bg-slate-100 px-2 text-[10px] font-black dark:bg-slate-800" :aria-label="`Mudar tamanho de ${DASHBOARD_WIDGETS[widget.id].label}`" @click="cycleSize(widget.id)"><Maximize2 :size="14" /> {{ widget.size === 'small' ? 'P' : widget.size === 'medium' ? 'M' : 'G' }}</button><button class="grid size-10 place-items-center rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950" :aria-label="`Ocultar ${DASHBOARD_WIDGETS[widget.id].label}`" @click="setVisibility(widget.id, false)"><EyeOff :size="16" /></button></div>
-        <article v-if="widget.id === 'net_worth'" class="relative min-w-0 overflow-hidden rounded-[2rem] bg-gradient-to-br from-slate-950 via-emerald-950 to-emerald-700 p-5 text-white shadow-2xl sm:p-8"><div class="absolute -right-14 -top-16 size-52 rounded-full bg-emerald-300/15 blur-2xl"></div><div class="relative flex items-start justify-between gap-2"><div class="grid size-12 shrink-0 place-items-center rounded-[1.1rem] bg-emerald-300 text-xl font-black text-emerald-950">P</div><button class="grid size-11 shrink-0 place-items-center rounded-2xl bg-white/10" :aria-label="store.balanceHidden ? 'Mostrar saldos' : 'Esconder saldos'" @click="store.toggleBalanceVisibility"><Eye v-if="store.balanceHidden" :size="20" /><EyeOff v-else :size="20" /></button></div><p class="relative mt-7 truncate text-sm font-bold text-emerald-200">Patrimônio total</p><h2 class="relative mt-1 truncate text-3xl font-black tracking-tight tabular-nums sm:text-5xl" :title="privateMoney(store.balanceCents)">{{ privateMoney(store.balanceCents) }}</h2><p class="relative mt-2 truncate text-sm text-emerald-100/75">Conta principal + todos os porquinhos.</p><button class="relative mt-5 inline-flex max-w-full items-center gap-2 rounded-2xl bg-white/10 px-4 py-3 text-sm font-black" @click="showBalanceEditor = true"><Pencil class="shrink-0" :size="16" /><span class="truncate">Editar saldo</span></button></article>
+    <section class="mt-7 grid gap-5 lg:grid-cols-12">
+      <div v-if="widgetVisible('available_balance') || widgetVisible('net_worth')" class="min-w-0 lg:col-span-8">
+        <div v-if="customizing" class="mb-2 flex items-center gap-2 rounded-2xl border border-line bg-surface p-2"><span class="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand"><GripVertical :size="18" /></span><strong class="min-w-0 flex-1 truncate text-xs">Saldo e patrimônio</strong><button class="grid size-10 place-items-center rounded-xl text-subtle hover:bg-muted" aria-label="Ocultar saldo" @click="setVisibility('available_balance', false); setVisibility('net_worth', false)"><EyeOff :size="16" /></button></div>
+        <BalanceHeroCard :balance="privateMoney(store.availableBalanceCents)" :month="monthLabel" :income="privateMoney(store.reportingIncomeCents)" :expense="privateMoney(store.reportingExpenseCents)" :net-worth="widgetVisible('net_worth') ? privateMoney(store.balanceCents) : ''" :hidden="store.balanceHidden" :budget-progress="budgetProgress" @toggle-privacy="store.toggleBalanceVisibility" @details="emit('navigate', 'analytics')" />
+      </div>
 
-        <article v-else-if="widget.id === 'available_balance'" class="relative min-w-0 overflow-hidden rounded-[2rem] bg-gradient-to-br from-sky-600 via-cyan-600 to-emerald-500 p-5 text-white shadow-xl sm:p-8"><div class="absolute -bottom-20 -right-16 size-56 rounded-full bg-white/15"></div><div class="relative grid size-12 place-items-center rounded-2xl bg-white/20"><WalletCards :size="22" /></div><p class="relative mt-6 truncate text-sm font-bold text-sky-100">Saldo da carteira</p><p class="relative mt-1 truncate text-3xl font-black tracking-tight tabular-nums sm:text-5xl" :title="privateMoney(store.availableBalanceCents)">{{ privateMoney(store.availableBalanceCents) }}</p><p class="relative mt-2 truncate text-sm font-semibold text-white/75">Dinheiro disponível agora, sem contar os porquinhos.</p><button class="relative mt-5 inline-flex max-w-full items-center gap-2 rounded-2xl bg-white/15 px-4 py-3 text-sm font-black" @click="showBalanceEditor = true"><Pencil class="shrink-0" :size="16" /><span class="truncate">Corrigir saldo</span></button></article>
-        <article v-else-if="widget.id === 'vault_total'" class="min-w-0 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-5"><div class="grid size-10 place-items-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-950"><PiggyBank :size="19" /></div><p class="mt-4 truncate text-xs font-bold text-slate-400">Nos porquinhos</p><p class="mt-1 truncate text-xl font-black tabular-nums sm:text-2xl" :title="privateMoney(store.vaultTotalCents)">{{ privateMoney(store.vaultTotalCents) }}</p><p class="mt-1 truncate text-xs text-slate-500">Reserva protegida</p></article>
-        <article v-else-if="widget.id === 'month_expenses'" class="min-w-0 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-5"><div class="grid size-10 place-items-center rounded-xl bg-rose-100 text-rose-700 dark:bg-rose-950"><TrendingDown :size="19" /></div><p class="mt-4 truncate text-xs font-bold text-slate-400">Gastos do mês</p><p class="mt-1 truncate text-xl font-black tabular-nums sm:text-2xl" :title="privateMoney(store.currentMonthExpenseCents)">{{ privateMoney(store.currentMonthExpenseCents) }}</p><p class="mt-1 truncate text-xs text-slate-500">Até hoje</p></article>
-        <article v-else-if="widget.id === 'daily_budget'" class="min-w-0 overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-emerald-300 to-lime-300 p-4 text-emerald-950 shadow-card sm:p-5"><CalendarClock :size="22" /><p class="mt-4 truncate text-xs font-black uppercase tracking-wider opacity-70">Posso gastar hoje</p><p class="mt-1 truncate text-xl font-black tabular-nums sm:text-2xl" :title="privateMoney(store.dailyBudgetCents)">{{ privateMoney(store.dailyBudgetCents) }}</p><p class="mt-1 truncate text-xs font-bold opacity-70">Sem tocar nos porquinhos</p></article>
-        <article v-else-if="widget.id === 'month_balance'" class="min-w-0 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-5"><Landmark :size="21" class="text-emerald-600" /><p class="mt-4 truncate text-xs font-bold text-slate-400">Resultado do mês</p><p class="mt-1 truncate text-2xl font-black tabular-nums sm:text-3xl" :title="privateMoney(store.currentMonthBalanceCents)" :class="store.currentMonthBalanceCents >= 0n ? 'text-emerald-600' : 'text-rose-600'">{{ privateMoney(store.currentMonthBalanceCents) }}</p><p class="mt-1 truncate text-xs text-slate-500">Entradas menos gastos</p></article>
+      <aside class="pingo-card min-w-0 p-5 lg:col-span-4 lg:p-6">
+        <div class="flex items-start justify-between gap-3"><div><p class="text-sm font-semibold text-brand">Ações rápidas</p><h2 class="mt-1 text-xl font-extrabold">O que aconteceu?</h2></div><button class="grid size-10 place-items-center rounded-xl bg-muted text-subtle" aria-label="Personalizar início" @click="customizing = !customizing"><LayoutGrid :size="19" /></button></div>
+        <div class="mt-5 grid grid-cols-3 gap-2">
+          <button class="pingo-interactive grid min-h-24 place-items-center content-center gap-2 rounded-2xl bg-muted px-2 text-xs font-bold" @click="emit('newTransaction', 'expense', 'transaction')"><ArrowUpRight :size="20" /> Gasto</button>
+          <button class="pingo-interactive grid min-h-24 place-items-center content-center gap-2 rounded-2xl bg-brand-soft px-2 text-xs font-bold text-brand" @click="emit('newTransaction', 'income', 'transaction')"><ArrowDownLeft :size="20" /> Entrada</button>
+          <button class="pingo-interactive grid min-h-24 place-items-center content-center gap-2 rounded-2xl bg-muted px-2 text-xs font-bold" @click="emit('newTransaction', 'expense', 'vault')"><ArrowRightLeft :size="20" /> Transferir</button>
+        </div>
+        <button class="mt-5 flex min-h-12 w-full items-center justify-between rounded-2xl border border-line px-4 text-sm font-bold hover:bg-muted" @click="showStatementImport = true"><span class="flex items-center gap-2"><FileUp :size="18" class="text-brand" /> Importar extrato</span><span class="text-xs font-medium text-subtle">CSV · OFX · PDF</span></button>
+        <button class="mt-2 flex min-h-12 w-full items-center justify-between rounded-2xl border border-line px-4 text-sm font-bold hover:bg-muted" @click="showBalanceEditor = true"><span class="flex items-center gap-2"><Pencil :size="18" class="text-brand" /> Corrigir saldo</span><span class="text-xs text-subtle">Carteira</span></button>
+      </aside>
+    </section>
 
+    <section class="mt-7 grid gap-5 lg:grid-cols-12">
+      <article v-if="widgetVisible('history')" class="pingo-card min-w-0 p-4 sm:p-6 lg:col-span-8">
+        <div class="mb-4 flex items-center justify-between gap-3"><div class="min-w-0"><p class="text-sm font-semibold text-subtle">{{ monthLabel }}</p><h2 class="truncate text-2xl font-extrabold tracking-tight">Últimas transações</h2></div><button class="min-h-11 shrink-0 px-2 text-sm font-bold text-brand" @click="showAllHistory = !showAllHistory">{{ showAllHistory ? 'Ver 5' : 'Ver todas' }}</button></div>
+        <TransactionList :transactions="historyTransactions" :categories="store.categories" :cards="store.debitCards" editable @edit="edit" />
+      </article>
+
+      <aside class="pingo-card min-w-0 p-5 sm:p-6 lg:col-span-4">
+        <p class="text-sm font-semibold text-brand">Resumo do mês</p><h2 class="mt-1 text-xl font-extrabold">Seu ritmo financeiro</h2>
+        <dl class="mt-5 grid gap-3">
+          <div class="flex items-center justify-between gap-3"><dt class="text-sm text-subtle">Entradas</dt><dd class="truncate font-bold tabular-nums">{{ privateMoney(store.reportingIncomeCents) }}</dd></div>
+          <div class="flex items-center justify-between gap-3"><dt class="text-sm text-subtle">Saídas</dt><dd class="truncate font-bold tabular-nums">{{ privateMoney(store.reportingExpenseCents) }}</dd></div>
+          <div class="flex items-center justify-between gap-3 border-t border-line pt-3"><dt class="text-sm text-subtle">Economia</dt><dd class="truncate font-extrabold tabular-nums" :class="store.reportingBalanceCents >= 0n ? 'text-brand' : 'text-red-500'">{{ privateMoney(store.reportingBalanceCents) }}</dd></div>
+        </dl>
+        <div v-if="categoryRows.length" class="mt-6 grid gap-4"><div v-for="row in categoryRows" :key="row.id"><div class="mb-1.5 flex min-w-0 justify-between gap-3 text-xs"><strong class="truncate">{{ row.category?.name ?? 'Sem categoria' }}</strong><span class="shrink-0 text-subtle">{{ row.percentage.toFixed(0) }}%</span></div><div class="h-1.5 overflow-hidden rounded-full bg-muted"><div class="h-full rounded-full bg-brand" :style="{ width: `${row.percentage}%` }"></div></div></div></div>
+        <p v-else class="mt-6 rounded-2xl bg-muted p-4 text-sm text-subtle">Nenhuma movimentação neste mês.</p>
+      </aside>
+    </section>
+
+    <TransitionGroup v-if="visibleOptionalWidgets.length" tag="section" class="mt-5 grid grid-cols-2 gap-4 xl:grid-cols-12" move-class="transition-transform duration-300 ease-pingo">
+      <div v-for="widget in visibleOptionalWidgets" :key="widget.id" :data-dashboard-widget="widget.id" class="relative min-w-0" :class="[widgetClass(widget.size), draggingWidget === widget.id ? 'z-10 scale-[1.02] opacity-70' : '']" @dragover.prevent @drop="dropWidget(widget.id, $event)">
+        <div v-if="customizing" class="mb-2 flex items-center gap-2 rounded-2xl border border-brand/25 bg-surface p-2 shadow-sm"><button draggable="true" class="grid size-10 touch-none place-items-center rounded-xl bg-brand-soft text-brand" :aria-label="`Arrastar ${DASHBOARD_WIDGETS[widget.id].label}`" @dragstart="dragStart(widget.id, $event)" @dragend="draggingWidget = null" @pointerdown="pointerStart(widget.id, $event)"><GripVertical :size="18" /></button><strong class="min-w-0 flex-1 truncate text-xs">{{ DASHBOARD_WIDGETS[widget.id].label }}</strong><button class="inline-flex h-10 items-center gap-1 rounded-xl bg-muted px-2 text-[10px] font-bold" @click="cycleSize(widget.id)"><Maximize2 :size="14" /> {{ widget.size === 'small' ? 'P' : widget.size === 'medium' ? 'M' : 'G' }}</button><button class="grid size-10 place-items-center rounded-xl text-subtle hover:bg-muted" @click="setVisibility(widget.id, false)"><EyeOff :size="16" /></button></div>
+
+        <article v-if="widget.id === 'vault_total'" class="pingo-card min-h-40 p-5"><PiggyBank :size="21" class="text-brand" /><p class="mt-5 text-xs font-semibold text-subtle">Nos porquinhos</p><p class="mt-1 truncate text-2xl font-extrabold tabular-nums" :title="privateMoney(store.vaultTotalCents)">{{ privateMoney(store.vaultTotalCents) }}</p></article>
+        <article v-else-if="widget.id === 'month_expenses'" class="pingo-card min-h-40 p-5"><TrendingDown :size="21" class="text-brand" /><p class="mt-5 text-xs font-semibold text-subtle">Gastos no período</p><p class="mt-1 truncate text-2xl font-extrabold tabular-nums">{{ privateMoney(store.reportingExpenseCents) }}</p></article>
+        <article v-else-if="widget.id === 'daily_budget'" class="min-h-40 rounded-pingo-lg bg-brand p-5 text-white shadow-card"><CalendarClock :size="21" /><p class="mt-5 text-xs font-semibold text-white/60">Posso gastar hoje</p><p class="mt-1 truncate text-2xl font-extrabold tabular-nums">{{ privateMoney(store.dailyBudgetCents) }}</p></article>
+        <article v-else-if="widget.id === 'month_balance'" class="pingo-card min-h-40 p-5"><Landmark :size="21" class="text-brand" /><p class="mt-5 text-xs font-semibold text-subtle">Resultado do período</p><p class="mt-1 truncate text-2xl font-extrabold tabular-nums">{{ privateMoney(store.reportingBalanceCents) }}</p></article>
         <div v-else-if="widget.id === 'recurring'"><RecurringSection /></div>
-        <section v-else-if="widget.id === 'insights'" class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-6"><div class="flex items-start justify-between"><div><p class="text-sm font-bold text-emerald-600">Leituras do Pingo</p><h3 class="text-xl font-black">Para onde vai o dinheiro?</h3></div><Gauge :size="24" /></div><div class="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4"><div class="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950"><ShieldCheck :size="16" class="text-slate-400" /><p class="mt-2 text-2xl font-black">{{ store.financialHealthScore }}<span class="text-sm text-slate-400">/100</span></p><p class="text-xs font-bold text-emerald-600">{{ scoreLabel }}</p></div><div class="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950"><Sparkles :size="16" class="text-slate-400" /><p class="mt-2 text-xl font-black">{{ privateMoney(store.fixedMonthlyCommitmentCents) }}</p><p class="text-xs text-slate-500">Fixos previstos</p></div><div class="col-span-2 rounded-2xl bg-slate-50 p-4 dark:bg-slate-950"><TrendingDown :size="16" class="text-slate-400" /><p class="mt-2 truncate text-lg font-black">{{ store.topExpenseCategory.category?.name ?? 'Sem gastos' }}</p><p class="text-xs text-slate-500">{{ store.topExpenseCategory.percentage.toFixed(1) }}% das despesas</p></div></div><div v-if="categoryRows.length" class="mt-5 grid gap-3"><div v-for="row in categoryRows" :key="row.id"><div class="mb-1 flex justify-between gap-2 text-sm"><strong class="truncate">{{ row.category?.name ?? 'Sem categoria' }}</strong><strong>{{ privateMoney(row.amount) }}</strong></div><div class="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div class="h-full rounded-full" :style="{ width: `${row.percentage}%`, backgroundColor: row.category?.color ?? '#10B981' }"></div></div></div></div></section>
-        <section v-else-if="widget.id === 'history'" class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-card dark:border-slate-800 dark:bg-slate-900 sm:p-6"><div class="mb-2 flex items-center justify-between gap-3"><div><p class="text-sm text-slate-500">Histórico editável</p><h3 class="text-xl font-black">Movimentações</h3></div><button v-if="!store.hasActiveFilters" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-black dark:border-slate-700" @click="showAllHistory = !showAllHistory">{{ showAllHistory ? 'Recentes' : 'Ver tudo' }}</button></div><TransactionFiltersBar /><TransactionList class="mt-2" :transactions="store.hasActiveFilters ? store.filteredTransactions : historyTransactions" :categories="store.categories" :cards="store.debitCards" editable @edit="edit" /></section>
+        <article v-else-if="widget.id === 'insights'" class="pingo-card p-5"><div class="flex items-start justify-between"><div><p class="text-sm font-semibold text-brand">Leituras do Pingo</p><h3 class="text-xl font-extrabold">Saúde financeira</h3></div><Gauge :size="23" /></div><div class="mt-5 grid grid-cols-2 gap-3"><div class="rounded-2xl bg-muted p-4"><ShieldCheck :size="16" class="text-subtle" /><p class="mt-2 text-2xl font-extrabold">{{ store.financialHealthScore }}<span class="text-sm text-subtle">/100</span></p><p class="text-xs font-bold text-brand">{{ scoreLabel }}</p></div><div class="rounded-2xl bg-muted p-4"><Sparkles :size="16" class="text-subtle" /><p class="mt-2 truncate text-lg font-extrabold">{{ privateMoney(store.fixedMonthlyCommitmentCents) }}</p><p class="text-xs text-subtle">Fixos previstos</p></div></div></article>
       </div>
     </TransitionGroup>
-    <section v-else class="grid min-h-72 place-items-center rounded-[2rem] border-2 border-dashed border-slate-300 p-8 text-center dark:border-slate-700"><div><LayoutGrid :size="38" class="mx-auto text-emerald-500" /><h2 class="mt-4 text-xl font-black">Seu painel está vazio</h2><p class="mt-1 text-sm text-slate-500">Ative a personalização para escolher o que deseja acompanhar.</p><button class="mt-4 rounded-2xl bg-emerald-400 px-5 py-3 font-black text-emerald-950" @click="customizing = true">Personalizar painel</button></div></section>
+
+    <section v-if="!widgetVisible('available_balance') && !widgetVisible('net_worth') && !widgetVisible('history') && !visibleOptionalWidgets.length" class="mt-8 grid min-h-72 place-items-center rounded-[2rem] border border-dashed border-line bg-surface p-8 text-center"><div><LayoutGrid :size="38" class="mx-auto text-brand" /><h2 class="mt-4 text-xl font-extrabold">Seu início está vazio</h2><p class="mt-1 text-sm text-subtle">Reative apenas os blocos que você quer acompanhar.</p><button class="mt-4 rounded-2xl bg-brand px-5 py-3 font-bold text-white" @click="customizing = true">Personalizar</button></div></section>
   </main>
 
   <AddTransactionModal v-if="showModal" :categories="store.categories" :cards="store.debitCards" :vaults="store.vaults" :transaction="editingTransaction" @close="showModal = false; editingTransaction = null" @save="save" @save-recurring="saveRecurring" @send-to-vault="sendToVault" @delete="deletingTransaction = $event" />

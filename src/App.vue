@@ -16,7 +16,7 @@ import { listenForQuickLaunch } from './services/quickLaunch'
 import { startShakeListener, startVoiceShortcut, type VoiceShortcut } from './services/deviceExperience'
 import { startWebReminderWatcher } from './services/notifications'
 import { applyWebUpdate, canInstallWebApp, hasWebUpdate, installWebApp, isOnline, setupWebApp } from './services/pwa'
-import type { NewRecurringRuleInput, NewTransactionInput, QuickLaunchAction, ThemeMode } from './types/finance'
+import type { NewRecurringRuleInput, NewTransactionInput, QuickLaunchAction, TransactionType } from './types/finance'
 
 const store = useFinanceStore()
 const legacyView: Record<string, PrimaryView> = {
@@ -28,6 +28,8 @@ const activeView = ref<PrimaryView>(legacyView[storedView] ?? 'home')
 const accountsSection = ref<'wallet' | 'vaults'>(storedView === 'vaults' ? 'vaults' : 'wallet')
 const showQuickExpense = ref(false)
 const showTransactionComposer = ref(false)
+const composerKind = ref<TransactionType>('expense')
+const composerFlow = ref<'transaction' | 'recurring' | 'vault'>('transaction')
 const voiceListening = ref(false)
 const quickCardId = ref<string | undefined>()
 const walletFocusCardId = ref<string | undefined>()
@@ -59,7 +61,11 @@ function navigate(view: PrimaryView) {
   activeView.value = view
   window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
 }
-function openComposer() { showTransactionComposer.value = true }
+function openComposer(kind: TransactionType = 'expense', flow: 'transaction' | 'recurring' | 'vault' = 'transaction') {
+  composerKind.value = kind
+  composerFlow.value = flow
+  showTransactionComposer.value = true
+}
 function openQuickExpense(cardId?: string) { quickCardId.value = cardId; showQuickExpense.value = true }
 function closeQuickExpense() { showQuickExpense.value = false; quickCardId.value = undefined }
 function handleTouchStart(event: TouchEvent) {
@@ -195,7 +201,7 @@ onBeforeUnmount(() => {
     </div>
 
     <MobileBottomNav v-if="store.initialized" :active-view="activeView" @navigate="navigate" />
-    <AddTransactionModal v-if="showTransactionComposer && store.initialized" :categories="store.categories" :cards="store.debitCards" :vaults="store.vaults" @close="showTransactionComposer = false" @save="saveTransaction" @save-recurring="saveRecurring" @send-to-vault="sendToVault" />
+    <AddTransactionModal v-if="showTransactionComposer && store.initialized" :key="`${composerKind}-${composerFlow}`" :categories="store.categories" :cards="store.debitCards" :vaults="store.vaults" :initial-kind="composerKind" :initial-flow="composerFlow" @close="showTransactionComposer = false" @save="saveTransaction" @save-recurring="saveRecurring" @send-to-vault="sendToVault" />
     <QuickExpenseSheet v-if="showQuickExpense && store.initialized" :key="quickCardId ?? 'generic'" :categories="store.categories" :cards="store.debitCards" :recent-category-ids="store.recentExpenseCategoryIds" :initial-card-id="quickCardId" @close="closeQuickExpense" @save="saveQuickExpense" />
 
     <Transition enter-active-class="transition duration-200 ease-pingo" enter-from-class="translate-y-4 opacity-0" leave-active-class="transition duration-200 ease-pingo" leave-to-class="translate-y-4 opacity-0">
