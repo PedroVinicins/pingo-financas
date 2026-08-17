@@ -23,8 +23,15 @@ export type DigitalWalletItemKind = 'ticket' | 'document' | 'qr_code' | 'other'
 export type BankPaymentMethod = 'pix' | 'debit' | 'credit' | 'card' | 'unknown'
 export type ShakeSensitivity = 'low' | 'medium' | 'high'
 export type FeedbackDurationMs = 3000 | 4000 | 5000
+export type ThemeMode = 'light' | 'dark' | 'system'
 
 export interface PingoPreferences {
+  displayName: string
+  themeMode: ThemeMode
+  monthlyBudget: string | null
+  billsDueNotifications: boolean
+  weeklySummaryNotifications: boolean
+  expenseReminderNotifications: boolean
   voiceShortcutsEnabled: boolean
   shakeToExpenseEnabled: boolean
   shakeSensitivity: ShakeSensitivity

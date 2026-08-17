@@ -3,6 +3,12 @@ import type { PingoPreferences } from '../types/finance'
 const PREFERENCES_KEY = 'pingo:preferences'
 
 export const DEFAULT_PINGO_PREFERENCES: PingoPreferences = {
+  displayName: '',
+  themeMode: 'system',
+  monthlyBudget: null,
+  billsDueNotifications: true,
+  weeklySummaryNotifications: false,
+  expenseReminderNotifications: false,
   voiceShortcutsEnabled: false,
   shakeToExpenseEnabled: false,
   shakeSensitivity: 'medium',
@@ -21,10 +27,22 @@ function normalize(raw: Partial<PingoPreferences> | null): PingoPreferences {
     ? raw!.feedbackDurationMs!
     : DEFAULT_PINGO_PREFERENCES.feedbackDurationMs
   const percent = Number(raw?.spendingAlertPercent)
+  const legacyTheme = (() => {
+    try { return localStorage.getItem('theme') } catch { return null }
+  })()
+  const themeMode = ['light', 'dark', 'system'].includes(raw?.themeMode ?? '')
+    ? raw!.themeMode!
+    : legacyTheme === 'light' || legacyTheme === 'dark' ? legacyTheme : 'system'
+  const monthlyBudget = typeof raw?.monthlyBudget === 'string' && /^\d+(\.\d{1,2})?$/.test(raw.monthlyBudget)
+    ? raw.monthlyBudget
+    : null
   return {
     ...DEFAULT_PINGO_PREFERENCES,
     ...raw,
     shakeSensitivity: sensitivity,
+    displayName: typeof raw?.displayName === 'string' ? raw.displayName.trim().slice(0, 60) : '',
+    themeMode,
+    monthlyBudget,
     feedbackDurationMs: duration,
     spendingAlertPercent: Number.isFinite(percent) ? Math.min(100, Math.max(50, Math.round(percent))) : 80,
   }
@@ -42,4 +60,3 @@ export function savePingoPreferences(preferences: PingoPreferences) {
   localStorage.setItem(PREFERENCES_KEY, JSON.stringify(normalized))
   return normalized
 }
-

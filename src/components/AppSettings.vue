@@ -16,6 +16,7 @@ import {
 } from '../services/notifications'
 import type { DashboardWidgetId, FeedbackDurationMs, ShakeSensitivity } from '../types/finance'
 
+const props = withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
 const emit = defineEmits<{ close: [] }>()
 const store = useFinanceStore()
 const exporting = ref(false)
@@ -111,9 +112,9 @@ async function factoryReset() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[80] flex items-end bg-slate-950/50 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-4" @click.self="emit('close')">
-    <section class="max-h-[94dvh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-2xl sm:rounded-[2rem] sm:p-6" role="dialog" aria-modal="true" aria-labelledby="app-settings-title">
-      <div class="flex items-start justify-between gap-3"><div class="flex items-start gap-3"><div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300"><Database :size="21" /></div><div><p class="text-sm font-bold text-sky-600">Tudo em um só lugar</p><h2 id="app-settings-title" class="text-xl font-black">Central do Pingo</h2><p class="mt-1 text-xs text-slate-500">Comportamento, atalhos, alertas, tela inicial e dados.</p></div></div><button class="grid size-10 shrink-0 place-items-center rounded-xl bg-slate-100 dark:bg-slate-800" aria-label="Fechar configurações" @click="emit('close')"><X :size="19" /></button></div>
+  <div :class="props.embedded ? 'mx-auto min-h-dvh max-w-[1440px] px-5 pb-8 pt-[calc(1.25rem+env(safe-area-inset-top))] sm:px-7 lg:px-10 lg:py-9' : 'fixed inset-0 z-[80] flex items-end bg-slate-950/50 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-4'" @click.self="!props.embedded && emit('close')">
+    <section :class="props.embedded ? 'w-full' : 'max-h-[94dvh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-2xl sm:rounded-[2rem] sm:p-6'" :role="props.embedded ? undefined : 'dialog'" :aria-modal="props.embedded ? undefined : true" aria-labelledby="app-settings-title">
+      <div class="flex items-start justify-between gap-3"><div class="flex items-start gap-3"><div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-brand-soft text-brand"><Database :size="21" /></div><div><p class="text-sm font-bold text-brand">Tudo em um só lugar</p><h2 id="app-settings-title" class="text-2xl font-extrabold">Ajustes</h2><p class="mt-1 text-xs text-subtle">Perfil, aparência, notificações, atalhos e dados.</p></div></div><button v-if="!props.embedded" class="grid size-10 shrink-0 place-items-center rounded-xl bg-muted" aria-label="Fechar configurações" @click="emit('close')"><X :size="19" /></button></div>
 
       <div class="mt-5 grid gap-4">
         <section class="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">

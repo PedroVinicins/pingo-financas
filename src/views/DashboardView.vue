@@ -17,6 +17,7 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import BankStatementImport from '../components/BankStatementImport.vue'
 
 const store = useFinanceStore()
+defineEmits<{ newTransaction: []; navigate: [view: 'accounts' | 'home' | 'analytics' | 'settings'] }>()
 const showModal = ref(false)
 const showBalanceEditor = ref(false)
 const showStatementImport = ref(false)
