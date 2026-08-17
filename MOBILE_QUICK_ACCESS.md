@@ -11,6 +11,8 @@ O Pingo foi desenhado para registrar uma compra em poucos toques.
 - O cartão principal é pré-selecionado automaticamente.
 - Na Pingo Wallet, **Gasto neste cartão** abre a mesma tela com o cartão escolhido.
 - A descrição é opcional: se ficar vazia, a categoria vira a descrição básica.
+- Na **Central do Pingo**, o usuário pode ativar **Agitar para novo gasto** e escolher a sensibilidade. O gesto funciona enquanto o app está aberto no Resumo, exige dois movimentos rápidos e possui intervalo de segurança contra abertura repetida.
+- Os **Atalhos de voz** aparecem no topo depois de ativados. O microfone só é usado ao tocar no botão e entende “novo gasto”, “carteira”, “porquinhos” e “resumo”.
 
 ## Deep links
 

@@ -6,7 +6,7 @@ import type {
 export interface PingoBackup {
   format: 'pingo-backup'
   version: 1
-  appVersion: '0.9.0'
+  appVersion: '0.10.0'
   exportedAt: string
   data: {
     transactions: Transaction[]
@@ -28,7 +28,7 @@ export async function exportBackup(data: PingoBackup['data']) {
   const backup: PingoBackup = {
     format: 'pingo-backup',
     version: 1,
-    appVersion: '0.9.0',
+    appVersion: '0.10.0',
     exportedAt: new Date().toISOString(),
     data,
   }

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.0 — Pingo na palma da mão
+
+- corrige estouros de nomes e valores longos em cartões e réguas, limitando os textos a uma linha com reticências;
+- adapta os formulários ao teclado no iOS e ao `adjustResize` no Android, mantendo campos e botões alcançáveis por rolagem;
+- transforma o Resumo em um grid P/M/G que pode ser reordenado por mouse ou toque com animação e salvamento automático;
+- remove avisos flutuantes automaticamente após 3, 4 ou 5 segundos com transição de saída configurável;
+- reúne voz, gesto de agitar, radar diário, limites, cards da tela inicial, lembretes, economia, backup e reset total na Central do Pingo;
+- adiciona saudação por hora local e gesto de agitar com sensibilidade configurável, dois picos de confirmação e proteção contra repetição;
+- permite comandos de voz acionados pelo usuário para abrir novo gasto, Carteira, Porquinhos ou Resumo;
+- usa a imagem escolhida pelo usuário como fundo de um cartão ao vivo e abre o original em um visualizador de tela cheia;
+- adiciona “Enviar para o Porquinho” ao formulário e preserva o patrimônio por meio de uma transferência atômica entre saldo livre e reserva;
+- preserva data e hora de lançamentos manuais e importados no Web e no SQLite;
+- melhora o parser CSV/TSV, OFX e PDF: remove códigos operacionais, reconhece PIX, débito, crédito e cartão e sugere o vínculo correto;
+- atualiza Web/PWA e Android para a versão 0.10.0 (`versionCode` 10000).
+
 ## 0.9.0 — Seu extrato pingou
 
 - importa extratos CSV, TSV, OFX e PDFs com texto selecionável, incluindo o formato exportado pelo Banco Inter;
