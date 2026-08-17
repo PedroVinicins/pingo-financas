@@ -1,160 +1,197 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import {
-  BatteryCharging, Bell, Database, Download, Eye, Gauge, HardDrive, Mic, Move3d,
-  RotateCcw, ShieldCheck, Smartphone, X,
+  BatteryCharging, Bell, Database, Download, Eye, FileDown, Gauge, HardDrive, LockKeyhole,
+  Mic, Move3d, Palette, RefreshCw, RotateCcw, ShieldCheck, Smartphone, Upload, X,
 } from 'lucide-vue-next'
+import AppSwitch from './AppSwitch.vue'
 import FactoryResetDialog from './FactoryResetDialog.vue'
+import ProfileCard from './ProfileCard.vue'
+import SettingsGroup from './SettingsGroup.vue'
+import SettingsRow from './SettingsRow.vue'
 import { useFinanceStore } from '../stores/financeStore'
-import { exportBackup } from '../services/backup'
+import { exportBackup, exportTransactionsCsv } from '../services/backup'
 import { isTauriRuntime } from '../services/financeRepository'
 import { DASHBOARD_WIDGETS } from '../services/dashboardLayout'
 import { requestMotionPermission } from '../services/deviceExperience'
-import {
-  disableMoneyReminders, enableMoneyReminders, loadReminderSettings, sendReminderTest,
-  type ReminderFrequencyDays,
-} from '../services/notifications'
-import type { DashboardWidgetId, FeedbackDurationMs, ShakeSensitivity } from '../types/finance'
+import { localizedDecimalToStorage, storageDecimalToLocalized } from '../services/localizedNumber'
+import { disableMoneyReminders, enableMoneyReminders, loadReminderSettings, sendReminderTest, type ReminderFrequencyDays } from '../services/notifications'
+import type { DashboardWidgetId, FeedbackDurationMs, PingoPreferences, ShakeSensitivity, ThemeMode } from '../types/finance'
 
 const props = withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
 const emit = defineEmits<{ close: [] }>()
 const store = useFinanceStore()
 const exporting = ref(false)
+const exportingCsv = ref(false)
 const confirmingReset = ref(false)
 const resetting = ref(false)
 const sensorBusy = ref(false)
 const reminderBusy = ref(false)
+const editingProfile = ref(false)
+const profileDraft = ref(store.preferences.displayName)
+const budgetDraft = ref(store.preferences.monthlyBudget ? storageDecimalToLocalized(store.preferences.monthlyBudget) : '')
+const budgetError = ref('')
 const reminderSettings = ref(loadReminderSettings())
 const reminderFrequency = ref<ReminderFrequencyDays>(reminderSettings.value.frequencyDays)
 
-function updatePreference(event: Event, key: 'voiceShortcutsEnabled' | 'dailySpendingAlertsEnabled' | 'greetingEnabled' | 'economyMode') {
-  store.updatePreferences({ [key]: (event.target as HTMLInputElement).checked })
-}
+const displayName = computed(() => store.preferences.displayName || 'Você')
+const expenseCategories = computed(() => store.categories.filter((item) => item.kind === 'expense').length)
+const incomeCategories = computed(() => store.categories.filter((item) => item.kind === 'income').length)
+const walletCount = computed(() => store.debitCards.length + store.digitalWalletItems.length)
+const monthlyBudgetLabel = computed(() => store.preferences.monthlyBudget
+  ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(store.preferences.monthlyBudget))
+  : 'Não definido')
 
-function updateSensitivity(event: Event) {
-  store.updatePreferences({ shakeSensitivity: (event.target as HTMLSelectElement).value as ShakeSensitivity })
+function updateBoolean(key: keyof PingoPreferences, value: boolean) { store.updatePreferences({ [key]: value }) }
+function setTheme(themeMode: ThemeMode) { store.updatePreferences({ themeMode }) }
+function saveProfile() {
+  const name = profileDraft.value.trim().slice(0, 60)
+  store.updatePreferences({ displayName: name })
+  editingProfile.value = false
+  store.showFeedback('Perfil atualizado.', 'success')
 }
-
-function updateAlertPercent(event: Event) {
-  store.updatePreferences({ spendingAlertPercent: Number((event.target as HTMLInputElement).value) })
+function saveBudget() {
+  budgetError.value = ''
+  if (!budgetDraft.value.trim()) { store.updatePreferences({ monthlyBudget: null }); return }
+  try {
+    const value = localizedDecimalToStorage(budgetDraft.value)
+    if (Number(value) <= 0) throw new Error()
+    store.updatePreferences({ monthlyBudget: value })
+  } catch { budgetError.value = 'Informe um limite maior que zero.' }
 }
-
-function updateFeedbackDuration(event: Event) {
-  store.updatePreferences({ feedbackDurationMs: Number((event.target as HTMLSelectElement).value) as FeedbackDurationMs })
-}
-
-async function toggleShake(event: Event) {
-  const enabled = (event.target as HTMLInputElement).checked
+async function toggleShake(enabled: boolean) {
   if (!enabled) { store.updatePreferences({ shakeToExpenseEnabled: false }); return }
   sensorBusy.value = true
-  try {
-    await requestMotionPermission()
-    store.updatePreferences({ shakeToExpenseEnabled: true })
-    store.showFeedback('Atalho por movimento ativado.', 'success')
-  } catch (cause) {
-    store.updatePreferences({ shakeToExpenseEnabled: false })
-    store.reportError(cause, 'Não foi possível ativar o sensor.')
-  } finally { sensorBusy.value = false }
+  try { await requestMotionPermission(); store.updatePreferences({ shakeToExpenseEnabled: true }); store.showFeedback('Agitar para gasto foi ativado.', 'success') }
+  catch (cause) { store.updatePreferences({ shakeToExpenseEnabled: false }); store.reportError(cause, 'Não foi possível ativar o sensor.') }
+  finally { sensorBusy.value = false }
 }
-
-function toggleWidget(id: DashboardWidgetId, event: Event) {
+async function toggleExpenseReminder(enabled: boolean) {
+  reminderBusy.value = true
+  try {
+    if (enabled) reminderSettings.value = await enableMoneyReminders(reminderFrequency.value)
+    else reminderSettings.value = await disableMoneyReminders()
+    store.updatePreferences({ expenseReminderNotifications: enabled })
+  } catch (cause) { store.reportError(cause, 'Não foi possível alterar os lembretes.') }
+  finally { reminderBusy.value = false }
+}
+async function updateReminderFrequency() {
+  if (!store.preferences.expenseReminderNotifications) return
+  reminderSettings.value = await enableMoneyReminders(reminderFrequency.value)
+}
+function toggleWidget(id: DashboardWidgetId, visible: boolean) {
   const layout = { widgets: store.dashboardLayout.widgets.map((item) => ({ ...item })) }
   const widget = layout.widgets.find((item) => item.id === id)
-  if (widget) widget.visible = (event.target as HTMLInputElement).checked
+  if (widget) widget.visible = visible
   void store.saveDashboard(layout).catch((cause) => store.reportError(cause, 'Não foi possível salvar a tela inicial.'))
 }
-
-async function saveReminders() {
-  reminderBusy.value = true
-  try {
-    reminderSettings.value = await enableMoneyReminders(reminderFrequency.value)
-    store.showFeedback('Lembretes do Pingo atualizados.', 'success')
-  } catch (cause) { store.reportError(cause, 'Não foi possível ativar os lembretes.') }
-  finally { reminderBusy.value = false }
+async function resetHome() {
+  try { await store.resetDashboard() }
+  catch (cause) { store.reportError(cause, 'Não foi possível restaurar a tela inicial.') }
 }
-
-async function disableReminders() {
-  reminderBusy.value = true
-  try { reminderSettings.value = await disableMoneyReminders() }
-  finally { reminderBusy.value = false }
+function backupData() {
+  return {
+    transactions: [...store.transactions], categories: [...store.categories], debitCards: [...store.debitCards],
+    vaults: [...store.vaults], vaultMovements: [...store.vaultMovements], automaticReserveRules: [...store.automaticReserveRules],
+    monthlyReserveRules: [...store.monthlyReserveRules], digitalWalletItems: [...store.digitalWalletItems],
+    dashboardLayout: { widgets: store.dashboardLayout.widgets.map((item) => ({ ...item })) }, recurringRules: [...store.recurringRules],
+    accountSettings: { ...store.accountSettings }, preferences: { ...store.preferences },
+  }
 }
-
-async function testReminder() {
-  try { await sendReminderTest() }
-  catch (cause) { store.reportError(cause, 'Não foi possível testar a notificação.') }
-}
-
 async function downloadBackup() {
   exporting.value = true
-  try {
-    await exportBackup({
-      transactions: [...store.transactions], categories: [...store.categories],
-      debitCards: [...store.debitCards], vaults: [...store.vaults],
-      vaultMovements: [...store.vaultMovements], automaticReserveRules: [...store.automaticReserveRules],
-      monthlyReserveRules: [...store.monthlyReserveRules], digitalWalletItems: [...store.digitalWalletItems],
-      dashboardLayout: { widgets: store.dashboardLayout.widgets.map((item) => ({ ...item })) },
-      recurringRules: [...store.recurringRules], accountSettings: { ...store.accountSettings },
-      preferences: { ...store.preferences },
-    })
-    store.showFeedback('Backup gerado. Guarde o arquivo em um local seguro.', 'success')
-  } catch (cause) { store.reportError(cause, 'Não foi possível gerar o backup.') }
+  try { await exportBackup(backupData()); store.showFeedback('Backup local gerado.', 'success') }
+  catch (cause) { store.reportError(cause, 'Não foi possível gerar o backup.') }
   finally { exporting.value = false }
 }
-
+async function downloadCsv() {
+  exportingCsv.value = true
+  try { await exportTransactionsCsv(store.transactions, store.categories, store.debitCards); store.showFeedback('CSV exportado.', 'success') }
+  catch (cause) { store.reportError(cause, 'Não foi possível exportar o CSV.') }
+  finally { exportingCsv.value = false }
+}
 async function factoryReset() {
   resetting.value = true
   try { await store.factoryReset() }
-  catch (cause) {
-    resetting.value = false
-    store.reportError(cause, 'Não foi possível apagar os dados.')
-  }
+  catch (cause) { resetting.value = false; store.reportError(cause, 'Não foi possível apagar os dados.') }
 }
 </script>
 
 <template>
-  <div :class="props.embedded ? 'mx-auto min-h-dvh max-w-[1440px] px-5 pb-8 pt-[calc(1.25rem+env(safe-area-inset-top))] sm:px-7 lg:px-10 lg:py-9' : 'fixed inset-0 z-[80] flex items-end bg-slate-950/50 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-4'" @click.self="!props.embedded && emit('close')">
-    <section :class="props.embedded ? 'w-full' : 'max-h-[94dvh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-2xl sm:rounded-[2rem] sm:p-6'" :role="props.embedded ? undefined : 'dialog'" :aria-modal="props.embedded ? undefined : true" aria-labelledby="app-settings-title">
-      <div class="flex items-start justify-between gap-3"><div class="flex items-start gap-3"><div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-brand-soft text-brand"><Database :size="21" /></div><div><p class="text-sm font-bold text-brand">Tudo em um só lugar</p><h2 id="app-settings-title" class="text-2xl font-extrabold">Ajustes</h2><p class="mt-1 text-xs text-subtle">Perfil, aparência, notificações, atalhos e dados.</p></div></div><button v-if="!props.embedded" class="grid size-10 shrink-0 place-items-center rounded-xl bg-muted" aria-label="Fechar configurações" @click="emit('close')"><X :size="19" /></button></div>
+  <div :class="props.embedded ? 'mx-auto min-h-dvh max-w-[1440px] px-5 pb-8 pt-[calc(1.25rem+env(safe-area-inset-top))] sm:px-7 lg:px-10 lg:py-9' : 'fixed inset-0 z-[80] overflow-y-auto bg-canvas px-5 py-6'" @click.self="!props.embedded && emit('close')">
+    <main :class="props.embedded ? '' : 'mx-auto max-w-4xl'">
+      <header class="flex items-start justify-between gap-4">
+        <div><p class="text-sm font-semibold text-brand">Pingo do seu jeito</p><h1 class="mt-1 text-[clamp(2rem,7vw,2.75rem)] font-extrabold tracking-[-0.045em]">Ajustes</h1><p class="mt-1 text-sm text-subtle">Perfil, aparência, notificações, atalhos e segurança.</p></div>
+        <button v-if="!props.embedded" class="grid size-11 place-items-center rounded-full bg-muted" aria-label="Fechar ajustes" @click="emit('close')"><X :size="19" /></button>
+      </header>
 
-      <div class="mt-5 grid gap-4">
-        <section class="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-          <div class="flex items-start gap-3"><Move3d :size="20" class="mt-0.5 shrink-0 text-violet-600" /><div><h3 class="font-black">Atalhos do aparelho</h3><p class="mt-1 text-xs text-slate-500">Funcionam enquanto o Pingo está aberto. O microfone só é acionado quando você toca no botão de voz.</p></div></div>
-          <label class="mt-4 flex items-center justify-between gap-4 rounded-xl bg-slate-50 p-3 dark:bg-slate-950"><span class="flex min-w-0 items-center gap-3"><Mic :size="18" class="shrink-0" /><span><strong class="block text-sm">Atalhos de voz</strong><span class="block text-xs text-slate-500">“Novo gasto”, “Carteira”, “Porquinhos” ou “Resumo”.</span></span></span><input type="checkbox" class="size-5 accent-violet-600" :checked="store.preferences.voiceShortcutsEnabled" @change="updatePreference($event, 'voiceShortcutsEnabled')" /></label>
-          <label class="mt-2 flex items-center justify-between gap-4 rounded-xl bg-slate-50 p-3 dark:bg-slate-950"><span><strong class="block text-sm">Agitar para novo gasto</strong><span class="block text-xs text-slate-500">Abre o gasto rápido no Resumo; possui proteção contra disparos repetidos.</span></span><input type="checkbox" class="size-5 accent-violet-600" :checked="store.preferences.shakeToExpenseEnabled" :disabled="sensorBusy" @change="toggleShake" /></label>
-          <label class="mt-2 grid gap-1 text-xs font-bold">Sensibilidade do gesto<select :value="store.preferences.shakeSensitivity" class="h-11 rounded-xl border border-slate-200 bg-transparent px-3 text-sm dark:border-slate-700" @change="updateSensitivity"><option value="low">Baixa · exige movimento forte</option><option value="medium">Média · equilibrada</option><option value="high">Alta · movimento mais leve</option></select></label>
-        </section>
+      <div class="mt-7 grid items-start gap-7 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div class="grid gap-7">
+          <SettingsGroup title="Orçamento">
+            <SettingsRow label="Limite mensal" :description="budgetError || 'Usado no progresso do saldo principal.'">
+              <template #control><div class="flex items-center gap-2" @click.stop><span class="text-sm text-subtle">R$</span><input v-model="budgetDraft" inputmode="decimal" class="h-10 w-24 rounded-xl border border-line bg-canvas px-3 text-right text-sm font-semibold" placeholder="0,00" aria-label="Limite mensal" @blur="saveBudget" @keyup.enter="($event.target as HTMLInputElement).blur()" /></div></template>
+            </SettingsRow>
+          </SettingsGroup>
 
-        <section class="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-          <div class="flex items-start gap-3"><Gauge :size="20" class="mt-0.5 shrink-0 text-emerald-600" /><div><h3 class="font-black">Radar de gastos diários</h3><p class="mt-1 text-xs text-slate-500">Compara os gastos de hoje com o valor que pode ser usado sem tocar nos Porquinhos.</p></div></div>
-          <label class="mt-4 flex items-center justify-between gap-4"><span class="text-sm font-bold">Avisar durante o dia</span><input type="checkbox" class="size-5 accent-emerald-600" :checked="store.preferences.dailySpendingAlertsEnabled" @change="updatePreference($event, 'dailySpendingAlertsEnabled')" /></label>
-          <label class="mt-4 grid gap-2 text-xs font-bold"><span class="flex justify-between"><span>Limite do alerta</span><strong class="text-emerald-600">{{ store.preferences.spendingAlertPercent }}%</strong></span><input type="range" min="50" max="100" step="5" :value="store.preferences.spendingAlertPercent" class="accent-emerald-600" @input="updateAlertPercent" /></label>
-        </section>
+          <SettingsGroup title="Aparência">
+            <SettingsRow label="Tema" description="A opção Sistema acompanha o aparelho.">
+              <template #control><div class="flex rounded-xl bg-muted p-1" @click.stop><button v-for="option in ([['light','Claro'],['dark','Escuro'],['system','Sistema']] as const)" :key="option[0]" class="min-h-9 rounded-lg px-2 text-[11px] font-bold" :class="store.preferences.themeMode === option[0] ? 'bg-surface text-brand shadow-sm' : 'text-subtle'" @click="setTheme(option[0])">{{ option[1] }}</button></div></template>
+            </SettingsRow>
+            <SettingsRow label="Privacidade do saldo" description="Oculta valores sem alterar o espaço do layout."><template #control><AppSwitch :model-value="store.balanceHidden" label="Ocultar valores financeiros" @update:model-value="store.toggleBalanceVisibility" /></template></SettingsRow>
+          </SettingsGroup>
 
-        <section class="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-          <div class="flex items-start gap-3"><Eye :size="20" class="mt-0.5 shrink-0 text-sky-600" /><div><h3 class="font-black">Tela inicial</h3><p class="mt-1 text-xs text-slate-500">Escolha o que aparece. Ordem e tamanho continuam ajustáveis diretamente no botão Personalizar do Resumo.</p></div></div>
-          <div class="mt-3 grid gap-2 sm:grid-cols-2"><label v-for="widget in store.dashboardLayout.widgets" :key="widget.id" class="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 text-xs font-bold dark:bg-slate-950"><span class="truncate">{{ DASHBOARD_WIDGETS[widget.id].label }}</span><input type="checkbox" class="size-4 shrink-0 accent-sky-600" :checked="widget.visible" @change="toggleWidget(widget.id, $event)" /></label></div>
-          <label class="mt-3 flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-3 dark:border-slate-800"><span><strong class="block text-sm">Saudação pelo horário</strong><span class="block text-xs text-slate-500">Bom dia, boa tarde ou boa noite conforme a hora local.</span></span><input type="checkbox" class="size-5 accent-sky-600" :checked="store.preferences.greetingEnabled" @change="updatePreference($event, 'greetingEnabled')" /></label>
-        </section>
+          <SettingsGroup title="Registro">
+            <SettingsRow label="Categorias de gasto" :value="`${expenseCategories} ativas`" />
+            <SettingsRow label="Categorias de receita" :value="`${incomeCategories} ativas`" />
+            <SettingsRow label="Carteiras" :value="`${walletCount} ativas`" />
+            <SettingsRow label="Moeda padrão" value="BRL • R$" />
+          </SettingsGroup>
 
-        <section class="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-          <div class="flex items-start gap-3"><BatteryCharging :size="20" class="mt-0.5 shrink-0 text-amber-600" /><div><h3 class="font-black">Economia e avisos</h3><p class="mt-1 text-xs text-slate-500">O modo econômico reduz animações, transparências e efeitos visuais.</p></div></div>
-          <label class="mt-4 flex items-center justify-between gap-4"><span class="text-sm font-bold">Modo econômico</span><input type="checkbox" class="size-5 accent-amber-600" :checked="store.preferences.economyMode" @change="updatePreference($event, 'economyMode')" /></label>
-          <label class="mt-3 grid gap-1 text-xs font-bold">Tempo das mensagens<select :value="store.preferences.feedbackDurationMs" class="h-11 rounded-xl border border-slate-200 bg-transparent px-3 text-sm dark:border-slate-700" @change="updateFeedbackDuration"><option :value="3000">3 segundos</option><option :value="4000">4 segundos</option><option :value="5000">5 segundos</option></select></label>
-        </section>
+          <SettingsGroup title="Notificações">
+            <SettingsRow label="Contas próximas do vencimento"><template #control><AppSwitch :model-value="store.preferences.billsDueNotifications" label="Avisar contas próximas do vencimento" @update:model-value="updateBoolean('billsDueNotifications', $event)" /></template></SettingsRow>
+            <SettingsRow label="Resumo da semana"><template #control><AppSwitch :model-value="store.preferences.weeklySummaryNotifications" label="Receber resumo da semana" @update:model-value="updateBoolean('weeklySummaryNotifications', $event)" /></template></SettingsRow>
+            <SettingsRow label="Lembrete para registrar gastos" :description="reminderSettings.enabled ? 'Ativo neste dispositivo.' : 'Desativado.'"><template #control><AppSwitch :model-value="store.preferences.expenseReminderNotifications" label="Lembrete para registrar gastos" :disabled="reminderBusy" @update:model-value="toggleExpenseReminder" /></template></SettingsRow>
+            <SettingsRow label="Frequência do lembrete"><template #control><select v-model="reminderFrequency" class="h-10 rounded-xl border border-line bg-canvas px-2 text-sm" @click.stop @change="updateReminderFrequency"><option :value="1">Diário</option><option :value="3">A cada 3 dias</option><option :value="7">Semanal</option></select></template></SettingsRow>
+            <SettingsRow label="Testar notificação" clickable @activate="sendReminderTest"><template #icon><Bell :size="18" class="text-brand" /></template></SettingsRow>
+          </SettingsGroup>
 
-        <section class="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-          <div class="flex items-start gap-3"><Bell :size="20" class="mt-0.5 shrink-0 text-emerald-600" /><div><h3 class="font-black">Lembretes do Pingo</h3><p class="mt-1 text-xs text-slate-500">{{ reminderSettings.enabled ? 'Ativos neste dispositivo.' : 'Desativados.' }} Na Web, o navegador precisa estar aberto.</p></div></div>
-          <div class="mt-3 grid grid-cols-3 gap-2"><button v-for="option in ([{ days: 1, label: 'Diário' }, { days: 3, label: '3 dias' }, { days: 7, label: 'Semanal' }] as const)" :key="option.days" type="button" class="rounded-xl border px-2 py-2 text-xs font-black" :class="reminderFrequency === option.days ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950' : 'border-slate-200 dark:border-slate-700'" @click="reminderFrequency = option.days">{{ option.label }}</button></div>
-          <div class="mt-3 grid grid-cols-3 gap-2"><button :disabled="reminderBusy" class="rounded-xl bg-emerald-400 px-2 py-2.5 text-xs font-black text-slate-950 disabled:opacity-40" @click="saveReminders">{{ reminderSettings.enabled ? 'Atualizar' : 'Ativar' }}</button><button class="rounded-xl border border-slate-200 px-2 py-2.5 text-xs font-black dark:border-slate-700" @click="testReminder">Testar</button><button :disabled="!reminderSettings.enabled || reminderBusy" class="rounded-xl border border-slate-200 px-2 py-2.5 text-xs font-black disabled:opacity-40 dark:border-slate-700" @click="disableReminders">Desativar</button></div>
-        </section>
+          <SettingsGroup title="Central do Pingo">
+            <SettingsRow label="Atalhos de voz" description="Ativados apenas quando você toca no microfone."><template #icon><Mic :size="18" class="text-brand" /></template><template #control><AppSwitch :model-value="store.preferences.voiceShortcutsEnabled" label="Atalhos de voz" @update:model-value="updateBoolean('voiceShortcutsEnabled', $event)" /></template></SettingsRow>
+            <SettingsRow label="Agitar para novo gasto" description="Disponível na tela Início."><template #icon><Move3d :size="18" class="text-brand" /></template><template #control><AppSwitch :model-value="store.preferences.shakeToExpenseEnabled" label="Agitar para novo gasto" :disabled="sensorBusy" @update:model-value="toggleShake" /></template></SettingsRow>
+            <SettingsRow label="Sensibilidade"><template #control><select :value="store.preferences.shakeSensitivity" class="h-10 rounded-xl border border-line bg-canvas px-2 text-sm" @click.stop @change="store.updatePreferences({ shakeSensitivity: ($event.target as HTMLSelectElement).value as ShakeSensitivity })"><option value="low">Baixa</option><option value="medium">Média</option><option value="high">Alta</option></select></template></SettingsRow>
+            <SettingsRow label="Saudação pelo horário"><template #control><AppSwitch :model-value="store.preferences.greetingEnabled" label="Saudação pelo horário" @update:model-value="updateBoolean('greetingEnabled', $event)" /></template></SettingsRow>
+            <SettingsRow label="Radar de gastos diários"><template #icon><Gauge :size="18" class="text-brand" /></template><template #control><AppSwitch :model-value="store.preferences.dailySpendingAlertsEnabled" label="Radar de gastos diários" @update:model-value="updateBoolean('dailySpendingAlertsEnabled', $event)" /></template></SettingsRow>
+            <SettingsRow label="Modo de economia"><template #icon><BatteryCharging :size="18" class="text-brand" /></template><template #control><AppSwitch :model-value="store.preferences.economyMode" label="Modo de economia" @update:model-value="updateBoolean('economyMode', $event)" /></template></SettingsRow>
+            <SettingsRow label="Duração dos avisos"><template #control><select :value="store.preferences.feedbackDurationMs" class="h-10 rounded-xl border border-line bg-canvas px-2 text-sm" @click.stop @change="store.updatePreferences({ feedbackDurationMs: Number(($event.target as HTMLSelectElement).value) as FeedbackDurationMs })"><option :value="3000">3 s</option><option :value="4000">4 s</option><option :value="5000">5 s</option></select></template></SettingsRow>
+          </SettingsGroup>
+
+          <SettingsGroup title="Tela inicial">
+            <SettingsRow v-for="widget in store.dashboardLayout.widgets" :key="widget.id" :label="DASHBOARD_WIDGETS[widget.id].label" :description="DASHBOARD_WIDGETS[widget.id].description"><template #control><AppSwitch :model-value="widget.visible" :label="`Mostrar ${DASHBOARD_WIDGETS[widget.id].label}`" @update:model-value="toggleWidget(widget.id, $event)" /></template></SettingsRow>
+            <SettingsRow label="Restaurar layout original" clickable @activate="resetHome"><template #icon><RefreshCw :size="18" class="text-brand" /></template></SettingsRow>
+          </SettingsGroup>
+
+          <SettingsGroup title="Dados e segurança">
+            <SettingsRow label="Backup local" :value="exporting ? 'Preparando…' : ''" clickable @activate="downloadBackup"><template #icon><Download :size="18" class="text-brand" /></template></SettingsRow>
+            <SettingsRow label="Exportar CSV" :value="exportingCsv ? 'Preparando…' : ''" clickable @activate="downloadCsv"><template #icon><FileDown :size="18" class="text-brand" /></template></SettingsRow>
+            <SettingsRow label="Restaurar backup" value="Em preparação" disabled><template #icon><Upload :size="18" class="text-subtle" /></template></SettingsRow>
+            <SettingsRow label="Bloqueio do aplicativo" :value="isTauriRuntime() ? 'Em preparação' : 'Não disponível na Web'" disabled><template #icon><LockKeyhole :size="18" class="text-subtle" /></template></SettingsRow>
+            <SettingsRow label="Reset total" description="Apaga permanentemente dados, preferências e automações deste dispositivo." danger clickable @activate="confirmingReset = true"><template #icon><RotateCcw :size="18" /></template></SettingsRow>
+          </SettingsGroup>
+        </div>
+
+        <aside class="grid gap-5 xl:sticky xl:top-8">
+          <ProfileCard :name="displayName" @edit="profileDraft = store.preferences.displayName; editingProfile = true" />
+          <article class="pingo-card p-5"><div class="flex items-center gap-3"><span class="grid size-11 place-items-center rounded-2xl bg-brand-soft text-brand"><HardDrive :size="20" /></span><div><h2 class="font-extrabold">{{ isTauriRuntime() ? 'SQLite local' : 'Dados neste navegador' }}</h2><p class="text-xs text-subtle">Seus dados permanecem no aparelho.</p></div></div><div class="mt-5 grid gap-3 text-sm"><p class="flex items-center gap-2"><ShieldCheck :size="17" class="text-brand" /> Importações processadas localmente</p><p class="flex items-center gap-2"><Database :size="17" class="text-brand" /> Sem conexão bancária automática</p><p class="flex items-center gap-2"><Smartphone :size="17" class="text-brand" /> Pingo 0.10.0</p></div></article>
+          <article class="rounded-pingo-lg bg-hero p-5 text-white"><Eye :size="20" class="text-violet-300" /><h2 class="mt-4 font-extrabold">Privacidade primeiro</h2><p class="mt-1 text-sm leading-relaxed text-white/55">Backup e extratos contêm informações financeiras. Guarde os arquivos em um local protegido.</p></article>
+        </aside>
       </div>
-
-      <div class="mt-5 grid gap-3 sm:grid-cols-3"><article class="flex items-start gap-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800"><HardDrive :size="20" class="mt-0.5 shrink-0 text-emerald-600" /><div><p class="text-sm font-black">{{ isTauriRuntime() ? 'SQLite local' : 'Neste navegador' }}</p><p class="mt-1 text-xs leading-relaxed text-slate-500">Seus dados permanecem neste dispositivo.</p></div></article><article class="flex items-start gap-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800"><ShieldCheck :size="20" class="mt-0.5 shrink-0 text-violet-600" /><div><p class="text-sm font-black">Sem conexão bancária</p><p class="mt-1 text-xs leading-relaxed text-slate-500">Importações são lidas localmente.</p></div></article><article class="flex items-start gap-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800"><Smartphone :size="20" class="mt-0.5 shrink-0 text-amber-600" /><div><p class="text-sm font-black">Pingo 0.10.0</p><p class="mt-1 text-xs leading-relaxed text-slate-500">Mobile, nativo e personalizável.</p></div></article></div>
-
-      <section class="mt-5 rounded-2xl bg-slate-950 p-5 text-white dark:bg-slate-800"><div class="flex items-start gap-3"><Download :size="21" class="mt-0.5 shrink-0 text-emerald-300" /><div><h3 class="font-black">Faça uma cópia dos seus dados</h3><p class="mt-1 text-xs leading-relaxed text-slate-300">O arquivo contém valores e descrições financeiras. Proteja-o como um extrato.</p></div></div><button :disabled="exporting" class="mt-4 w-full rounded-xl bg-emerald-300 px-4 py-3 text-sm font-black text-emerald-950 disabled:opacity-50" @click="downloadBackup">{{ exporting ? 'Preparando…' : 'Exportar backup em JSON' }}</button></section>
-
-      <section class="mt-4 flex items-start justify-between gap-4 rounded-2xl border border-rose-200 bg-rose-50/60 p-4 dark:border-rose-900 dark:bg-rose-950/20"><div class="flex gap-3"><RotateCcw :size="20" class="mt-0.5 shrink-0 text-rose-600" /><div><h3 class="text-sm font-black">Reset total</h3><p class="mt-1 text-xs leading-relaxed text-slate-500">Apaga transações, cartões, documentos, Porquinhos, automações, preferências e configurações. Não pode ser desfeito.</p></div></div><button class="shrink-0 rounded-xl bg-rose-600 px-3 py-2 text-xs font-black text-white" @click="confirmingReset = true">Apagar tudo</button></section>
-    </section>
+    </main>
   </div>
+
+  <Teleport to="body">
+    <div v-if="editingProfile" class="fixed inset-0 z-[110] grid place-items-end bg-black/50 sm:place-items-center sm:p-4" @click.self="editingProfile = false">
+      <form class="w-full rounded-t-[2rem] bg-surface p-5 shadow-float sm:max-w-md sm:rounded-[2rem]" @submit.prevent="saveProfile"><div class="flex items-center justify-between"><div><p class="text-sm font-semibold text-brand">Perfil</p><h2 class="text-2xl font-extrabold">Como chamar você?</h2></div><button type="button" class="grid size-11 place-items-center rounded-full bg-muted" aria-label="Fechar" @click="editingProfile = false"><X :size="18" /></button></div><label class="mt-6 grid gap-2 text-sm font-semibold">Nome<input v-model="profileDraft" maxlength="60" autocomplete="name" class="h-12 rounded-xl border border-line bg-canvas px-4" placeholder="Seu nome" /></label><button class="mt-5 min-h-12 w-full rounded-2xl bg-brand font-bold text-white">Salvar perfil</button></form>
+    </div>
+  </Teleport>
   <FactoryResetDialog v-if="confirmingReset" :busy="resetting" @cancel="confirmingReset = false" @confirm="factoryReset" />
 </template>
