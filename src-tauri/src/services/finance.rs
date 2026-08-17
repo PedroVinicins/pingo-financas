@@ -202,6 +202,7 @@ mod tests {
             kind,
             amount,
             date: NaiveDate::from_ymd_opt(2026, 8, day).unwrap(),
+            occurred_at: None,
             category_id,
             debit_card_id: None,
             description: "Teste".into(),

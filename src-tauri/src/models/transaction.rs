@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -60,6 +60,8 @@ pub struct Transaction {
     #[serde(with = "rust_decimal::serde::str")]
     pub amount: Decimal,
     pub date: NaiveDate,
+    #[serde(default)]
+    pub occurred_at: Option<NaiveDateTime>,
     pub category_id: Option<Uuid>,
     pub debit_card_id: Option<Uuid>,
     pub description: String,
@@ -74,6 +76,8 @@ pub struct NewTransaction {
     #[serde(with = "rust_decimal::serde::str")]
     pub amount: Decimal,
     pub date: NaiveDate,
+    #[serde(default)]
+    pub occurred_at: Option<NaiveDateTime>,
     pub category_id: Option<Uuid>,
     pub debit_card_id: Option<Uuid>,
     pub description: String,
@@ -92,6 +96,8 @@ pub enum TransactionError {
     CategoryRequired,
     #[error("um cartão de débito só pode ser associado a uma despesa")]
     DebitCardOnlyForExpense,
+    #[error("a data e a hora precisam pertencer ao mesmo dia")]
+    OccurrenceDateMismatch,
 }
 
 impl Transaction {
@@ -103,6 +109,7 @@ impl Transaction {
             kind: input.kind,
             amount: input.amount,
             date: input.date,
+            occurred_at: input.occurred_at,
             category_id: input.category_id,
             debit_card_id: input.debit_card_id,
             description: input.description.trim().to_owned(),
@@ -130,6 +137,12 @@ pub fn validate_new_transaction(input: &NewTransaction) -> Result<(), Transactio
     if input.kind == TransactionType::Income && input.debit_card_id.is_some() {
         return Err(TransactionError::DebitCardOnlyForExpense);
     }
+    if input
+        .occurred_at
+        .is_some_and(|value| value.date() != input.date)
+    {
+        return Err(TransactionError::OccurrenceDateMismatch);
+    }
 
     Ok(())
 }
@@ -144,6 +157,7 @@ mod tests {
             kind: TransactionType::Expense,
             amount: dec!(10.50),
             date: NaiveDate::from_ymd_opt(2026, 8, 9).unwrap(),
+            occurred_at: None,
             category_id: Some(Uuid::new_v4()),
             debit_card_id: None,
             description: "Mercado".into(),
@@ -176,6 +190,18 @@ mod tests {
         assert_eq!(
             Transaction::new(input).unwrap_err(),
             TransactionError::DebitCardOnlyForExpense
+        );
+    }
+
+    #[test]
+    fn occurrence_time_must_match_the_transaction_date() {
+        let mut input = base_input();
+        input.occurred_at = NaiveDate::from_ymd_opt(2026, 8, 10)
+            .unwrap()
+            .and_hms_opt(8, 30, 0);
+        assert_eq!(
+            Transaction::new(input).unwrap_err(),
+            TransactionError::OccurrenceDateMismatch
         );
     }
 }

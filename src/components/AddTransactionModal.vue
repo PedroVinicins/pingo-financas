@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { BellRing, CalendarClock, Plus, ReceiptText, Sparkles, Trash2, X } from 'lucide-vue-next'
+import { BellRing, CalendarClock, PiggyBank, Plus, ReceiptText, Sparkles, Trash2, X } from 'lucide-vue-next'
 import { useFinanceStore } from '../stores/financeStore'
 import { localizedDecimalToStorage, storageDecimalToLocalized } from '../services/localizedNumber'
 import LocalizedNumberInput from './LocalizedNumberInput.vue'
@@ -14,32 +14,43 @@ import type {
   TransactionType,
   RecurrenceType,
   Transaction,
+  Vault,
 } from '../types/finance'
 
-const props = defineProps<{ categories: Category[]; cards: DebitCard[]; transaction?: Transaction | null }>()
+const props = withDefaults(defineProps<{
+  categories: Category[]
+  cards: DebitCard[]
+  vaults?: Vault[]
+  transaction?: Transaction | null
+}>(), { vaults: () => [] })
 const store = useFinanceStore()
 const { overlayStyle, contentStyle, keepFocusedFieldVisible } = useKeyboardAwareModal()
 const emit = defineEmits<{
   close: []
   save: [input: NewTransactionInput]
   saveRecurring: [input: NewRecurringRuleInput]
+  sendToVault: [input: { vaultId: string; amount: string }]
   delete: [transaction: Transaction]
 }>()
 
 const defaultCardId = props.cards.find((card) => card.isDefault && !card.isFrozen)?.id ?? ''
 const defaultExpenseCategoryId = props.categories.find((category) => category.kind === 'expense')?.id ?? ''
 
+const now = new Date()
 const form = reactive({
-  flow: 'transaction' as 'transaction' | 'recurring',
+  flow: 'transaction' as 'transaction' | 'recurring' | 'vault',
   kind: (props.transaction?.kind ?? 'expense') as TransactionType,
   amount: props.transaction ? storageDecimalToLocalized(props.transaction.amount) : '',
   date: props.transaction?.date ?? localDateKey(new Date()),
+  time: props.transaction?.occurredAt?.slice(11, 16)
+    ?? `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`,
   categoryId: props.transaction?.categoryId ?? defaultExpenseCategoryId,
   debitCardId: props.transaction?.debitCardId ?? defaultCardId,
   description: props.transaction?.description ?? '',
   recurrence: (props.transaction?.recurrence ?? 'variable') as RecurrenceType,
   dayOfMonth: 0,
   reminderEnabled: true,
+  vaultId: props.vaults[0]?.id ?? '',
 })
 
 const showNewCategory = ref(false)
@@ -87,6 +98,11 @@ function submit() {
     return
   }
   if (Number(amount) <= 0) { formError.value = 'O valor precisa ser maior que zero.'; return }
+  if (!props.transaction && form.flow === 'vault') {
+    if (!form.vaultId) { formError.value = 'Crie ou escolha um Porquinho para receber o valor.'; return }
+    emit('sendToVault', { vaultId: form.vaultId, amount })
+    return
+  }
   if (!form.description.trim()) { formError.value = 'Dê um nome para esta movimentação.'; return }
   if (!form.categoryId) { formError.value = 'Escolha uma categoria.'; return }
 
@@ -111,6 +127,7 @@ function submit() {
     kind: form.kind,
     amount,
     date: form.date,
+    occurredAt: form.time ? `${form.date}T${form.time}:00` : null,
     categoryId: form.categoryId || null,
     debitCardId: form.kind === 'expense' ? form.debitCardId || null : null,
     description: form.description.trim(),
@@ -132,14 +149,14 @@ function submit() {
         </button>
       </div>
 
-      <div class="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1 dark:bg-slate-800">
+      <div v-if="form.flow !== 'vault'" class="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1 dark:bg-slate-800">
         <button type="button" class="rounded-xl px-3 py-2 text-sm font-bold" :class="form.kind === 'expense' ? 'bg-white shadow-sm dark:bg-slate-700' : ''" @click="form.kind = 'expense'">Despesa</button>
         <button type="button" class="rounded-xl px-3 py-2 text-sm font-bold" :class="form.kind === 'income' ? 'bg-white shadow-sm dark:bg-slate-700' : ''" @click="form.kind = 'income'">Entrada</button>
       </div>
 
       <section v-if="!transaction" class="mt-4">
         <p class="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">Como o Pingo deve cuidar disso?</p>
-        <div class="grid grid-cols-2 gap-2">
+        <div class="grid grid-cols-3 gap-2">
           <button type="button" class="rounded-2xl border p-3 text-left transition" :class="form.flow === 'transaction' ? 'border-emerald-400 bg-emerald-50 text-emerald-950 dark:bg-emerald-950/35 dark:text-emerald-100' : 'border-slate-200 dark:border-slate-700'" @click="form.flow = 'transaction'">
             <ReceiptText :size="19" />
             <strong class="mt-2 block text-sm">Só desta vez</strong>
@@ -150,6 +167,11 @@ function submit() {
             <CalendarClock :size="19" />
             <strong class="mt-2 block text-sm">Piloto mensal</strong>
             <span class="mt-0.5 block text-[11px] text-slate-500">O Pingo lembra todo mês</span>
+          </button>
+          <button type="button" class="rounded-2xl border p-3 text-left transition" :class="form.flow === 'vault' ? 'border-amber-400 bg-amber-50 text-amber-950 dark:bg-amber-950/35 dark:text-amber-100' : 'border-slate-200 dark:border-slate-700'" @click="form.flow = 'vault'">
+            <PiggyBank :size="19" />
+            <strong class="mt-2 block text-sm">Porquinho</strong>
+            <span class="mt-0.5 block text-[11px] text-slate-500">Protege uma parte do saldo</span>
           </button>
         </div>
       </section>
@@ -163,11 +185,15 @@ function submit() {
           Data
           <input v-model="form.date" type="date" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" />
         </label>
-        <label class="grid gap-1.5 text-sm font-semibold sm:col-span-2">
+        <label v-if="form.flow === 'transaction' || transaction" class="grid gap-1.5 text-sm font-semibold">
+          Hora
+          <input v-model="form.time" type="time" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" />
+        </label>
+        <label v-if="form.flow !== 'vault'" class="grid gap-1.5 text-sm font-semibold sm:col-span-2">
           Descrição
           <input v-model="form.description" maxlength="160" :placeholder="descriptionPlaceholder" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" />
         </label>
-        <div class="grid gap-1.5 text-sm font-semibold">
+        <div v-if="form.flow !== 'vault'" class="grid gap-1.5 text-sm font-semibold">
           <div class="flex items-center justify-between gap-2">
             <span>Categoria de {{ form.kind === 'income' ? 'entrada' : 'despesa' }}</span>
             <button type="button" class="inline-flex items-center gap-1 text-xs font-black text-emerald-600" @click="showNewCategory = !showNewCategory">
@@ -186,14 +212,14 @@ function submit() {
             <option value="fixed">Fixa</option>
           </select>
         </label>
-        <label v-else class="grid gap-1.5 text-sm font-semibold">
+        <label v-else-if="form.flow === 'recurring'" class="grid gap-1.5 text-sm font-semibold">
           Dia do mês
           <select v-model.number="form.dayOfMonth" class="rounded-xl border border-violet-200 bg-transparent px-3 py-2.5 dark:border-violet-800">
             <option :value="0" disabled>Escolha o vencimento</option>
             <option v-for="day in dayOptions" :key="day" :value="day">Dia {{ day }}</option>
           </select>
         </label>
-        <label v-if="form.kind === 'expense'" class="grid gap-1.5 text-sm font-semibold sm:col-span-2">
+        <label v-if="form.kind === 'expense' && form.flow !== 'vault'" class="grid gap-1.5 text-sm font-semibold sm:col-span-2">
           Meio de pagamento
           <select v-model="form.debitCardId" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700">
             <option value="">Saldo / PIX / dinheiro</option>
@@ -203,7 +229,15 @@ function submit() {
           </select>
           <span class="text-xs font-normal text-slate-500">O cartão apenas identifica a compra; o valor sai do mesmo saldo da conta.</span>
         </label>
-        <div v-if="showNewCategory" class="grid gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/30 sm:col-span-2">
+        <label v-if="!transaction && form.flow === 'vault'" class="grid gap-1.5 text-sm font-semibold sm:col-span-2">
+          Porquinho de destino
+          <select v-model="form.vaultId" class="rounded-xl border border-amber-200 bg-transparent px-3 py-2.5 dark:border-amber-800">
+            <option value="" disabled>{{ vaults.length ? 'Escolha o Porquinho' : 'Nenhum Porquinho criado' }}</option>
+            <option v-for="vault in vaults" :key="vault.id" :value="vault.id">{{ vault.emoji ?? '🐷' }} {{ vault.name }} · {{ vault.institution }}</option>
+          </select>
+          <span class="text-xs font-normal text-slate-500">O valor sai do saldo disponível e entra na reserva na mesma operação. Seu patrimônio total não muda.</span>
+        </label>
+        <div v-if="showNewCategory && form.flow !== 'vault'" class="grid gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/30 sm:col-span-2">
           <div>
             <p class="font-black">Nova categoria de {{ form.kind === 'income' ? 'entrada' : 'despesa' }}</p>
             <p class="text-xs font-normal text-slate-500">Ela ficará disponível nos próximos lançamentos.</p>
@@ -229,7 +263,7 @@ function submit() {
       <div class="mt-6 grid gap-2" :class="transaction ? 'grid-cols-[auto_1fr]' : ''">
         <button v-if="transaction" type="button" class="grid size-12 place-items-center rounded-2xl border border-rose-200 text-rose-600 dark:border-rose-900" :aria-label="`Excluir ${transaction.description}`" @click="emit('delete', transaction)"><Trash2 :size="18" /></button>
         <button class="w-full rounded-2xl bg-slate-950 px-4 py-3 font-bold text-white hover:bg-slate-800 dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400">
-          {{ transaction ? 'Salvar alterações' : form.flow === 'recurring' ? 'Ligar Piloto Mensal' : 'Salvar transação' }}
+          {{ transaction ? 'Salvar alterações' : form.flow === 'recurring' ? 'Ligar Piloto Mensal' : form.flow === 'vault' ? 'Enviar para o Porquinho' : 'Salvar transação' }}
         </button>
       </div>
     </form>

@@ -146,8 +146,17 @@ pub async fn import_transactions(
         if category_kind != input.kind {
             return Err("a categoria não corresponde ao tipo do lançamento".into());
         }
-        let mut record = Transaction::new(input).map_err(|error| error.to_string())?;
-        record.debit_card_id = None;
+        if let Some(card_id) = input.debit_card_id {
+            if repository
+                .get_debit_card(card_id)
+                .await
+                .map_err(|error| error.to_string())?
+                .is_none()
+            {
+                return Err("cartão sugerido não encontrado".into());
+            }
+        }
+        let record = Transaction::new(input).map_err(|error| error.to_string())?;
         records.push(record);
     }
     repository
@@ -704,6 +713,7 @@ pub async fn settle_recurring_rule(
         kind: rule.kind,
         amount: rule.amount,
         date: today,
+        occurred_at: None,
         category_id: Some(rule.category_id),
         debit_card_id: if rule.kind == TransactionType::Expense {
             rule.debit_card_id

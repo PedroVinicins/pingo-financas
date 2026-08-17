@@ -56,6 +56,13 @@ async function saveRecurring(input: NewRecurringRuleInput) {
   try { await store.createRecurringRule(input); showModal.value = false }
   catch (cause) { store.reportError(cause, 'Não foi possível ligar o Piloto Mensal.') }
 }
+async function sendToVault(input: { vaultId: string; amount: string }) {
+  try {
+    await store.moveVaultMoney({ id: input.vaultId, kind: 'deposit', amount: input.amount })
+    showModal.value = false
+    store.showFeedback('Valor protegido no Porquinho. O patrimônio total foi preservado.', 'success')
+  } catch (cause) { store.reportError(cause, 'Não foi possível enviar o valor ao Porquinho.') }
+}
 function edit(transaction: Transaction) { editingTransaction.value = transaction; showModal.value = true }
 async function confirmDelete() {
   if (!deletingTransaction.value) return
@@ -166,8 +173,8 @@ onBeforeUnmount(() => window.removeEventListener('pointermove', pointerMove))
     <section v-else class="grid min-h-72 place-items-center rounded-[2rem] border-2 border-dashed border-slate-300 p-8 text-center dark:border-slate-700"><div><LayoutGrid :size="38" class="mx-auto text-emerald-500" /><h2 class="mt-4 text-xl font-black">Seu painel está vazio</h2><p class="mt-1 text-sm text-slate-500">Ative a personalização para escolher o que deseja acompanhar.</p><button class="mt-4 rounded-2xl bg-emerald-400 px-5 py-3 font-black text-emerald-950" @click="customizing = true">Personalizar painel</button></div></section>
   </main>
 
-  <AddTransactionModal v-if="showModal" :categories="store.categories" :cards="store.debitCards" :transaction="editingTransaction" @close="showModal = false; editingTransaction = null" @save="save" @save-recurring="saveRecurring" @delete="deletingTransaction = $event" />
+  <AddTransactionModal v-if="showModal" :categories="store.categories" :cards="store.debitCards" :vaults="store.vaults" :transaction="editingTransaction" @close="showModal = false; editingTransaction = null" @save="save" @save-recurring="saveRecurring" @send-to-vault="sendToVault" @delete="deletingTransaction = $event" />
   <EditBalanceModal v-if="showBalanceEditor" :current-balance="centsToDecimal(store.availableBalanceCents)" @close="showBalanceEditor = false" @save="editBalance" />
   <ConfirmDialog v-if="deletingTransaction" title="Excluir transação?" :message="`“${deletingTransaction.description}” será removida e os saldos serão recalculados.`" confirm-label="Excluir transação" :busy="deleting" @cancel="deletingTransaction = null" @confirm="confirmDelete" />
-  <BankStatementImport v-if="showStatementImport" :categories="store.categories" :transactions="store.transactions" :busy="importingStatement" @close="showStatementImport = false" @import="importStatement" />
+  <BankStatementImport v-if="showStatementImport" :categories="store.categories" :cards="store.debitCards" :transactions="store.transactions" :busy="importingStatement" @close="showStatementImport = false" @import="importStatement" />
 </template>

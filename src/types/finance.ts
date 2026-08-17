@@ -20,6 +20,7 @@ export type DashboardWidgetId =
   | 'history'
 export type DashboardWidgetSize = 'small' | 'medium' | 'large'
 export type DigitalWalletItemKind = 'ticket' | 'document' | 'qr_code' | 'other'
+export type BankPaymentMethod = 'pix' | 'debit' | 'credit' | 'card' | 'unknown'
 
 export interface Category {
   id: string
@@ -183,6 +184,7 @@ export interface Transaction {
   kind: TransactionType
   amount: string
   date: string
+  occurredAt: string | null
   categoryId: string | null
   debitCardId: string | null
   description: string
@@ -194,6 +196,7 @@ export interface NewTransactionInput {
   kind: TransactionType
   amount: string
   date: string
+  occurredAt?: string | null
   categoryId: string | null
   debitCardId: string | null
   description: string
@@ -210,9 +213,12 @@ export interface ParsedBankStatementTransaction {
   kind: TransactionType
   amount: string
   date: string
+  occurredAt: string | null
   description: string
   balance: string | null
   externalId: string | null
+  paymentMethod: BankPaymentMethod
+  suggestedCardLink: boolean
 }
 
 export interface ParsedBankStatement {

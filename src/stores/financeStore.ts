@@ -70,6 +70,10 @@ function transactionEffect(transaction: Pick<Transaction, 'kind' | 'amount'>) {
   return transaction.kind === 'income' ? amount : -amount
 }
 
+function transactionMoment(transaction: Pick<Transaction, 'date' | 'occurredAt'>) {
+  return transaction.occurredAt ?? `${transaction.date}T23:59:59`
+}
+
 export const useFinanceStore = defineStore('finance', () => {
   const transactions = ref<Transaction[]>([])
   const categories = ref<Category[]>([])
@@ -182,7 +186,8 @@ export const useFinanceStore = defineStore('finance', () => {
   })
 
   const sortedTransactions = computed(() => [...transactions.value]
-    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)))
+    .sort((a, b) => transactionMoment(b).localeCompare(transactionMoment(a))
+      || b.createdAt.localeCompare(a.createdAt)))
   const filteredTransactions = computed(() => {
     const result = transactions.value.filter((transaction) => {
       const date = new Date(`${transaction.date}T12:00:00`)
@@ -201,7 +206,8 @@ export const useFinanceStore = defineStore('finance', () => {
       }
       return true
     })
-    return [...result].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+    return [...result].sort((a, b) => transactionMoment(b).localeCompare(transactionMoment(a))
+      || b.createdAt.localeCompare(a.createdAt))
   })
   const recentTransactions = computed(() => filteredTransactions.value.slice(0, 8))
   const recentExpenses = computed(() => sortedTransactions.value.filter((item) => item.kind === 'expense').slice(0, 5))
@@ -299,7 +305,8 @@ export const useFinanceStore = defineStore('finance', () => {
   function getTransactionsForCard(cardId: string) {
     return transactions.value
       .filter((transaction) => transaction.kind === 'expense' && transaction.debitCardId === cardId)
-      .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+      .sort((a, b) => transactionMoment(b).localeCompare(transactionMoment(a))
+        || b.createdAt.localeCompare(a.createdAt))
   }
   function getMovementsForVault(vaultId: string) {
     return vaultMovements.value.filter((movement) => movement.vaultId === vaultId)
