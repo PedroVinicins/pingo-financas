@@ -20,6 +20,20 @@ const vault: Vault = {
 }
 
 describe('AddTransactionModal', () => {
+  it('abre a ação rápida com tipo e fluxo solicitados', () => {
+    const wrapper = mount(AddTransactionModal, {
+      props: {
+        categories: [expenseCategory], cards: [], vaults: [vault],
+        initialKind: 'expense', initialFlow: 'vault',
+      },
+      global: { plugins: [createPinia()] },
+    })
+
+    expect(wrapper.text()).toContain('Porquinho')
+    expect(wrapper.find('select').exists()).toBe(true)
+    expect(wrapper.find('input[type="date"]').exists()).toBe(false)
+  })
+
   it('cria uma regra do Piloto Mensal sem lançar uma transação imediata', async () => {
     const wrapper = mount(AddTransactionModal, {
       props: { categories: [expenseCategory], cards: [] },

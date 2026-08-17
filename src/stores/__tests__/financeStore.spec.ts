@@ -136,6 +136,23 @@ describe('financeStore', () => {
     expect(store.savingsRate).toBe(80)
   })
 
+  it('mantém o período selecionado como fonte única do resumo', () => {
+    const store = useFinanceStore()
+    store.setTransactions([
+      transaction({ id: 'aug-income', kind: 'income', amount: '1000.00', date: '2026-08-05' }),
+      transaction({ id: 'aug-expense', amount: '125.50', date: '2026-08-06' }),
+      transaction({ id: 'jul-income', kind: 'income', amount: '700.00', date: '2026-07-05' }),
+      transaction({ id: 'jul-expense', amount: '80.00', date: '2026-07-06' }),
+    ])
+
+    store.setReportingPeriod(2026, 7)
+
+    expect(store.reportingTransactions.map((item) => item.id)).toEqual(['jul-expense', 'jul-income'])
+    expect(store.reportingIncomeCents).toBe(70000n)
+    expect(store.reportingExpenseCents).toBe(8000n)
+    expect(store.reportingBalanceCents).toBe(62000n)
+  })
+
   it('impede usar uma categoria de entrada em uma despesa', async () => {
     const store = useFinanceStore()
     store.setCategories([category({ id: 'salary', kind: 'income', name: 'Salário' })])
