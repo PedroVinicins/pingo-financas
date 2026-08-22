@@ -35,18 +35,21 @@ const emit = defineEmits<{
   delete: [transaction: Transaction]
 }>()
 
-const defaultCardId = props.cards.find((card) => card.isDefault && !card.isFrozen)?.id ?? ''
-const defaultExpenseCategoryId = props.categories.find((category) => category.kind === 'expense')?.id ?? ''
+const initialKind = (props.transaction?.kind ?? props.initialKind) as TransactionType
+const defaultCardId = initialKind === 'expense'
+  ? props.cards.find((card) => card.isDefault && !card.isFrozen)?.id ?? ''
+  : ''
+const defaultCategoryId = props.categories.find((category) => category.kind === initialKind)?.id ?? ''
 
 const now = new Date()
 const form = reactive({
   flow: props.initialFlow as 'transaction' | 'recurring' | 'vault',
-  kind: (props.transaction?.kind ?? props.initialKind) as TransactionType,
+  kind: initialKind,
   amount: props.transaction ? storageDecimalToLocalized(props.transaction.amount) : '',
   date: props.transaction?.date ?? localDateKey(new Date()),
   time: props.transaction?.occurredAt?.slice(11, 16)
     ?? `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`,
-  categoryId: props.transaction?.categoryId ?? defaultExpenseCategoryId,
+  categoryId: props.transaction?.categoryId ?? defaultCategoryId,
   debitCardId: props.transaction?.debitCardId ?? defaultCardId,
   description: props.transaction?.description ?? '',
   recurrence: (props.transaction?.recurrence ?? 'variable') as RecurrenceType,

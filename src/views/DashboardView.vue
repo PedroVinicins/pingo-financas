@@ -6,6 +6,7 @@ import {
   ShieldCheck, Sparkles, TrendingDown, WalletCards, X,
 } from 'lucide-vue-next'
 import { centsToDecimal, decimalToCents, useFinanceStore } from '../stores/financeStore'
+import { formatCurrencyCents, privateCurrencyCents } from '../services/currency'
 import type {
   BankStatementImportInput, DashboardWidgetId, DashboardWidgetSize, NewRecurringRuleInput,
   NewTransactionInput, Transaction, TransactionType,
@@ -38,8 +39,8 @@ const showAllHistory = ref(false)
 const deletingTransaction = ref<Transaction | null>(null)
 const deleting = ref(false)
 
-function money(value: bigint) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(centsToDecimal(value))) }
-function privateMoney(value: bigint) { return store.balanceHidden ? 'R$ •••••' : money(value) }
+function money(value: bigint) { return formatCurrencyCents(value, store.preferences.currency) }
+function privateMoney(value: bigint) { return privateCurrencyCents(value, store.preferences.currency, store.balanceHidden) }
 function widgetVisible(id: DashboardWidgetId) { return store.dashboardLayout.widgets.find((item) => item.id === id)?.visible !== false }
 function widgetClass(size: DashboardWidgetSize) {
   return size === 'small' ? 'col-span-1 xl:col-span-3' : size === 'medium' ? 'col-span-2 xl:col-span-6' : 'col-span-2 xl:col-span-12'
@@ -52,7 +53,7 @@ const monthLabel = computed(() => new Intl.DateTimeFormat('pt-BR', { month: 'sho
 const visibleOptionalWidgets = computed(() => store.dashboardLayout.widgets.filter((item) =>
   item.visible && !['available_balance', 'net_worth', 'history'].includes(item.id)))
 const hiddenWidgets = computed(() => store.dashboardLayout.widgets.filter((item) => !item.visible))
-const historyTransactions = computed(() => showAllHistory.value ? store.reportingTransactions : store.reportingTransactions.slice(0, 5))
+const historyTransactions = computed(() => showAllHistory.value ? store.sortedTransactions : store.sortedTransactions.slice(0, 5))
 const categoryRows = computed(() => {
   const totals = new Map<string, bigint>()
   for (const transaction of store.reportingTransactions) {
@@ -204,7 +205,7 @@ onBeforeUnmount(() => window.removeEventListener('pointermove', pointerMove))
 
     <section class="mt-7 grid gap-5 lg:grid-cols-12">
       <article v-if="widgetVisible('history')" class="pingo-card min-w-0 p-4 sm:p-6 lg:col-span-8">
-        <div class="mb-4 flex items-center justify-between gap-3"><div class="min-w-0"><p class="text-sm font-semibold text-subtle">{{ monthLabel }}</p><h2 class="truncate text-2xl font-extrabold tracking-tight">Últimas transações</h2></div><button class="min-h-11 shrink-0 px-2 text-sm font-bold text-brand" @click="showAllHistory = !showAllHistory">{{ showAllHistory ? 'Ver 5' : 'Ver todas' }}</button></div>
+        <div class="mb-4 flex items-center justify-between gap-3"><div class="min-w-0"><p class="text-sm font-semibold text-subtle">{{ store.sortedTransactions.length }} registro{{ store.sortedTransactions.length === 1 ? '' : 's' }} no histórico</p><h2 class="truncate text-2xl font-extrabold tracking-tight">{{ showAllHistory ? 'Histórico completo' : 'Últimos registros' }}</h2></div><button v-if="store.sortedTransactions.length > 5" class="min-h-11 shrink-0 cursor-pointer px-2 text-sm font-bold text-brand hover:underline" @click="showAllHistory = !showAllHistory">{{ showAllHistory ? 'Ver 5' : 'Ver todos' }}</button></div>
         <TransactionList :transactions="historyTransactions" :categories="store.categories" :cards="store.debitCards" editable @edit="edit" />
       </article>
 

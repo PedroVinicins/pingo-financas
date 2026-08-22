@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { BellRing, CalendarDays, CheckCircle2, CircleDollarSign, ReceiptText, Trash2 } from 'lucide-vue-next'
-import { centsToDecimal, decimalToCents, useFinanceStore } from '../stores/financeStore'
+import { decimalToCents, useFinanceStore } from '../stores/financeStore'
+import { formatCurrencyCents } from '../services/currency'
 import type { RecurringRule } from '../types/finance'
 import ConfirmDialog from './ConfirmDialog.vue'
 
@@ -12,7 +13,7 @@ const removingRule = ref<RecurringRule | null>(null)
 const removing = ref(false)
 
 function money(value: bigint) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(centsToDecimal(value)))
+  return formatCurrencyCents(value, store.preferences.currency)
 }
 function ruleMoney(rule: RecurringRule) { return money(decimalToCents(rule.amount)) }
 function categoryName(rule: RecurringRule) { return store.categories.find((item) => item.id === rule.categoryId)?.name ?? 'Sem categoria' }

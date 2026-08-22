@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Download, Mic, RefreshCw, Sparkles, WifiOff, X } from 'lucide-vue-next'
+import { Download, LockKeyhole, RefreshCw, Sparkles, WifiOff, X } from 'lucide-vue-next'
 import DashboardView from './views/DashboardView.vue'
 import ExpensesSavingsView from './views/ExpensesSavingsView.vue'
 import AccountsView from './views/AccountsView.vue'
 import AppSettings from './components/AppSettings.vue'
 import AppFeedback from './components/AppFeedback.vue'
+import AppLockGate from './components/AppLockGate.vue'
 import AddTransactionModal from './components/AddTransactionModal.vue'
 import QuickExpenseSheet from './components/QuickExpenseSheet.vue'
 import MobileBottomNav, { type PrimaryView } from './components/MobileBottomNav.vue'
@@ -13,10 +14,16 @@ import DesktopSidebar from './components/DesktopSidebar.vue'
 import { useFinanceStore } from './stores/financeStore'
 import { defaultCategories } from './data/defaultCategories'
 import { listenForQuickLaunch } from './services/quickLaunch'
-import { startShakeListener, startVoiceShortcut, type VoiceShortcut } from './services/deviceExperience'
-import { startWebReminderWatcher } from './services/notifications'
+import { startShakeListener } from './services/deviceExperience'
+import { maybeNotifyAccountAnalysis, startWebReminderWatcher } from './services/notifications'
+import { analyzeAccount } from './services/accountAnalysis'
+import { privateCurrencyCents } from './services/currency'
 import { applyWebUpdate, canInstallWebApp, hasWebUpdate, installWebApp, isOnline, setupWebApp } from './services/pwa'
 import type { NewRecurringRuleInput, NewTransactionInput, QuickLaunchAction, TransactionType } from './types/finance'
+import {
+  APP_LOCK_BACKGROUND_DELAY_MS, APP_LOCK_CHANGED_EVENT, authenticateAppLockBiometric,
+  biometricErrorMessage, getAppLockConfig, getBiometricAvailability, verifyAppLockPin, type AppLockConfig,
+} from './services/appLock'
 
 const store = useFinanceStore()
 const legacyView: Record<string, PrimaryView> = {
@@ -30,10 +37,19 @@ const showQuickExpense = ref(false)
 const showTransactionComposer = ref(false)
 const composerKind = ref<TransactionType>('expense')
 const composerFlow = ref<'transaction' | 'recurring' | 'vault'>('transaction')
-const voiceListening = ref(false)
 const quickCardId = ref<string | undefined>()
 const walletFocusCardId = ref<string | undefined>()
 const bootError = ref('')
+const securityError = ref('')
+const securityReady = ref(false)
+const appLocked = ref(false)
+const privacyCovered = ref(false)
+const unlockBusy = ref(false)
+const unlockError = ref('')
+const retryAfterSeconds = ref(0)
+const appLockConfig = ref<AppLockConfig>({ enabled: false, biometricEnabled: false })
+const biometricAvailable = ref(false)
+const biometricLabel = ref('Biometria')
 const systemDark = ref(window.matchMedia('(prefers-color-scheme: dark)').matches)
 let touchStart: { x: number; y: number; target: EventTarget | null } | null = null
 let removeDeepLinkListener: (() => void) | undefined
@@ -42,9 +58,11 @@ let stopWebApp: (() => void) | undefined
 let recurringWatcher: number | undefined
 let pingoMessageTimer: number | undefined
 let stopShakeListener: (() => void) | undefined
-let stopVoiceListener: (() => void) | undefined
-let voiceTimer: number | undefined
 let removeSystemThemeListener: (() => void) | undefined
+let backgroundedAt: number | null = null
+let retryTimer: number | undefined
+let analysisNotificationTimer: number | undefined
+let biometricPromptOpen = false
 
 const navigationOrder: PrimaryView[] = ['accounts', 'home', 'analytics', 'settings']
 const pageTitle = computed(() => ({ accounts: 'Contas', home: 'Início', analytics: 'Análises', settings: 'Ajustes' })[activeView.value])
@@ -87,24 +105,14 @@ function handleTouchEnd(event: TouchEvent) {
   if (nextIndex >= 0 && nextIndex < navigationOrder.length) navigate(navigationOrder[nextIndex])
 }
 function handleLaunch(action: QuickLaunchAction) {
-  if (action.type === 'expense') openQuickExpense(action.cardId)
+  if (action.type === 'expense') {
+    if (action.cardId) openQuickExpense(action.cardId)
+    else openComposer('expense', 'transaction')
+  }
+  if (action.type === 'income') openComposer('income', 'transaction')
   if (action.type === 'wallet') { accountsSection.value = 'wallet'; navigate('accounts'); walletFocusCardId.value = action.cardId }
   if (action.type === 'vaults') { accountsSection.value = 'vaults'; navigate('accounts') }
   if (action.type === 'dashboard') navigate('home')
-}
-function handleVoiceShortcut(shortcut: VoiceShortcut) {
-  voiceListening.value = false
-  if (!shortcut) { store.showFeedback('Não entendi. Tente “novo gasto”, “carteira”, “porquinhos” ou “resumo”.', 'info'); return }
-  handleLaunch({ type: shortcut })
-}
-function listenVoice() {
-  stopVoiceListener?.()
-  if (voiceTimer !== undefined) window.clearTimeout(voiceTimer)
-  try {
-    voiceListening.value = true
-    stopVoiceListener = startVoiceShortcut(handleVoiceShortcut)
-    voiceTimer = window.setTimeout(() => { stopVoiceListener?.(); stopVoiceListener = undefined; voiceListening.value = false }, 7_000)
-  } catch (cause) { voiceListening.value = false; store.reportError(cause, 'Não foi possível ouvir o atalho.') }
 }
 async function saveQuickExpense(input: NewTransactionInput) {
   try { await store.createTransaction(input); closeQuickExpense() }
@@ -128,8 +136,119 @@ async function initializeApp() {
     await store.initialize(defaultCategories)
     removeDeepLinkListener ??= await listenForQuickLaunch(handleLaunch)
     stopReminderWatcher ??= startWebReminderWatcher()
-    recurringWatcher ??= window.setInterval(() => void store.processScheduledAutomation().catch((cause) => store.reportError(cause, 'Não foi possível atualizar as automações mensais.')), 60 * 60 * 1000)
+    recurringWatcher ??= window.setInterval(() => {
+      void store.processScheduledAutomation()
+        .then(queueAnalysisNotification)
+        .catch((cause) => store.reportError(cause, 'Não foi possível atualizar as automações mensais.'))
+    }, 60 * 60 * 1000)
+    queueAnalysisNotification()
   } catch (cause) { bootError.value = cause instanceof Error ? cause.message : 'Não foi possível abrir seus dados.' }
+}
+
+function currentAccountAnalysis() {
+  const now = new Date()
+  return analyzeAccount({
+    transactions: store.transactions,
+    categories: store.categories,
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+    formatMoney: (value) => privateCurrencyCents(value, store.preferences.currency, store.balanceHidden),
+  })
+}
+function queueAnalysisNotification() {
+  if (analysisNotificationTimer !== undefined) window.clearTimeout(analysisNotificationTimer)
+  if (!store.initialized || !store.preferences.weeklySummaryNotifications) return
+  analysisNotificationTimer = window.setTimeout(() => {
+    analysisNotificationTimer = undefined
+    void maybeNotifyAccountAnalysis(
+      currentAccountAnalysis(), store.preferences.currency, store.balanceHidden,
+    ).catch(() => undefined)
+  }, 800)
+}
+
+function clearRetryTimer() {
+  if (retryTimer !== undefined) window.clearInterval(retryTimer)
+  retryTimer = undefined
+}
+function startRetryCountdown(seconds: number) {
+  clearRetryTimer()
+  retryAfterSeconds.value = seconds
+  if (seconds <= 0) return
+  retryTimer = window.setInterval(() => {
+    retryAfterSeconds.value = Math.max(0, retryAfterSeconds.value - 1)
+    if (retryAfterSeconds.value === 0) clearRetryTimer()
+  }, 1_000)
+}
+async function finishUnlock() {
+  appLocked.value = false
+  privacyCovered.value = false
+  unlockError.value = ''
+  startRetryCountdown(0)
+  if (!store.initialized && !store.isInitializing) await initializeApp()
+}
+async function unlockWithPin(pin: string) {
+  unlockBusy.value = true
+  unlockError.value = ''
+  try {
+    const result = await verifyAppLockPin(pin)
+    if (result.valid) await finishUnlock()
+    else {
+      startRetryCountdown(result.retryAfterSeconds)
+      unlockError.value = result.retryAfterSeconds ? '' : 'PIN incorreto. Tente novamente.'
+    }
+  } catch (cause) { unlockError.value = cause instanceof Error ? cause.message : String(cause) }
+  finally { unlockBusy.value = false }
+}
+async function unlockWithBiometric() {
+  if (!appLocked.value || !biometricAvailable.value || unlockBusy.value || biometricPromptOpen) return
+  biometricPromptOpen = true
+  unlockBusy.value = true
+  unlockError.value = ''
+  try { await authenticateAppLockBiometric(); await finishUnlock() }
+  catch (cause) { unlockError.value = `${biometricErrorMessage(cause, biometricLabel.value)} Use o PIN ou tente novamente.` }
+  finally { unlockBusy.value = false; biometricPromptOpen = false }
+}
+async function refreshBiometricAvailability() {
+  const availability = await getBiometricAvailability()
+  biometricAvailable.value = availability.available && appLockConfig.value.biometricEnabled
+  biometricLabel.value = availability.label
+}
+async function initializeSecurity() {
+  securityReady.value = false
+  securityError.value = ''
+  try {
+    appLockConfig.value = await getAppLockConfig()
+    appLocked.value = appLockConfig.value.enabled
+    if (appLockConfig.value.biometricEnabled) await refreshBiometricAvailability()
+  } catch (cause) {
+    securityError.value = cause instanceof Error ? cause.message : 'Não foi possível conferir a proteção local.'
+  } finally { securityReady.value = true }
+  if (securityError.value) return
+  if (appLocked.value && biometricAvailable.value) window.setTimeout(() => void unlockWithBiometric(), 250)
+  else if (!appLocked.value) await initializeApp()
+}
+function handleVisibilityChange() {
+  if (!appLockConfig.value.enabled) { privacyCovered.value = false; return }
+  if (document.visibilityState === 'hidden') {
+    backgroundedAt = Date.now()
+    privacyCovered.value = true
+    return
+  }
+  const elapsed = backgroundedAt === null ? 0 : Date.now() - backgroundedAt
+  backgroundedAt = null
+  if (elapsed >= APP_LOCK_BACKGROUND_DELAY_MS) {
+    appLocked.value = true
+    unlockError.value = ''
+    void refreshBiometricAvailability().then(() => {
+      if (biometricAvailable.value) window.setTimeout(() => void unlockWithBiometric(), 250)
+    })
+  }
+  privacyCovered.value = false
+}
+function handleAppLockChange(event: Event) {
+  appLockConfig.value = (event as CustomEvent<AppLockConfig>).detail
+  if (!appLockConfig.value.enabled) { appLocked.value = false; biometricAvailable.value = false }
+  else void refreshBiometricAvailability()
 }
 async function installApp() {
   if (await installWebApp()) store.showFeedback('Pingo instalado neste dispositivo.', 'success')
@@ -144,30 +263,46 @@ watch([() => store.pingoMessage, () => store.preferences.feedbackDurationMs], ([
   if (pingoMessageTimer !== undefined) window.clearTimeout(pingoMessageTimer)
   pingoMessageTimer = message ? window.setTimeout(() => store.dismissPingoMessage(), duration) : undefined
 })
-watch([() => store.preferences.shakeToExpenseEnabled, () => store.preferences.shakeSensitivity, activeView, showQuickExpense, showTransactionComposer], ([enabled, sensitivity, view, quickOpen, composerOpen]) => {
+watch([() => store.preferences.shakeToExpenseEnabled, () => store.preferences.shakeSensitivity, activeView, showQuickExpense, showTransactionComposer, appLocked, privacyCovered], ([enabled, sensitivity, view, quickOpen, composerOpen, locked, covered]) => {
   stopShakeListener?.(); stopShakeListener = undefined
-  if (enabled && view === 'home' && !quickOpen && !composerOpen) stopShakeListener = startShakeListener(() => openQuickExpense(), sensitivity)
+  if (enabled && view === 'home' && !quickOpen && !composerOpen && !locked && !covered) stopShakeListener = startShakeListener(() => openQuickExpense(), sensitivity)
 }, { immediate: true })
+watch([
+  () => store.transactions.map((item) => `${item.id}:${item.kind}:${item.amount}:${item.date}:${item.occurredAt ?? ''}:${item.categoryId ?? ''}`).join('|'),
+  () => store.categories.map((item) => `${item.id}:${item.name}:${item.kind}`).join('|'),
+  () => store.preferences.weeklySummaryNotifications,
+  () => store.preferences.currency,
+  () => store.balanceHidden,
+], queueAnalysisNotification)
 
 onMounted(async () => {
   const query = window.matchMedia('(prefers-color-scheme: dark)')
   const listener = (event: MediaQueryListEvent) => { systemDark.value = event.matches }
   query.addEventListener('change', listener)
   removeSystemThemeListener = () => query.removeEventListener('change', listener)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  window.addEventListener(APP_LOCK_CHANGED_EVENT, handleAppLockChange)
+  await initializeSecurity()
   stopWebApp = await setupWebApp()
-  await initializeApp()
 })
 onBeforeUnmount(() => {
   removeDeepLinkListener?.(); stopReminderWatcher?.(); stopWebApp?.(); removeSystemThemeListener?.()
   if (recurringWatcher) window.clearInterval(recurringWatcher)
   if (pingoMessageTimer !== undefined) window.clearTimeout(pingoMessageTimer)
-  if (voiceTimer !== undefined) window.clearTimeout(voiceTimer)
-  stopShakeListener?.(); stopVoiceListener?.()
+  if (analysisNotificationTimer !== undefined) window.clearTimeout(analysisNotificationTimer)
+  clearRetryTimer()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener(APP_LOCK_CHANGED_EVENT, handleAppLockChange)
+  stopShakeListener?.()
 })
 </script>
 
 <template>
-  <div class="min-h-dvh overflow-x-clip bg-canvas pb-28 text-ink lg:pb-0" :class="store.preferences.economyMode ? 'pingo-economy' : ''">
+  <main v-if="!securityReady" class="fixed inset-0 z-[200] grid min-h-dvh place-items-center bg-hero px-6 text-center text-white"><div><img src="/pingo-icon.svg" alt="" class="mx-auto size-16 rounded-3xl" /><RefreshCw class="mx-auto mt-6 animate-spin text-violet-300" :size="24" /><h1 class="mt-3 text-xl font-extrabold">Protegendo seu Pingo</h1></div></main>
+  <main v-else-if="securityError" class="fixed inset-0 z-[200] grid min-h-dvh place-items-center bg-hero px-6 text-center text-white"><div class="w-full max-w-sm"><LockKeyhole class="mx-auto text-rose-300" :size="32" /><h1 class="mt-4 text-2xl font-extrabold">Não foi possível conferir a proteção</h1><p class="mt-2 text-sm text-white/60">{{ securityError }}</p><button class="mt-6 min-h-12 cursor-pointer rounded-2xl bg-brand px-5 font-bold" @click="initializeSecurity"><RefreshCw :size="17" class="mr-1 inline" /> Tentar novamente</button></div></main>
+  <main v-else-if="privacyCovered" class="fixed inset-0 z-[200] grid min-h-dvh place-items-center bg-hero px-6 text-center text-white"><div><img src="/pingo-icon.svg" alt="" class="mx-auto size-16 rounded-3xl" /><LockKeyhole class="mx-auto mt-6 text-violet-300" :size="24" /><h1 class="mt-3 text-xl font-extrabold">Conteúdo protegido</h1></div></main>
+  <AppLockGate v-else-if="appLocked" :biometric-available="biometricAvailable" :biometric-label="biometricLabel" :busy="unlockBusy" :error="unlockError" :retry-after-seconds="retryAfterSeconds" @submit="unlockWithPin" @biometric="unlockWithBiometric" />
+  <div v-else class="min-h-dvh overflow-x-clip bg-canvas pb-28 text-ink lg:pb-0" :class="store.preferences.economyMode ? 'pingo-economy' : ''">
     <a href="#main-content" class="fixed left-3 top-3 z-[150] -translate-y-24 rounded-xl bg-ink px-4 py-2 text-sm font-bold text-surface transition focus:translate-y-0">Pular para o conteúdo</a>
     <div v-if="!isOnline" class="safe-top sticky top-0 z-[60] flex items-center justify-center gap-2 bg-amber-300 px-4 py-2 text-center text-xs font-bold text-amber-950" role="status"><WifiOff :size="15" /> Sem internet — seus dados locais continuam disponíveis.</div>
 
@@ -175,7 +310,6 @@ onBeforeUnmount(() => {
 
     <div v-if="store.initialized" class="fixed right-6 top-5 z-30 hidden items-center gap-2 lg:flex">
       <button v-if="canInstallWebApp" class="flex min-h-11 items-center gap-2 rounded-2xl border border-line bg-surface px-3 text-xs font-bold" @click="installApp"><Download :size="16" /> Instalar</button>
-      <button v-if="store.preferences.voiceShortcutsEnabled" class="grid size-11 place-items-center rounded-2xl border border-line bg-surface" :class="voiceListening ? 'text-brand ring-2 ring-brand' : 'text-subtle'" :aria-label="voiceListening ? 'Ouvindo atalho de voz' : 'Usar atalho de voz'" @click="listenVoice"><Mic :size="18" /></button>
     </div>
 
     <div v-if="hasWebUpdate" class="fixed inset-x-0 top-0 z-[70] bg-brand px-4 py-2 text-white lg:left-[248px]"><div class="mx-auto flex max-w-[1440px] items-center justify-between gap-3 text-xs font-bold"><span>Uma atualização do Pingo está pronta.</span><button class="inline-flex items-center gap-1 rounded-lg bg-white/15 px-3 py-1.5" @click="applyWebUpdate"><RefreshCw :size="13" /> Atualizar</button></div></div>

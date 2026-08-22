@@ -1,8 +1,10 @@
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
+use serde::Serialize;
 use tauri::State;
 use uuid::Uuid;
 
+use crate::services::app_lock::{hash_pin, verify_pin};
 use crate::{
     db::{AppState, FinanceRepository},
     models::{
@@ -14,6 +16,62 @@ use crate::{
         VaultMovementType,
     },
 };
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppLockConfig {
+    enabled: bool,
+    biometric_enabled: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppLockVerification {
+    valid: bool,
+    retry_after_seconds: u64,
+}
+
+async fn verify_app_lock_attempt(
+    repository: &FinanceRepository<'_>,
+    pin: &str,
+) -> Result<AppLockVerification, String> {
+    let lock = repository
+        .get_app_lock()
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "o bloqueio do aplicativo não está ativo".to_string())?;
+    if let Some(until) = lock.locked_until {
+        let remaining = (until - chrono::Utc::now()).num_seconds();
+        if remaining > 0 {
+            return Ok(AppLockVerification {
+                valid: false,
+                retry_after_seconds: remaining as u64 + 1,
+            });
+        }
+        repository
+            .clear_app_lock_attempts()
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+    if verify_pin(&lock.pin_hash, pin) {
+        repository
+            .clear_app_lock_attempts()
+            .await
+            .map_err(|error| error.to_string())?;
+        return Ok(AppLockVerification {
+            valid: true,
+            retry_after_seconds: 0,
+        });
+    }
+    let locked_until = repository
+        .register_app_lock_failure()
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(AppLockVerification {
+        valid: false,
+        retry_after_seconds: locked_until.map_or(0, |_| 30),
+    })
+}
 
 fn transaction_effect(transaction: &Transaction) -> Decimal {
     match transaction.kind {
@@ -784,4 +842,118 @@ pub async fn import_legacy_app_data(
         .import_legacy_app_data(&data)
         .await
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn get_app_lock_config(state: State<'_, AppState>) -> Result<AppLockConfig, String> {
+    let lock = FinanceRepository::new(&state.pool)
+        .get_app_lock()
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(AppLockConfig {
+        enabled: lock.is_some(),
+        biometric_enabled: lock.is_some_and(|record| record.biometric_enabled),
+    })
+}
+
+#[tauri::command]
+pub async fn configure_app_lock(
+    state: State<'_, AppState>,
+    pin: String,
+    biometric_enabled: bool,
+) -> Result<AppLockConfig, String> {
+    let repository = FinanceRepository::new(&state.pool);
+    if repository
+        .get_app_lock()
+        .await
+        .map_err(|error| error.to_string())?
+        .is_some()
+    {
+        return Err("o bloqueio já está ativo; confirme o PIN atual para alterá-lo".into());
+    }
+    let hash = hash_pin(&pin)?;
+    repository
+        .save_app_lock(&hash, biometric_enabled)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(AppLockConfig {
+        enabled: true,
+        biometric_enabled,
+    })
+}
+
+#[tauri::command]
+pub async fn verify_app_lock_pin(
+    state: State<'_, AppState>,
+    pin: String,
+) -> Result<AppLockVerification, String> {
+    verify_app_lock_attempt(&FinanceRepository::new(&state.pool), &pin).await
+}
+
+#[tauri::command]
+pub async fn change_app_lock_pin(
+    state: State<'_, AppState>,
+    current_pin: String,
+    new_pin: String,
+) -> Result<AppLockConfig, String> {
+    let repository = FinanceRepository::new(&state.pool);
+    let current = repository
+        .get_app_lock()
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "o bloqueio do aplicativo não está ativo".to_string())?;
+    let verification = verify_app_lock_attempt(&repository, &current_pin).await?;
+    if !verification.valid {
+        return Err("PIN atual incorreto".into());
+    }
+    let hash = hash_pin(&new_pin)?;
+    repository
+        .save_app_lock(&hash, current.biometric_enabled)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(AppLockConfig {
+        enabled: true,
+        biometric_enabled: current.biometric_enabled,
+    })
+}
+
+#[tauri::command]
+pub async fn set_app_lock_biometric(
+    state: State<'_, AppState>,
+    pin: String,
+    enabled: bool,
+) -> Result<AppLockConfig, String> {
+    let repository = FinanceRepository::new(&state.pool);
+    let verification = verify_app_lock_attempt(&repository, &pin).await?;
+    if !verification.valid {
+        return Err("PIN incorreto".into());
+    }
+    repository
+        .set_app_lock_biometric(enabled)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(AppLockConfig {
+        enabled: true,
+        biometric_enabled: enabled,
+    })
+}
+
+#[tauri::command]
+pub async fn disable_app_lock(
+    state: State<'_, AppState>,
+    pin: String,
+) -> Result<AppLockConfig, String> {
+    let repository = FinanceRepository::new(&state.pool);
+    let verification = verify_app_lock_attempt(&repository, &pin).await?;
+    if !verification.valid {
+        return Err("PIN incorreto".into());
+    }
+    repository
+        .delete_app_lock()
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(AppLockConfig {
+        enabled: false,
+        biometric_enabled: false,
+    })
 }

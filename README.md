@@ -8,6 +8,16 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
+## Destaques da versão 0.12.0
+
+- Bloqueio do App com PIN local, Face ID, impressão digital ou íris e proteção ao retornar do segundo plano;
+- análise financeira mais completa, cruzando saldo, entradas, saídas, categorias, horários, média e maior impacto do período;
+- moeda padrão configurável entre BRL, USD e EUR, aplicada a toda a interface e às notificações;
+- histórico completo do perfil local e notificações enriquecidas com valores formatados;
+- máscara monetária da direita para a esquerda e modais protegidos contra overflow em celulares;
+- gesto de agitar recalibrado, comandos de voz removidos e atalhos Android para entrada, saída e cartões;
+- Android `versionCode` 12000 e cache Web renovado para a nova release.
+
 ## Destaques da versão 0.11.0
 
 - nova identidade minimalista e responsiva com tokens semânticos, cartão preto de saldo e roxo como destaque;
@@ -24,7 +34,7 @@ A proposta é unir a velocidade de um app de carteira no celular com ferramentas
 
 - Resumo personalizável em grid P/M/G com arraste fluido por mouse e toque e salvamento automático;
 - layout mobile protegido contra textos longos e formulários que se ajustam ao teclado nativo;
-- Central do Pingo com voz, gesto de agitar, radar diário, limites, widgets, economia, lembretes, backup e reset total;
+- Central do Pingo com gesto de agitar, radar diário, limites, widgets, economia, lembretes, App Lock, backup e reset total;
 - saudação por horário local e abertura do Gasto rápido ao agitar o aparelho enquanto o Resumo está aberto;
 - cartões ao vivo com foto própria, contraste automático e visualizador da imagem original em tela cheia;
 - transferência direta e atômica do saldo disponível para um Porquinho sem alterar o patrimônio;
@@ -149,14 +159,16 @@ As imagens ficam dentro do app e continuam disponíveis sem internet.
 O Pingo registra o esquema de deep link `pingo://` com o plugin oficial de deep linking do Tauri.
 
 ```text
+pingo://income
 pingo://expense
 pingo://expense?card=<id>
 pingo://wallet
+pingo://wallet?card=<id>
 pingo://dashboard
 pingo://vaults
 ```
 
-Há também um script para instalar quatro atalhos estáticos do Android (`Novo gasto`, `Carteira`, `Cofres` e `Resumo`) depois do `tauri android init`.
+Há também um script para instalar quatro atalhos estáticos do Android (`Nova entrada`, `Nova saída`, `Carteira` e `Cofres`) depois do `tauri android init`.
 
 Veja [MOBILE_QUICK_ACCESS.md](./MOBILE_QUICK_ACCESS.md).
 
@@ -181,7 +193,7 @@ Cada cartão pode ter:
 - gasto mensal;
 - gasto histórico;
 - média por compra;
-- atalho próprio para registrar despesas.
+- atalho próprio na tela inicial para abrir a Carteira diretamente no cartão.
 
 Por segurança, o Pingo não armazena número completo, validade ou CVV.
 

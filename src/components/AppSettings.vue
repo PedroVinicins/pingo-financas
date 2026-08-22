@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   BatteryCharging, Bell, Database, Download, Eye, FileDown, Gauge, HardDrive, LockKeyhole,
-  Mic, Move3d, Palette, RefreshCw, RotateCcw, ShieldCheck, Smartphone, Upload, X,
+  Move3d, Palette, RefreshCw, RotateCcw, ShieldCheck, Smartphone, Upload, X,
 } from 'lucide-vue-next'
 import AppSwitch from './AppSwitch.vue'
+import AppLockSettingsModal from './AppLockSettingsModal.vue'
+import LocalizedNumberInput from './LocalizedNumberInput.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import FactoryResetDialog from './FactoryResetDialog.vue'
 import ProfileCard from './ProfileCard.vue'
@@ -14,10 +16,16 @@ import { useFinanceStore } from '../stores/financeStore'
 import { exportBackup, exportTransactionsCsv, parseBackupFile, type PingoBackup } from '../services/backup'
 import { isTauriRuntime } from '../services/financeRepository'
 import { DASHBOARD_WIDGETS } from '../services/dashboardLayout'
+import { analyzeAccount } from '../services/accountAnalysis'
 import { requestMotionPermission } from '../services/deviceExperience'
 import { localizedDecimalToStorage, storageDecimalToLocalized } from '../services/localizedNumber'
-import { disableMoneyReminders, enableMoneyReminders, loadReminderSettings, sendReminderTest, type ReminderFrequencyDays } from '../services/notifications'
-import type { DashboardWidgetId, FeedbackDurationMs, PingoPreferences, ShakeSensitivity, ThemeMode } from '../types/finance'
+import { currencySymbol, formatCurrencyValue, privateCurrencyCents, SUPPORTED_CURRENCIES } from '../services/currency'
+import {
+  disableAnalysisNotifications, disableMoneyReminders, enableAnalysisNotifications,
+  enableMoneyReminders, loadReminderSettings, sendAnalysisNotificationTest, type ReminderFrequencyDays,
+} from '../services/notifications'
+import type { CurrencyCode, DashboardWidgetId, FeedbackDurationMs, PingoPreferences, ShakeSensitivity, ThemeMode } from '../types/finance'
+import { APP_LOCK_CHANGED_EVENT, getAppLockConfig, type AppLockConfig } from '../services/appLock'
 
 const props = withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
 const emit = defineEmits<{ close: [] }>()
@@ -31,7 +39,10 @@ const confirmingReset = ref(false)
 const resetting = ref(false)
 const sensorBusy = ref(false)
 const reminderBusy = ref(false)
+const analysisNotificationBusy = ref(false)
 const editingProfile = ref(false)
+const showAppLock = ref(false)
+const appLockConfig = ref<AppLockConfig>({ enabled: false, biometricEnabled: false })
 const profileDraft = ref(store.preferences.displayName)
 const budgetDraft = ref(store.preferences.monthlyBudget ? storageDecimalToLocalized(store.preferences.monthlyBudget) : '')
 const budgetError = ref('')
@@ -43,11 +54,25 @@ const expenseCategories = computed(() => store.categories.filter((item) => item.
 const incomeCategories = computed(() => store.categories.filter((item) => item.kind === 'income').length)
 const walletCount = computed(() => store.debitCards.length + store.digitalWalletItems.length)
 const monthlyBudgetLabel = computed(() => store.preferences.monthlyBudget
-  ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(store.preferences.monthlyBudget))
+  ? formatCurrencyValue(store.preferences.monthlyBudget, store.preferences.currency)
   : 'Não definido')
+const currentAnalysis = computed(() => {
+  const now = new Date()
+  return analyzeAccount({
+    transactions: store.transactions,
+    categories: store.categories,
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+    formatMoney: (value) => privateCurrencyCents(value, store.preferences.currency, store.balanceHidden),
+  })
+})
 
 function updateBoolean(key: keyof PingoPreferences, value: boolean) { store.updatePreferences({ [key]: value }) }
 function setTheme(themeMode: ThemeMode) { store.updatePreferences({ themeMode }) }
+function setCurrency(currency: CurrencyCode) {
+  store.updatePreferences({ currency })
+  store.showFeedback(`Moeda padrão alterada para ${currency}.`, 'success')
+}
 function saveProfile() {
   const name = profileDraft.value.trim().slice(0, 60)
   store.updatePreferences({ displayName: name })
@@ -82,6 +107,22 @@ async function toggleExpenseReminder(enabled: boolean) {
 async function updateReminderFrequency() {
   if (!store.preferences.expenseReminderNotifications) return
   reminderSettings.value = await enableMoneyReminders(reminderFrequency.value)
+}
+async function toggleAnalysisNotifications(enabled: boolean) {
+  analysisNotificationBusy.value = true
+  try {
+    if (enabled) await enableAnalysisNotifications(currentAnalysis.value, store.preferences.currency, store.balanceHidden)
+    else await disableAnalysisNotifications()
+    store.updatePreferences({ weeklySummaryNotifications: enabled })
+    store.showFeedback(enabled ? 'Atualizações da análise ativadas.' : 'Atualizações da análise desativadas.', 'success')
+  } catch (cause) {
+    store.updatePreferences({ weeklySummaryNotifications: false })
+    store.reportError(cause, 'Não foi possível alterar as notificações da análise.')
+  } finally { analysisNotificationBusy.value = false }
+}
+async function testAnalysisNotification() {
+  try { await sendAnalysisNotificationTest(currentAnalysis.value, store.preferences.currency, store.balanceHidden) }
+  catch (cause) { store.reportError(cause, 'Não foi possível enviar a análise por notificação.') }
 }
 function toggleWidget(id: DashboardWidgetId, visible: boolean) {
   const layout = { widgets: store.dashboardLayout.widgets.map((item) => ({ ...item })) }
@@ -136,6 +177,15 @@ async function factoryReset() {
   try { await store.factoryReset() }
   catch (cause) { resetting.value = false; store.reportError(cause, 'Não foi possível apagar os dados.') }
 }
+
+function appLockChanged(event: Event) {
+  appLockConfig.value = (event as CustomEvent<AppLockConfig>).detail
+}
+onMounted(async () => {
+  window.addEventListener(APP_LOCK_CHANGED_EVENT, appLockChanged)
+  try { appLockConfig.value = await getAppLockConfig() } catch { /* O modal exibirá o erro detalhado. */ }
+})
+onBeforeUnmount(() => window.removeEventListener(APP_LOCK_CHANGED_EVENT, appLockChanged))
 </script>
 
 <template>
@@ -150,7 +200,7 @@ async function factoryReset() {
         <div class="grid gap-7">
           <SettingsGroup title="Orçamento">
             <SettingsRow label="Limite mensal" :description="budgetError || 'Usado no progresso do saldo principal.'">
-              <template #control><div class="flex items-center gap-2" @click.stop><span class="text-sm text-subtle">R$</span><input v-model="budgetDraft" inputmode="decimal" class="h-10 w-24 rounded-xl border border-line bg-canvas px-3 text-right text-sm font-semibold" placeholder="0,00" aria-label="Limite mensal" @blur="saveBudget" @keyup.enter="($event.target as HTMLInputElement).blur()" /></div></template>
+              <template #control><div class="flex min-w-0 items-center gap-2" @click.stop><span class="shrink-0 text-sm text-subtle">{{ currencySymbol(store.preferences.currency) }}</span><LocalizedNumberInput v-model="budgetDraft" class="h-10 min-w-0 w-28 max-w-full rounded-xl border border-line bg-canvas px-3 text-right text-sm font-semibold" placeholder="0,00" aria-label="Limite mensal" @blur="saveBudget" @keyup.enter="($event.target as HTMLInputElement).blur()" /></div></template>
             </SettingsRow>
           </SettingsGroup>
 
@@ -165,19 +215,20 @@ async function factoryReset() {
             <SettingsRow label="Categorias de gasto" :value="`${expenseCategories} ativas`" />
             <SettingsRow label="Categorias de receita" :value="`${incomeCategories} ativas`" />
             <SettingsRow label="Carteiras" :value="`${walletCount} ativas`" />
-            <SettingsRow label="Moeda padrão" value="BRL • R$" />
+            <SettingsRow label="Moeda padrão" :description="`Valores exibidos em ${monthlyBudgetLabel === 'Não definido' ? currencySymbol(store.preferences.currency) : monthlyBudgetLabel}.`">
+              <template #control><select :value="store.preferences.currency" class="h-10 max-w-40 cursor-pointer rounded-xl border border-line bg-canvas px-2 text-sm font-semibold" aria-label="Moeda padrão" @click.stop @change="setCurrency(($event.target as HTMLSelectElement).value as CurrencyCode)"><option v-for="currency in SUPPORTED_CURRENCIES" :key="currency.code" :value="currency.code">{{ currency.code }} · {{ currency.symbol }}</option></select></template>
+            </SettingsRow>
           </SettingsGroup>
 
           <SettingsGroup title="Notificações">
             <SettingsRow label="Contas próximas do vencimento"><template #control><AppSwitch :model-value="store.preferences.billsDueNotifications" label="Avisar contas próximas do vencimento" @update:model-value="updateBoolean('billsDueNotifications', $event)" /></template></SettingsRow>
-            <SettingsRow label="Resumo da semana"><template #control><AppSwitch :model-value="store.preferences.weeklySummaryNotifications" label="Receber resumo da semana" @update:model-value="updateBoolean('weeklySummaryNotifications', $event)" /></template></SettingsRow>
+            <SettingsRow label="Atualizações da análise" description="Avisa problemas novos e envia um resumo semanal quando estiver tudo equilibrado."><template #control><AppSwitch :model-value="store.preferences.weeklySummaryNotifications" label="Receber atualizações da análise" :disabled="analysisNotificationBusy" @update:model-value="toggleAnalysisNotifications" /></template></SettingsRow>
             <SettingsRow label="Lembrete para registrar gastos" :description="reminderSettings.enabled ? 'Ativo neste dispositivo.' : 'Desativado.'"><template #control><AppSwitch :model-value="store.preferences.expenseReminderNotifications" label="Lembrete para registrar gastos" :disabled="reminderBusy" @update:model-value="toggleExpenseReminder" /></template></SettingsRow>
             <SettingsRow label="Frequência do lembrete"><template #control><select v-model="reminderFrequency" class="h-10 rounded-xl border border-line bg-canvas px-2 text-sm" @click.stop @change="updateReminderFrequency"><option :value="1">Diário</option><option :value="3">A cada 3 dias</option><option :value="7">Semanal</option></select></template></SettingsRow>
-            <SettingsRow label="Testar notificação" clickable @activate="sendReminderTest"><template #icon><Bell :size="18" class="text-brand" /></template></SettingsRow>
+            <SettingsRow label="Testar análise agora" description="Usa os valores e problemas encontrados neste mês." clickable @activate="testAnalysisNotification"><template #icon><Bell :size="18" class="text-brand" /></template></SettingsRow>
           </SettingsGroup>
 
           <SettingsGroup title="Central do Pingo">
-            <SettingsRow label="Atalhos de voz" description="Ativados apenas quando você toca no microfone."><template #icon><Mic :size="18" class="text-brand" /></template><template #control><AppSwitch :model-value="store.preferences.voiceShortcutsEnabled" label="Atalhos de voz" @update:model-value="updateBoolean('voiceShortcutsEnabled', $event)" /></template></SettingsRow>
             <SettingsRow label="Agitar para novo gasto" description="Disponível na tela Início."><template #icon><Move3d :size="18" class="text-brand" /></template><template #control><AppSwitch :model-value="store.preferences.shakeToExpenseEnabled" label="Agitar para novo gasto" :disabled="sensorBusy" @update:model-value="toggleShake" /></template></SettingsRow>
             <SettingsRow label="Sensibilidade"><template #control><select :value="store.preferences.shakeSensitivity" class="h-10 rounded-xl border border-line bg-canvas px-2 text-sm" @click.stop @change="store.updatePreferences({ shakeSensitivity: ($event.target as HTMLSelectElement).value as ShakeSensitivity })"><option value="low">Baixa</option><option value="medium">Média</option><option value="high">Alta</option></select></template></SettingsRow>
             <SettingsRow label="Saudação pelo horário"><template #control><AppSwitch :model-value="store.preferences.greetingEnabled" label="Saudação pelo horário" @update:model-value="updateBoolean('greetingEnabled', $event)" /></template></SettingsRow>
@@ -196,14 +247,14 @@ async function factoryReset() {
             <SettingsRow label="Exportar CSV" :value="exportingCsv ? 'Preparando…' : ''" clickable @activate="downloadCsv"><template #icon><FileDown :size="18" class="text-brand" /></template></SettingsRow>
             <SettingsRow label="Restaurar backup" description="Substitui os dados atuais após sua confirmação." clickable @activate="backupInput?.click()"><template #icon><Upload :size="18" class="text-brand" /></template></SettingsRow>
             <input ref="backupInput" type="file" accept="application/json,.json" class="sr-only" aria-label="Selecionar backup do Pingo" @change="chooseBackup" />
-            <SettingsRow label="Bloqueio do aplicativo" :value="isTauriRuntime() ? 'Em preparação' : 'Não disponível na Web'" disabled><template #icon><LockKeyhole :size="18" class="text-subtle" /></template></SettingsRow>
+            <SettingsRow label="Bloqueio do aplicativo" :value="appLockConfig.enabled ? (appLockConfig.biometricEnabled ? 'PIN + biometria' : 'PIN ativo') : 'Desativado'" description="Protege seus dados ao abrir ou retornar ao Pingo." clickable @activate="showAppLock = true"><template #icon><LockKeyhole :size="18" :class="appLockConfig.enabled ? 'text-brand' : 'text-subtle'" /></template></SettingsRow>
             <SettingsRow label="Reset total" description="Apaga permanentemente dados, preferências e automações deste dispositivo." danger clickable @activate="confirmingReset = true"><template #icon><RotateCcw :size="18" /></template></SettingsRow>
           </SettingsGroup>
         </div>
 
         <aside class="grid gap-5 xl:sticky xl:top-8">
           <ProfileCard :name="displayName" @edit="profileDraft = store.preferences.displayName; editingProfile = true" />
-          <article class="pingo-card p-5"><div class="flex items-center gap-3"><span class="grid size-11 place-items-center rounded-2xl bg-brand-soft text-brand"><HardDrive :size="20" /></span><div><h2 class="font-extrabold">{{ isTauriRuntime() ? 'SQLite local' : 'Dados neste navegador' }}</h2><p class="text-xs text-subtle">Seus dados permanecem no aparelho.</p></div></div><div class="mt-5 grid gap-3 text-sm"><p class="flex items-center gap-2"><ShieldCheck :size="17" class="text-brand" /> Importações processadas localmente</p><p class="flex items-center gap-2"><Database :size="17" class="text-brand" /> Sem conexão bancária automática</p><p class="flex items-center gap-2"><Smartphone :size="17" class="text-brand" /> Pingo 0.11.0</p></div></article>
+          <article class="pingo-card p-5"><div class="flex items-center gap-3"><span class="grid size-11 place-items-center rounded-2xl bg-brand-soft text-brand"><HardDrive :size="20" /></span><div><h2 class="font-extrabold">{{ isTauriRuntime() ? 'SQLite local' : 'Dados neste navegador' }}</h2><p class="text-xs text-subtle">Seus dados permanecem no aparelho.</p></div></div><div class="mt-5 grid gap-3 text-sm"><p class="flex items-center gap-2"><ShieldCheck :size="17" class="text-brand" /> Importações processadas localmente</p><p class="flex items-center gap-2"><Database :size="17" class="text-brand" /> Sem conexão bancária automática</p><p class="flex items-center gap-2"><Smartphone :size="17" class="text-brand" /> Pingo 0.12.0</p></div></article>
           <article class="rounded-pingo-lg bg-hero p-5 text-white"><Eye :size="20" class="text-violet-300" /><h2 class="mt-4 font-extrabold">Privacidade primeiro</h2><p class="mt-1 text-sm leading-relaxed text-white/55">Backup e extratos contêm informações financeiras. Guarde os arquivos em um local protegido.</p></article>
         </aside>
       </div>
@@ -216,5 +267,6 @@ async function factoryReset() {
     </div>
   </Teleport>
   <FactoryResetDialog v-if="confirmingReset" :busy="resetting" @cancel="confirmingReset = false" @confirm="factoryReset" />
+  <AppLockSettingsModal v-if="showAppLock" @close="showAppLock = false" @changed="appLockConfig = $event" />
   <ConfirmDialog v-if="pendingBackup" title="Restaurar este backup?" message="Os dados atuais deste dispositivo serão substituídos pelo conteúdo do arquivo. Faça um backup atual antes de continuar." confirm-label="Restaurar dados" :busy="restoringBackup" @cancel="pendingBackup = null" @confirm="confirmRestoreBackup" />
 </template>

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ArrowDownLeft, ArrowUpRight, Pencil, ReceiptText } from 'lucide-vue-next'
 import type { Category, DebitCard, Transaction } from '../types/finance'
+import { useFinanceStore } from '../stores/financeStore'
+import { formatCurrencyValue } from '../services/currency'
 
 const props = withDefaults(defineProps<{
   transactions: Transaction[]
@@ -12,9 +14,10 @@ const props = withDefaults(defineProps<{
   editable: false,
 })
 const emit = defineEmits<{ edit: [transaction: Transaction] }>()
+const store = useFinanceStore()
 
 function money(value: string) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value))
+  return formatCurrencyValue(value, store.preferences.currency)
 }
 
 function categoryName(categoryId: string | null) {

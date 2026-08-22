@@ -32,6 +32,7 @@ import { DEFAULT_DASHBOARD_LAYOUT, cloneDashboardLayout } from '../services/dash
 import * as repository from '../services/financeRepository'
 import {
   cancelRecurringRuleNotification,
+  disableAnalysisNotifications,
   disableMoneyReminders,
   maybeNotifyDueRecurringRules,
   scheduleRecurringRuleNotification,
@@ -116,9 +117,9 @@ export const useFinanceStore = defineStore('finance', () => {
     (total, vault) => total + decimalToCents(vault.balance), 0n,
   ))
   const availableBalanceCents = computed(() => {
-    const available = balanceCents.value - vaultTotalCents.value
-    return available > 0n ? available : 0n
+    return rawAvailableBalanceCents.value > 0n ? rawAvailableBalanceCents.value : 0n
   })
+  const rawAvailableBalanceCents = computed(() => balanceCents.value - vaultTotalCents.value)
   const balanceHidden = computed(() => accountSettings.value.balanceHidden)
 
   const currentMonthBalanceCents = computed(() => {
@@ -689,6 +690,7 @@ export const useFinanceStore = defineStore('finance', () => {
   }
   async function factoryReset() {
     await disableMoneyReminders().catch(() => undefined)
+    await disableAnalysisNotifications().catch(() => undefined)
     for (const rule of recurringRules.value) {
       await cancelRecurringRuleNotification(rule.id).catch(() => undefined)
     }
@@ -697,6 +699,7 @@ export const useFinanceStore = defineStore('finance', () => {
   }
   async function restoreBackup(data: PingoBackup['data']) {
     await disableMoneyReminders().catch(() => undefined)
+    await disableAnalysisNotifications().catch(() => undefined)
     for (const rule of recurringRules.value) {
       await cancelRecurringRuleNotification(rule.id).catch(() => undefined)
     }
@@ -738,7 +741,7 @@ export const useFinanceStore = defineStore('finance', () => {
     recurringRules.value.sort((a, b) => a.dayOfMonth - b.dayOfMonth)
     if (rule.reminderEnabled) {
       try {
-        await scheduleRecurringRuleNotification(rule, true)
+        await scheduleRecurringRuleNotification(rule, preferences.value.currency, true)
       } catch (cause) {
         await repository.deleteRecurringRule(rule.id)
         recurringRules.value = recurringRules.value.filter((item) => item.id !== rule.id)
@@ -785,7 +788,7 @@ export const useFinanceStore = defineStore('finance', () => {
       if (elapsedDays < rule.autoProcessAfterDays || decimalToCents(rule.amount) > availableBalanceCents.value) continue
       await settleRecurringRule(rule.id, true).catch(() => undefined)
     }
-    await maybeNotifyDueRecurringRules(dueRecurringRules.value)
+    await maybeNotifyDueRecurringRules(dueRecurringRules.value, preferences.value.currency)
   }
   async function processScheduledAutomation() {
     clock.value = new Date()
@@ -814,11 +817,11 @@ export const useFinanceStore = defineStore('finance', () => {
     monthlyReserveRules, digitalWalletItems, dashboardLayout, recurringRules,
     filters, accountSettings, preferences, reportingYear, reportingMonth, pingoMessage, initialized, isInitializing, initializationError, feedback,
     balanceHidden, transactionNetCents, balanceCents, vaultTotalCents,
-    availableBalanceCents, currentMonthBalanceCents, currentMonthIncomeCents, currentMonthExpenseCents,
+    rawAvailableBalanceCents, availableBalanceCents, currentMonthBalanceCents, currentMonthIncomeCents, currentMonthExpenseCents,
     currentMonthSavingsCents, currentMonthFixedExpenseCents, savingsRate, fixedCostRatio,
     averageMonthlyExpenseCents, projectedMonthExpenseCents, dailySpendingAverageCents, todayExpenseCents, dailyBudgetCents,
     emergencyFundMonths, financialHealthScore, filteredTransactions, recentTransactions, recentExpenses,
-    reportingTransactions, reportingIncomeCents, reportingExpenseCents, reportingBalanceCents,
+    sortedTransactions, reportingTransactions, reportingIncomeCents, reportingExpenseCents, reportingBalanceCents,
     hasActiveFilters,
     recentExpenseCategoryIds, expensesByCategory, currentMonthExpensesByCategory, expensePercentages,
     currentMonthExpensePercentages, topExpenseCategory, expensesByDebitCard, currentMonthExpensesByDebitCard,

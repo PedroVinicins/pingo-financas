@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, useAttrs } from 'vue'
+import { nextTick, ref, useAttrs } from 'vue'
 import {
   completeLocalizedDecimalInput,
-  formatLocalizedDecimalInput,
+  formatLocalizedCurrencyInput,
 } from '../services/localizedNumber'
 
 defineOptions({ inheritAttrs: false })
@@ -25,8 +25,11 @@ function focus() {
 defineExpose({ focus })
 
 function update(event: Event) {
-  const input = event.target as HTMLInputElement
-  emit('update:modelValue', formatLocalizedDecimalInput(input.value, props.decimalPlaces))
+  const target = event.target as HTMLInputElement
+  const formatted = formatLocalizedCurrencyInput(target.value, props.decimalPlaces)
+  target.value = formatted
+  emit('update:modelValue', formatted)
+  void nextTick(() => target.setSelectionRange(formatted.length, formatted.length))
 }
 
 function complete() {

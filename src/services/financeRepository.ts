@@ -806,7 +806,8 @@ export async function restoreBackup(data: PingoBackup['data']): Promise<void> {
   const existingKeys: string[] = []
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index)
-    if (key && (key.startsWith('pingo:') || key.startsWith('cashew-clone:') || key === 'theme')) existingKeys.push(key)
+    if (key && !key.startsWith('pingo:app-lock:')
+      && (key.startsWith('pingo:') || key.startsWith('cashew-clone:') || key === 'theme')) existingKeys.push(key)
   }
   const snapshot = new Map(existingKeys.map((key) => [key, localStorage.getItem(key)]))
   try {
@@ -827,7 +828,8 @@ export async function restoreBackup(data: PingoBackup['data']): Promise<void> {
     const restoredKeys: string[] = []
     for (let index = 0; index < localStorage.length; index += 1) {
       const key = localStorage.key(index)
-      if (key && (key.startsWith('pingo:') || key.startsWith('cashew-clone:') || key === 'theme')) restoredKeys.push(key)
+      if (key && !key.startsWith('pingo:app-lock:')
+        && (key.startsWith('pingo:') || key.startsWith('cashew-clone:') || key === 'theme')) restoredKeys.push(key)
     }
     restoredKeys.forEach((key) => localStorage.removeItem(key))
     snapshot.forEach((value, key) => { if (value !== null) localStorage.setItem(key, value) })

@@ -28,6 +28,14 @@ pub enum DbError {
     NotFound(&'static str),
 }
 
+#[derive(Clone, Debug)]
+pub struct AppLockRecord {
+    pub pin_hash: String,
+    pub biometric_enabled: bool,
+    pub failed_attempts: u32,
+    pub locked_until: Option<DateTime<Utc>>,
+}
+
 pub struct FinanceRepository<'a> {
     pool: &'a SqlitePool,
 }
@@ -35,6 +43,104 @@ pub struct FinanceRepository<'a> {
 impl<'a> FinanceRepository<'a> {
     pub fn new(pool: &'a SqlitePool) -> Self {
         Self { pool }
+    }
+
+    pub async fn get_app_lock(&self) -> Result<Option<AppLockRecord>, DbError> {
+        let row = sqlx::query(
+            "SELECT pin_hash, biometric_enabled, failed_attempts, locked_until FROM app_lock_settings WHERE id = 1",
+        )
+        .fetch_optional(self.pool)
+        .await?;
+        row.map(|row| {
+            let locked_until = row
+                .try_get::<Option<String>, _>("locked_until")?
+                .map(|value| {
+                    DateTime::parse_from_rfc3339(&value)
+                        .map(|date| date.with_timezone(&Utc))
+                        .map_err(invalid)
+                })
+                .transpose()?;
+            Ok(AppLockRecord {
+                pin_hash: row.try_get("pin_hash")?,
+                biometric_enabled: row.try_get("biometric_enabled")?,
+                failed_attempts: row.try_get::<i64, _>("failed_attempts")? as u32,
+                locked_until,
+            })
+        })
+        .transpose()
+    }
+
+    pub async fn save_app_lock(
+        &self,
+        pin_hash: &str,
+        biometric_enabled: bool,
+    ) -> Result<(), DbError> {
+        sqlx::query(
+            r#"INSERT INTO app_lock_settings
+               (id, pin_hash, biometric_enabled, failed_attempts, locked_until, updated_at)
+               VALUES (1, ?, ?, 0, NULL, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 pin_hash = excluded.pin_hash,
+                 biometric_enabled = excluded.biometric_enabled,
+                 failed_attempts = 0,
+                 locked_until = NULL,
+                 updated_at = excluded.updated_at"#,
+        )
+        .bind(pin_hash)
+        .bind(biometric_enabled)
+        .bind(Utc::now().to_rfc3339())
+        .execute(self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn set_app_lock_biometric(&self, enabled: bool) -> Result<(), DbError> {
+        let changed = sqlx::query(
+            "UPDATE app_lock_settings SET biometric_enabled = ?, updated_at = ? WHERE id = 1",
+        )
+        .bind(enabled)
+        .bind(Utc::now().to_rfc3339())
+        .execute(self.pool)
+        .await?
+        .rows_affected();
+        if changed == 0 {
+            return Err(DbError::NotFound("bloqueio do aplicativo"));
+        }
+        Ok(())
+    }
+
+    pub async fn clear_app_lock_attempts(&self) -> Result<(), DbError> {
+        sqlx::query(
+            "UPDATE app_lock_settings SET failed_attempts = 0, locked_until = NULL WHERE id = 1",
+        )
+        .execute(self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn register_app_lock_failure(&self) -> Result<Option<DateTime<Utc>>, DbError> {
+        let current = self
+            .get_app_lock()
+            .await?
+            .ok_or(DbError::NotFound("bloqueio do aplicativo"))?;
+        let attempts = current.failed_attempts.saturating_add(1);
+        let locked_until = (attempts >= 5).then(|| Utc::now() + chrono::TimeDelta::seconds(30));
+        sqlx::query(
+            "UPDATE app_lock_settings SET failed_attempts = ?, locked_until = ?, updated_at = ? WHERE id = 1",
+        )
+        .bind(if locked_until.is_some() { 0 } else { attempts })
+        .bind(locked_until.map(|date| date.to_rfc3339()))
+        .bind(Utc::now().to_rfc3339())
+        .execute(self.pool)
+        .await?;
+        Ok(locked_until)
+    }
+
+    pub async fn delete_app_lock(&self) -> Result<(), DbError> {
+        sqlx::query("DELETE FROM app_lock_settings WHERE id = 1")
+            .execute(self.pool)
+            .await?;
+        Ok(())
     }
 
     pub async fn insert_transaction(&self, transaction: &Transaction) -> Result<(), DbError> {
@@ -773,6 +879,7 @@ impl<'a> FinanceRepository<'a> {
     pub async fn factory_reset(&self) -> Result<(), DbError> {
         let mut transaction = self.pool.begin().await?;
         for table in [
+            "app_lock_settings",
             "transactions",
             "recurring_rules",
             "vault_movements",
@@ -2197,5 +2304,43 @@ mod tests {
                 .unwrap()
                 .balance_hidden
         );
+    }
+
+    #[tokio::test]
+    async fn app_lock_settings_persist_and_rate_limit_failures() {
+        let pool = test_pool().await;
+        let repository = FinanceRepository::new(&pool);
+
+        repository
+            .save_app_lock("argon2-verifier", true)
+            .await
+            .unwrap();
+        let stored = repository.get_app_lock().await.unwrap().unwrap();
+        assert_eq!(stored.pin_hash, "argon2-verifier");
+        assert!(stored.biometric_enabled);
+
+        for _ in 0..4 {
+            assert!(repository
+                .register_app_lock_failure()
+                .await
+                .unwrap()
+                .is_none());
+        }
+        assert!(repository
+            .register_app_lock_failure()
+            .await
+            .unwrap()
+            .is_some());
+        assert!(repository
+            .get_app_lock()
+            .await
+            .unwrap()
+            .unwrap()
+            .locked_until
+            .is_some());
+
+        repository.clear_app_lock_attempts().await.unwrap();
+        repository.delete_app_lock().await.unwrap();
+        assert!(repository.get_app_lock().await.unwrap().is_none());
     }
 }

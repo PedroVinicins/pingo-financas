@@ -16,6 +16,21 @@ export function formatLocalizedDecimalInput(value: string, decimalPlaces = 2): s
   return hasDecimalSeparator ? `${grouped},${decimalDigits}` : grouped
 }
 
+/**
+ * Formata dinheiro como uma calculadora: cada dígito novo entra nos centavos e
+ * empurra os anteriores para a esquerda (1 → 0,01 → 0,12 → 1,23).
+ */
+export function formatLocalizedCurrencyInput(value: string, decimalPlaces = 2): string {
+  const digits = value.replace(/\D/g, '')
+  if (!digits) return ''
+  if (decimalPlaces <= 0) return digits.replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  const padded = digits.padStart(decimalPlaces + 1, '0')
+  const integerDigits = padded.slice(0, -decimalPlaces).replace(/^0+(?=\d)/, '') || '0'
+  const fraction = padded.slice(-decimalPlaces)
+  const grouped = integerDigits.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return decimalPlaces > 0 ? `${grouped},${fraction}` : grouped
+}
+
 export function completeLocalizedDecimalInput(value: string, decimalPlaces = 2): string {
   const formatted = formatLocalizedDecimalInput(value, decimalPlaces)
   if (!formatted) return ''

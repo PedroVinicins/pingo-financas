@@ -9,7 +9,8 @@ import VaultMoveSheet from '../components/VaultMoveSheet.vue'
 import VaultCustomizeSheet from '../components/VaultCustomizeSheet.vue'
 import VaultBalanceCorrectionSheet from '../components/VaultBalanceCorrectionSheet.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
-import { centsToDecimal, decimalToCents, useFinanceStore } from '../stores/financeStore'
+import { decimalToCents, useFinanceStore } from '../stores/financeStore'
+import { privateCurrencyCents } from '../services/currency'
 import type {
   AutomaticReserveRule, MonthlyReserveRule, MoveVaultMoneyInput, NewVaultInput, UpdateVaultInput,
   Vault, VaultMovementType,
@@ -25,7 +26,7 @@ const confirmingRemoval = ref<Vault | null>(null)
 const removing = ref(false)
 const totalProjectedYieldCents = computed(() => store.vaults.reduce((total, vault) => total + projectedYield(vault), 0n))
 
-function money(value: bigint) { return store.balanceHidden ? 'R$ •••••' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(centsToDecimal(value))) }
+function money(value: bigint) { return privateCurrencyCents(value, store.preferences.currency, store.balanceHidden) }
 function projectedYield(vault: Vault) { return vault.annualYieldRate ? (decimalToCents(vault.balance) * decimalToCents(vault.annualYieldRate)) / 10_000n : 0n }
 function progress(vault: Vault) { if (!vault.targetAmount) return 0; const target = decimalToCents(vault.targetAmount); return target > 0n ? Math.min(100, Number((decimalToCents(vault.balance) * 10_000n) / target) / 100) : 0 }
 function openMovement(vault: Vault, kind: VaultMovementType) { movingVault.value = vault; movementKind.value = kind }

@@ -53,6 +53,23 @@
   .no-scrollbar::-webkit-scrollbar { display: none; }
 }
 
+/* Protege todos os painéis sobrepostos contra overflow em telas estreitas e
+   mantém o conteúdo alcançável quando o teclado virtual reduz a viewport. */
+:where(.fixed.inset-0) > :is(form, section) {
+  min-width: 0;
+  max-width: 100%;
+  max-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+}
+
+:where(.fixed.inset-0) :is(input:not([type='checkbox']):not([type='radio']), textarea, select) {
+  min-width: 0;
+  max-width: 100%;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     scroll-behavior: auto !important;

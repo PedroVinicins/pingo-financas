@@ -7,7 +7,7 @@ use sqlx::{
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-pub use repository::{DbError, FinanceRepository};
+pub use repository::{AppLockRecord, DbError, FinanceRepository};
 
 #[derive(Clone)]
 pub struct AppState {

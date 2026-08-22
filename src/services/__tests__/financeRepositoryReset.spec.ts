@@ -39,6 +39,7 @@ describe('factory reset on the Web', () => {
       preferences: { ...DEFAULT_PINGO_PREFERENCES, displayName: 'Pedro', themeMode: 'dark' },
     }
     localStorage.setItem('cashew-clone:transactions', '[]')
+    localStorage.setItem('pingo:app-lock:v1', '{"protected":true}')
     localStorage.setItem('another-app:preference', 'preserve-me')
 
     await restoreBackup(data)
@@ -46,5 +47,6 @@ describe('factory reset on the Web', () => {
     expect(JSON.parse(localStorage.getItem('cashew-clone:transactions') ?? '[]')).toEqual(data.transactions)
     expect(JSON.parse(localStorage.getItem('pingo:preferences') ?? '{}')).toMatchObject({ displayName: 'Pedro', themeMode: 'dark' })
     expect(localStorage.getItem('another-app:preference')).toBe('preserve-me')
+    expect(localStorage.getItem('pingo:app-lock:v1')).toBe('{"protected":true}')
   })
 })

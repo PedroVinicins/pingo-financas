@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, watchEffect } from 'vue'
 import {
-  CalendarDays, Check, Building2, Copy, FileText, Link2, Lock, Palette, Plus, QrCode,
-  ReceiptText, Snowflake, Star, Trash2, WalletCards, X, Zap,
+  CalendarDays, Check, Building2, FileText, Link2, Lock, Palette, Plus, QrCode,
+  ReceiptText, Smartphone, Snowflake, Star, Trash2, WalletCards, X, Zap,
 } from 'lucide-vue-next'
 import AddDebitCardModal from '../components/AddDebitCardModal.vue'
 import CardStyleEditor from '../components/CardStyleEditor.vue'
@@ -13,8 +13,9 @@ import AddDigitalWalletItemModal from '../components/AddDigitalWalletItemModal.v
 import AddWalletEntryMenu from '../components/AddWalletEntryMenu.vue'
 import AddTransactionModal from '../components/AddTransactionModal.vue'
 import MediaLightbox from '../components/MediaLightbox.vue'
-import { centsToDecimal, decimalToCents, useFinanceStore } from '../stores/financeStore'
-import { quickExpenseLink } from '../services/quickLaunch'
+import { decimalToCents, useFinanceStore } from '../stores/financeStore'
+import { privateCurrencyCents } from '../services/currency'
+import { quickWalletLink, requestCardHomeShortcut } from '../services/quickLaunch'
 import type { DigitalWalletItem, NewDebitCardInput, NewDigitalWalletItemInput, NewTransactionInput, Transaction, UpdateDebitCardStyleInput } from '../types/finance'
 
 const props = defineProps<{ focusCardId?: string }>()
@@ -26,6 +27,7 @@ const showStyleEditor = ref(false)
 const selectedCardId = ref('')
 const selectedWalletItemId = ref('')
 const copied = ref(false)
+const shortcutBusy = ref(false)
 const showRemoveConfirmation = ref(false)
 const removing = ref(false)
 const manualShortcut = ref('')
@@ -63,8 +65,7 @@ const limitProgress = computed(() => {
 
 function money(value: bigint | null) {
   if (value === null) return '—'
-  if (store.balanceHidden) return 'R$ •••••'
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(centsToDecimal(value)))
+  return privateCurrencyCents(value, store.preferences.currency, store.balanceHidden)
 }
 function selectCard(id: string) { selectedCardId.value = id; selectedWalletItemId.value = '' }
 function selectWalletItem(id: string) { selectedWalletItemId.value = id; selectedCardId.value = '' }
@@ -110,17 +111,30 @@ async function removeCard() {
   } catch (cause) { store.reportError(cause, 'Não foi possível remover o cartão.') }
   finally { removing.value = false }
 }
-async function copyShortcut() {
+async function createHomeShortcut() {
   if (!selectedCard.value) return
+  shortcutBusy.value = true
+  const link = quickWalletLink(selectedCard.value.id)
   try {
-    await navigator.clipboard.writeText(quickExpenseLink(selectedCard.value.id))
+    const result = await requestCardHomeShortcut(selectedCard.value.id, selectedCard.value.name)
+    if (result.requested) {
+      navigator.vibrate?.(45)
+      copied.value = true
+      store.showFeedback(`Confirme no Android para adicionar “${selectedCard.value.name}” à tela inicial.`, 'success')
+      window.setTimeout(() => { copied.value = false }, 2500)
+      return
+    }
+    await navigator.clipboard.writeText(link)
     copied.value = true
-  } catch {
-    manualShortcut.value = quickExpenseLink(selectedCard.value.id)
+    store.showFeedback(result.supported ? 'O launcher não aceitou o atalho; o link da Carteira foi copiado.' : 'Atalho nativo indisponível; o link da Carteira foi copiado.', 'info')
+  } catch (cause) {
+    manualShortcut.value = link
     await nextTick()
     shortcutInput.value?.focus()
     shortcutInput.value?.select()
-    return
+    store.reportError(cause, 'Não foi possível criar o atalho na tela inicial.')
+  } finally {
+    shortcutBusy.value = false
   }
   window.setTimeout(() => { copied.value = false }, 1800)
 }
@@ -201,12 +215,12 @@ function displayDate(value: string) {
           <div class="mt-5 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             <button :disabled="selectedCard.isFrozen" class="col-span-2 flex items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-4 py-3.5 font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 sm:col-auto" @click="emit('quickExpense', selectedCard.id)"><Zap :size="18" fill="currentColor" /> Gasto neste cartão</button>
             <button class="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-3 py-3 text-sm font-bold dark:border-slate-700" @click="showStyleEditor = true"><Palette :size="17" /> Personalizar</button>
-            <button class="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-3 py-3 text-sm font-bold dark:border-slate-700" @click="copyShortcut"><Copy :size="17" /> {{ copied ? 'Copiado' : 'Atalho' }}</button>
+            <button :disabled="shortcutBusy" class="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-3 py-3 text-sm font-bold disabled:opacity-50 dark:border-slate-700" @click="createHomeShortcut"><Smartphone :size="17" /> {{ shortcutBusy ? 'Criando…' : copied ? 'Solicitado' : 'Tela inicial' }}</button>
             <button class="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-3 py-3 text-sm font-bold dark:border-slate-700" @click="toggleFrozen"><Lock :size="17" /> {{ selectedCard.isFrozen ? 'Descongelar' : 'Congelar' }}</button>
             <button v-if="!selectedCard.isDefault" class="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-3 py-3 text-sm font-bold dark:border-slate-700" @click="makeDefault"><Check :size="17" /> Principal</button>
             <button class="grid place-items-center rounded-2xl border border-rose-200 p-3 text-rose-600 dark:border-rose-900" :aria-label="`Remover ${selectedCard.name}`" @click="showRemoveConfirmation = true"><Trash2 :size="17" /></button>
           </div>
-          <p class="mt-3 text-xs text-slate-400">O botão “Atalho” copia um link como <code>pingo://expense?card=...</code> para abrir o app direto neste cartão.</p>
+          <p class="mt-3 text-xs text-slate-400">“Tela inicial” pede ao Android para criar um ícone deste cartão. Ele abre a Carteira diretamente no cartão escolhido.</p>
         </section>
 
         <div class="mt-4 grid gap-4 lg:grid-cols-[1fr_.38fr]">

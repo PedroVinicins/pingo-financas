@@ -1,6 +1,8 @@
 import { isTauriRuntime } from './financeRepository'
-import type { RecurringRule } from '../types/finance'
+import type { CurrencyCode, RecurringRule } from '../types/finance'
+import type { AccountAnalysis } from './accountAnalysis'
 import { localDateKey } from './recurringDates'
+import { formatCurrencyValue, privateCurrencyCents } from './currency'
 
 export type ReminderFrequencyDays = 1 | 3 | 7
 
@@ -14,6 +16,9 @@ const SETTINGS_KEY = 'pingo:notification-settings'
 const REMINDER_ID = 41041
 const TEST_ID = 41042
 const CHANNEL_ID = 'money-reminders'
+const ANALYSIS_CHANNEL_ID = 'account-analysis'
+const ANALYSIS_NOTIFICATION_ID = 41050
+const ANALYSIS_NOTIFICATION_LOG_KEY = 'pingo:analysis-notification-log'
 const RECURRING_NOTIFICATION_LOG_KEY = 'pingo:recurring-notification-log'
 const DEFAULT_SETTINGS: ReminderSettings = {
   enabled: false,
@@ -26,6 +31,11 @@ const reminderMessages = [
   'Já pingou dinheiro na sua conta? Vem atualizar aqui!',
   'Fez uma compra hoje? Registre agora para não esquecer.',
 ]
+
+interface AnalysisNotificationLog {
+  key: string
+  sentAt: string
+}
 
 export function loadReminderSettings(): ReminderSettings {
   try {
@@ -70,16 +80,114 @@ async function hasPermissionWithoutPrompt(): Promise<boolean> {
   return 'Notification' in window && Notification.permission === 'granted'
 }
 
+async function createAnalysisChannel() {
+  if (!isTauriRuntime()) return
+  const { createChannel, Importance, Visibility } = await import('@tauri-apps/plugin-notification')
+  try {
+    await createChannel({
+      id: ANALYSIS_CHANNEL_ID,
+      name: 'Análises da conta',
+      description: 'Problemas e mudanças importantes encontrados nos registros financeiros do Pingo',
+      importance: Importance.High,
+      visibility: Visibility.Private,
+      vibration: true,
+    })
+  } catch {
+    // O canal já pode existir no Android.
+  }
+}
+
+export function analysisNotificationCopy(analysis: AccountAnalysis, currency: CurrencyCode, hidden = false) {
+  const problem = analysis.alerts.find((alert) => alert.severity === 'critical' || alert.severity === 'warning')
+  if (problem) return {
+    title: problem.severity === 'critical' ? 'Pingo · Atenção na sua conta' : 'Pingo · Análise atualizada',
+    body: `${problem.title}: ${problem.message}`,
+  }
+  return {
+    title: 'Pingo · Resumo da análise',
+    body: `Entradas ${privateCurrencyCents(analysis.incomeCents, currency, hidden)} · saídas ${privateCurrencyCents(analysis.expenseCents, currency, hidden)}. ${analysis.alerts[0]?.title ?? 'Confira os detalhes no app.'}`,
+  }
+}
+
+function loadAnalysisNotificationLog(): AnalysisNotificationLog | null {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ANALYSIS_NOTIFICATION_LOG_KEY) ?? 'null') as Partial<AnalysisNotificationLog> | null
+    return parsed?.key && parsed.sentAt ? { key: parsed.key, sentAt: parsed.sentAt } : null
+  } catch { return null }
+}
+
+async function sendAccountAnalysisNotification(
+  analysis: AccountAnalysis,
+  currency: CurrencyCode,
+  options: { requestPermission: boolean; force: boolean; hidden: boolean },
+) {
+  if (!options.force && analysis.transactionCount === 0) return false
+  const permitted = options.requestPermission ? await ensurePermission() : await hasPermissionWithoutPrompt()
+  if (!permitted) {
+    if (options.requestPermission) throw new Error('Permissão de notificações não concedida')
+    return false
+  }
+
+  const now = Date.now()
+  const problem = analysis.alerts.find((alert) => alert.severity === 'critical' || alert.severity === 'warning')
+  const key = problem ? analysis.notificationKey : `${analysis.periodKey}:summary`
+  const log = loadAnalysisNotificationLog()
+  if (!options.force && log) {
+    const elapsed = now - new Date(log.sentAt).getTime()
+    const minimumInterval = problem ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000
+    if (log.key === key && elapsed < minimumInterval) return false
+    if (log.key !== key && elapsed < 4 * 60 * 60 * 1000) return false
+  }
+
+  const copy = analysisNotificationCopy(analysis, currency, options.hidden)
+  if (isTauriRuntime()) {
+    await createAnalysisChannel()
+    const { sendNotification } = await import('@tauri-apps/plugin-notification')
+    sendNotification({
+      id: ANALYSIS_NOTIFICATION_ID,
+      channelId: ANALYSIS_CHANNEL_ID,
+      ...copy,
+      largeBody: copy.body,
+      autoCancel: true,
+    })
+  } else {
+    const notification = new Notification(copy.title, { body: copy.body, tag: 'pingo-account-analysis' })
+    notification.onclick = () => { window.focus(); notification.close() }
+  }
+  localStorage.setItem(ANALYSIS_NOTIFICATION_LOG_KEY, JSON.stringify({ key, sentAt: new Date(now).toISOString() }))
+  return true
+}
+
+export async function enableAnalysisNotifications(analysis: AccountAnalysis, currency: CurrencyCode, hidden = false) {
+  return sendAccountAnalysisNotification(analysis, currency, { requestPermission: true, force: true, hidden })
+}
+
+export async function disableAnalysisNotifications() {
+  if (isTauriRuntime()) {
+    const { cancel } = await import('@tauri-apps/plugin-notification')
+    await cancel([ANALYSIS_NOTIFICATION_ID]).catch(() => undefined)
+  }
+}
+
+export async function maybeNotifyAccountAnalysis(analysis: AccountAnalysis, currency: CurrencyCode, hidden = false) {
+  return sendAccountAnalysisNotification(analysis, currency, { requestPermission: false, force: false, hidden })
+}
+
+export async function sendAnalysisNotificationTest(analysis: AccountAnalysis, currency: CurrencyCode, hidden = false) {
+  return sendAccountAnalysisNotification(analysis, currency, { requestPermission: true, force: true, hidden })
+}
+
 function recurringNotificationId(id: string) {
   let hash = 0
   for (const character of id) hash = ((hash << 5) - hash + character.charCodeAt(0)) | 0
   return 50_000 + Math.abs(hash % 900_000)
 }
 
-function recurringCopy(rule: RecurringRule) {
+export function recurringNotificationCopy(rule: RecurringRule, currency: CurrencyCode) {
+  const amount = formatCurrencyValue(rule.amount, currency)
   return rule.kind === 'income'
-    ? { title: 'Pingo · Opa, já pingou seu salário?', body: `${rule.description} está previsto para hoje. Confirme quando cair.` }
-    : { title: 'Pingo · Se pinga, me lembre de pagar!', body: `${rule.description} vence hoje. Toque para confirmar quando pagar.` }
+    ? { title: 'Pingo · Opa, já pingou?', body: `${rule.description}: ${amount}, previsto para hoje. Confirme quando cair.` }
+    : { title: 'Pingo · Conta para hoje', body: `${rule.description}: ${amount}, vence hoje. Toque para confirmar quando pagar.` }
 }
 
 async function scheduleNativeReminder(frequencyDays: ReminderFrequencyDays) {
@@ -117,7 +225,7 @@ async function scheduleNativeReminder(frequencyDays: ReminderFrequencyDays) {
   })
 }
 
-export async function scheduleRecurringRuleNotification(rule: RecurringRule, requestPermission = false) {
+export async function scheduleRecurringRuleNotification(rule: RecurringRule, currency: CurrencyCode, requestPermission = false) {
   if (!rule.reminderEnabled) return
   const permitted = requestPermission ? await ensurePermission() : await hasPermissionWithoutPrompt()
   if (!permitted) {
@@ -141,7 +249,7 @@ export async function scheduleRecurringRuleNotification(rule: RecurringRule, req
   }
   const id = recurringNotificationId(rule.id)
   await cancel([id]).catch(() => undefined)
-  const copy = recurringCopy(rule)
+  const copy = recurringNotificationCopy(rule, currency)
   sendNotification({
     id,
     channelId: CHANNEL_ID,
@@ -157,7 +265,7 @@ export async function cancelRecurringRuleNotification(ruleId: string) {
   await cancel([recurringNotificationId(ruleId)]).catch(() => undefined)
 }
 
-export async function maybeNotifyDueRecurringRules(rules: RecurringRule[]) {
+export async function maybeNotifyDueRecurringRules(rules: RecurringRule[], currency: CurrencyCode) {
   const enabledRules = rules.filter((rule) => rule.reminderEnabled)
   if (!enabledRules.length || !(await hasPermissionWithoutPrompt())) return
 
@@ -167,7 +275,7 @@ export async function maybeNotifyDueRecurringRules(rules: RecurringRule[]) {
 
   for (const rule of enabledRules) {
     if (log[rule.id] === today) continue
-    const copy = recurringCopy(rule)
+    const copy = recurringNotificationCopy(rule, currency)
     if (isTauriRuntime()) {
       const { sendNotification } = await import('@tauri-apps/plugin-notification')
       sendNotification({ id: recurringNotificationId(rule.id) + 1_000_000, channelId: CHANNEL_ID, ...copy, autoCancel: true })
