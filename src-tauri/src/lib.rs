@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod db;
+pub mod mobile_shortcuts;
 pub mod models;
 pub mod services;
 
@@ -8,9 +9,15 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
-        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_notification::init());
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_biometric::init());
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(mobile_shortcuts::init());
+
+    builder
         .setup(|app| {
             let handle = app.handle().clone();
             let pool = tauri::async_runtime::block_on(db::init(&handle))?;
@@ -60,6 +67,13 @@ pub fn run() {
             commands::settle_recurring_rule,
             commands::delete_recurring_rule,
             commands::import_legacy_app_data,
+            commands::get_app_lock_config,
+            commands::configure_app_lock,
+            commands::verify_app_lock_pin,
+            commands::change_app_lock_pin,
+            commands::set_app_lock_biometric,
+            commands::disable_app_lock,
+            mobile_shortcuts::pin_card_shortcut,
         ])
         .run(tauri::generate_context!())
         .expect("erro ao iniciar a aplicação Tauri");

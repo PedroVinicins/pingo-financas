@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.12.0 — Privacidade que acompanha você
+
+- adiciona Bloqueio do App na abertura e após retorno do segundo plano, com tela de privacidade imediata;
+- integra Face ID, impressão digital e íris pelo sistema nativo, mantendo PIN numérico de 4 a 6 dígitos como alternativa;
+- protege o PIN com Argon2 no SQLite, PBKDF2 no fallback Web e bloqueio temporário após cinco tentativas incorretas;
+- amplia a análise financeira com saldo real, déficit, margem baixa, categorias de entradas e saídas, valores médios, concentração e horários dos gastos;
+- adiciona moeda padrão BRL, USD ou EUR e aplica símbolo e formatação em saldos, históricos, cartões, porquinhos e notificações;
+- mostra o histórico completo de lançamentos do perfil local, sem limitá-lo ao período selecionado;
+- corrige a máscara monetária para digitação natural da direita para a esquerda e protege campos e textos de todos os modais em telas estreitas;
+- enriquece notificações financeiras com descrição, contexto e valores formatados na moeda escolhida;
+- remove completamente os atalhos de voz e recalibra o gesto de agitar para sensores mobile reais;
+- adiciona atalhos Android separados para entrada e saída e permite fixar um cartão da Carteira na tela inicial;
+- atualiza Web/PWA, Tauri e Android para a versão 0.12.0 (`versionCode` 12000).
+
 ## 0.11.0 — Mais simples, mais Pingo
 
 - redesenha a experiência mobile e desktop usando superfícies claras, cartão principal preto e roxo como destaque;
@@ -21,9 +35,8 @@
 - adapta os formulários ao teclado no iOS e ao `adjustResize` no Android, mantendo campos e botões alcançáveis por rolagem;
 - transforma o Resumo em um grid P/M/G que pode ser reordenado por mouse ou toque com animação e salvamento automático;
 - remove avisos flutuantes automaticamente após 3, 4 ou 5 segundos com transição de saída configurável;
-- reúne voz, gesto de agitar, radar diário, limites, cards da tela inicial, lembretes, economia, backup e reset total na Central do Pingo;
+- reúne gesto de agitar, radar diário, limites, cards da tela inicial, lembretes, economia, backup e reset total na Central do Pingo;
 - adiciona saudação por hora local e gesto de agitar com sensibilidade configurável, dois picos de confirmação e proteção contra repetição;
-- permite comandos de voz acionados pelo usuário para abrir novo gasto, Carteira, Porquinhos ou Resumo;
 - usa a imagem escolhida pelo usuário como fundo de um cartão ao vivo e abre o original em um visualizador de tela cheia;
 - adiciona “Enviar para o Porquinho” ao formulário e preserva o patrimônio por meio de uma transferência atômica entre saldo livre e reserva;
 - preserva data e hora de lançamentos manuais e importados no Web e no SQLite;

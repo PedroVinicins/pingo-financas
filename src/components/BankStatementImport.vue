@@ -7,9 +7,12 @@ import type {
 import {
   duplicateStatementRows, parseBankStatementFile, statementFormatLabel,
 } from '../services/bankStatement'
+import { useFinanceStore } from '../stores/financeStore'
+import { formatCurrencyValue } from '../services/currency'
 
 const props = defineProps<{ categories: Category[]; cards: DebitCard[]; transactions: Transaction[]; busy?: boolean }>()
 const emit = defineEmits<{ close: []; import: [input: BankStatementImportInput] }>()
+const store = useFinanceStore()
 const statement = ref<ParsedBankStatement | null>(null)
 const duplicates = ref<boolean[]>([])
 const selected = ref<boolean[]>([])
@@ -40,7 +43,7 @@ const canImport = computed(() => selectedCount.value > 0
   && (!hasIncomes.value || Boolean(incomeCategoryId.value)))
 
 function money(value: string) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value))
+  return formatCurrencyValue(value, store.preferences.currency)
 }
 function date(value: string) {
   return new Intl.DateTimeFormat('pt-BR').format(new Date(`${value}T12:00:00`))

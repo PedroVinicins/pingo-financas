@@ -12,13 +12,13 @@ O Pingo foi desenhado para registrar uma compra em poucos toques.
 - Na Pingo Wallet, **Gasto neste cartão** abre a mesma tela com o cartão escolhido.
 - A descrição é opcional: se ficar vazia, a categoria vira a descrição básica.
 - Na **Central do Pingo**, o usuário pode ativar **Agitar para novo gasto** e escolher a sensibilidade. O gesto funciona enquanto o app está aberto no Resumo, exige dois movimentos rápidos e possui intervalo de segurança contra abertura repetida.
-- Os **Atalhos de voz** aparecem no topo depois de ativados. O microfone só é usado ao tocar no botão e entende “novo gasto”, “carteira”, “porquinhos” e “resumo”.
 
 ## Deep links
 
 O esquema do aplicativo é `pingo://`.
 
 ```text
+pingo://income
 pingo://expense
 pingo://expense?card=<UUID_DO_CARTAO>
 pingo://wallet
@@ -40,10 +40,10 @@ npm run android:shortcuts
 
 O script adiciona quatro atalhos estáticos ao launcher:
 
-- **Novo gasto** → `pingo://expense`
+- **Nova entrada** → `pingo://income`
+- **Nova saída** → `pingo://expense`
 - **Carteira** → `pingo://wallet`
 - **Cofres** → `pingo://vaults`
-- **Resumo** → `pingo://dashboard`
 
 Depois, execute:
 
@@ -55,13 +55,13 @@ Em launchers Android compatíveis, pressione e segure o ícone do Pingo para ace
 
 ## Atalho de um cartão específico
 
-Na tela Carteira, abra um cartão e toque em **Atalho**. O Pingo copia uma URL como:
+Na tela Carteira, abra um cartão e toque em **Tela inicial**. O Android pedirá confirmação para fixar um ícone próprio desse cartão. Ao tocar nele, o Pingo abre a Carteira com o cartão já selecionado:
 
 ```text
-pingo://expense?card=84d...
+pingo://wallet?card=84d...
 ```
 
-Ela pode ser usada em um launcher/automação para abrir o registro de gasto com aquele cartão já selecionado.
+Em launchers sem suporte a atalhos fixados, o Pingo copia esse endereço como alternativa.
 
 ## iPhone / iOS
 

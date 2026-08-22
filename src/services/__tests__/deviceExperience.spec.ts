@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { greetingForHour, interpretVoiceShortcut, ShakeDetector } from '../deviceExperience'
+import { greetingForHour, ShakeDetector } from '../deviceExperience'
 
 describe('device experience', () => {
   it('uses the local-hour greeting boundaries', () => {
@@ -18,11 +18,10 @@ describe('device experience', () => {
     expect(detector.register({ x: -25, y: 0, z: 9 }, 700)).toBe(false)
   })
 
-  it('understands the supported Portuguese voice routes', () => {
-    expect(interpretVoiceShortcut('registrar novo gasto')).toBe('expense')
-    expect(interpretVoiceShortcut('abrir meus porquinhos')).toBe('vaults')
-    expect(interpretVoiceShortcut('mostrar carteira')).toBe('wallet')
-    expect(interpretVoiceShortcut('qualquer outra coisa')).toBeNull()
+  it('recognizes realistic movements at medium sensitivity', () => {
+    const detector = new ShakeDetector('medium')
+    expect(detector.register({ x: 0, y: 0, z: 9.8 }, 0)).toBe(false)
+    expect(detector.register({ x: 8, y: 8, z: 3 }, 120)).toBe(false)
+    expect(detector.register({ x: -7, y: -7, z: 14 }, 420)).toBe(true)
   })
 })
-

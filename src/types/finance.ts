@@ -24,15 +24,16 @@ export type BankPaymentMethod = 'pix' | 'debit' | 'credit' | 'card' | 'unknown'
 export type ShakeSensitivity = 'low' | 'medium' | 'high'
 export type FeedbackDurationMs = 3000 | 4000 | 5000
 export type ThemeMode = 'light' | 'dark' | 'system'
+export type CurrencyCode = 'BRL' | 'USD' | 'EUR'
 
 export interface PingoPreferences {
   displayName: string
   themeMode: ThemeMode
   monthlyBudget: string | null
+  currency: CurrencyCode
   billsDueNotifications: boolean
   weeklySummaryNotifications: boolean
   expenseReminderNotifications: boolean
-  voiceShortcutsEnabled: boolean
   shakeToExpenseEnabled: boolean
   shakeSensitivity: ShakeSensitivity
   dailySpendingAlertsEnabled: boolean
@@ -309,6 +310,7 @@ export interface TransactionFilters {
 
 export type QuickLaunchAction =
   | { type: 'expense'; cardId?: string }
+  | { type: 'income' }
   | { type: 'wallet'; cardId?: string }
   | { type: 'vaults' }
   | { type: 'dashboard' }

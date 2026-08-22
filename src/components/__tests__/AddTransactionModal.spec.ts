@@ -13,6 +13,15 @@ const expenseCategory: Category = {
   createdAt: '2026-08-12T12:00:00Z',
 }
 
+const incomeCategory: Category = {
+  id: 'salary',
+  kind: 'income',
+  name: 'Salário',
+  icon: 'banknote',
+  color: '#10B981',
+  createdAt: '2026-08-12T12:00:00Z',
+}
+
 const vault: Vault = {
   id: 'vault-one', name: 'Emergência', institution: 'Pingo', type: 'piggy_bank',
   balance: '100.00', targetAmount: '1000.00', annualYieldRate: null, color: '#10B981', emoji: '🐷',
@@ -20,6 +29,24 @@ const vault: Vault = {
 }
 
 describe('AddTransactionModal', () => {
+  it('abre Entrada com categoria de receita e salva o tipo correto', async () => {
+    const wrapper = mount(AddTransactionModal, {
+      props: { categories: [expenseCategory, incomeCategory], cards: [], initialKind: 'income' },
+      global: { plugins: [createPinia()] },
+    })
+
+    expect(wrapper.find('input[placeholder="Ex.: Salário de agosto"]').exists()).toBe(true)
+    const category = wrapper.findAll('select').find((select) => select.text().includes('Salário'))
+    expect((category?.element as HTMLSelectElement).value).toBe('salary')
+    await wrapper.get('input[placeholder="0,00"]').setValue('2500,00')
+    await wrapper.get('input[placeholder="Ex.: Salário de agosto"]').setValue('Salário')
+    await wrapper.get('form').trigger('submit')
+
+    expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({
+      kind: 'income', categoryId: 'salary', debitCardId: null, amount: '2500.00',
+    })
+  })
+
   it('abre a ação rápida com tipo e fluxo solicitados', () => {
     const wrapper = mount(AddTransactionModal, {
       props: {
