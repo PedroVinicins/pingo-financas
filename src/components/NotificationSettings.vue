@@ -53,8 +53,8 @@ async function test() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[80] flex items-end bg-slate-950/50 sm:items-center sm:justify-center sm:p-4" @click.self="emit('close')">
-    <section class="w-full rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-md sm:rounded-[2rem] sm:p-6">
+  <div class="pingo-modal-backdrop fixed inset-0 z-[80] flex items-end bg-slate-950/50 sm:items-center sm:justify-center sm:p-4" @click.self="emit('close')">
+    <section class="pingo-modal-panel w-full rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-md sm:rounded-[2rem] sm:p-6">
       <div class="flex items-start justify-between gap-3">
         <div class="flex items-start gap-3">
           <div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"><Bell :size="21" /></div>

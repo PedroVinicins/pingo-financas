@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ArrowDownLeft, ArrowUpRight, Pencil, ReceiptText } from 'lucide-vue-next'
+import { Pencil, ReceiptText } from 'lucide-vue-next'
 import type { Category, DebitCard, Transaction } from '../types/finance'
 import { useFinanceStore } from '../stores/financeStore'
 import { formatCurrencyValue } from '../services/currency'
+import CategoryIcon from './CategoryIcon.vue'
 
 const props = withDefaults(defineProps<{
   transactions: Transaction[]
@@ -22,6 +23,10 @@ function money(value: string) {
 
 function categoryName(categoryId: string | null) {
   return props.categories.find((category) => category.id === categoryId)?.name ?? 'Sem categoria'
+}
+
+function categoryFor(categoryId: string | null) {
+  return props.categories.find((category) => category.id === categoryId) ?? null
 }
 
 function cardName(cardId: string | null) {
@@ -45,15 +50,9 @@ function shortDate(value: string, occurredAt: string | null) {
     <article
       v-for="transaction in transactions"
       :key="transaction.id"
-      class="grid min-w-0 grid-cols-[2.75rem_minmax(0,1fr)_2.5rem] items-center gap-3 overflow-hidden rounded-[1.25rem] border border-line bg-surface p-3.5 sm:grid-cols-[2.75rem_minmax(0,1fr)_minmax(6rem,auto)_2.5rem] sm:p-4"
+      class="soft-shadow grid min-h-[82px] min-w-0 grid-cols-[2.75rem_minmax(0,1fr)_2.5rem] items-center gap-3 overflow-hidden rounded-[20px] border border-line bg-surface p-3.5 sm:grid-cols-[2.75rem_minmax(0,1fr)_minmax(6rem,auto)_2.5rem] sm:px-4 sm:py-3"
     >
-      <div
-        class="grid size-11 shrink-0 place-items-center rounded-2xl"
-        :class="transaction.kind === 'income' ? 'bg-brand-soft text-brand' : 'bg-muted text-ink'"
-      >
-        <ArrowDownLeft v-if="transaction.kind === 'income'" :size="19" />
-        <ArrowUpRight v-else :size="19" />
-      </div>
+      <CategoryIcon :category="categoryFor(transaction.categoryId)" :kind="transaction.kind" :size="19" />
 
       <div class="min-w-0 overflow-hidden">
         <div class="flex min-w-0 items-start gap-2 sm:block">

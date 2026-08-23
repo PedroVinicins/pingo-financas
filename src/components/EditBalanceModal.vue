@@ -19,8 +19,8 @@ function submit() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[85] flex items-end bg-slate-950/55 sm:items-center sm:justify-center sm:p-4" @click.self="emit('close')">
-    <form class="min-w-0 w-full max-w-full rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-md sm:rounded-[2rem] sm:p-6" @submit.prevent="submit">
+  <div class="pingo-modal-backdrop fixed inset-0 z-[85] flex items-end bg-slate-950/55 sm:items-center sm:justify-center sm:p-4" @click.self="emit('close')">
+    <form class="pingo-modal-panel min-w-0 w-full max-w-full rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-md sm:rounded-[2rem] sm:p-6" @submit.prevent="submit">
       <div class="flex min-w-0 items-start justify-between gap-3">
         <div class="flex min-w-0 items-start gap-3"><div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950"><Landmark :size="21" /></div><div class="min-w-0"><p class="text-sm font-bold text-emerald-600">Correção segura</p><h2 class="break-words text-xl font-black">Editar saldo da conta</h2></div></div>
         <button type="button" class="grid size-10 shrink-0 place-items-center rounded-xl bg-slate-100 dark:bg-slate-800" aria-label="Fechar" @click="emit('close')"><X :size="19" /></button>

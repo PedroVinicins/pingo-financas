@@ -19,7 +19,7 @@ import { DASHBOARD_WIDGETS } from '../services/dashboardLayout'
 import { analyzeAccount } from '../services/accountAnalysis'
 import { requestMotionPermission } from '../services/deviceExperience'
 import { localizedDecimalToStorage, storageDecimalToLocalized } from '../services/localizedNumber'
-import { currencySymbol, formatCurrencyValue, privateCurrencyCents, SUPPORTED_CURRENCIES } from '../services/currency'
+import { currencySymbol, privateCurrencyCents, SUPPORTED_CURRENCIES } from '../services/currency'
 import {
   disableAnalysisNotifications, disableMoneyReminders, enableAnalysisNotifications,
   enableMoneyReminders, loadReminderSettings, sendAnalysisNotificationTest, type ReminderFrequencyDays,
@@ -50,12 +50,6 @@ const reminderSettings = ref(loadReminderSettings())
 const reminderFrequency = ref<ReminderFrequencyDays>(reminderSettings.value.frequencyDays)
 
 const displayName = computed(() => store.preferences.displayName || 'Você')
-const expenseCategories = computed(() => store.categories.filter((item) => item.kind === 'expense').length)
-const incomeCategories = computed(() => store.categories.filter((item) => item.kind === 'income').length)
-const walletCount = computed(() => store.debitCards.length + store.digitalWalletItems.length)
-const monthlyBudgetLabel = computed(() => store.preferences.monthlyBudget
-  ? formatCurrencyValue(store.preferences.monthlyBudget, store.preferences.currency)
-  : 'Não definido')
 const currentAnalysis = computed(() => {
   const now = new Date()
   return analyzeAccount({
@@ -211,11 +205,8 @@ onBeforeUnmount(() => window.removeEventListener(APP_LOCK_CHANGED_EVENT, appLock
             <SettingsRow label="Privacidade do saldo" description="Oculta valores sem alterar o espaço do layout."><template #control><AppSwitch :model-value="store.balanceHidden" label="Ocultar valores financeiros" @update:model-value="store.toggleBalanceVisibility" /></template></SettingsRow>
           </SettingsGroup>
 
-          <SettingsGroup title="Registro">
-            <SettingsRow label="Categorias de gasto" :value="`${expenseCategories} ativas`" />
-            <SettingsRow label="Categorias de receita" :value="`${incomeCategories} ativas`" />
-            <SettingsRow label="Carteiras" :value="`${walletCount} ativas`" />
-            <SettingsRow label="Moeda padrão" :description="`Valores exibidos em ${monthlyBudgetLabel === 'Não definido' ? currencySymbol(store.preferences.currency) : monthlyBudgetLabel}.`">
+          <SettingsGroup title="Moeda">
+            <SettingsRow label="Moeda padrão" description="Define como todos os valores são exibidos no Pingo.">
               <template #control><select :value="store.preferences.currency" class="h-10 max-w-40 cursor-pointer rounded-xl border border-line bg-canvas px-2 text-sm font-semibold" aria-label="Moeda padrão" @click.stop @change="setCurrency(($event.target as HTMLSelectElement).value as CurrencyCode)"><option v-for="currency in SUPPORTED_CURRENCIES" :key="currency.code" :value="currency.code">{{ currency.code }} · {{ currency.symbol }}</option></select></template>
             </SettingsRow>
           </SettingsGroup>
@@ -254,7 +245,7 @@ onBeforeUnmount(() => window.removeEventListener(APP_LOCK_CHANGED_EVENT, appLock
 
         <aside class="grid gap-5 xl:sticky xl:top-8">
           <ProfileCard :name="displayName" @edit="profileDraft = store.preferences.displayName; editingProfile = true" />
-          <article class="pingo-card p-5"><div class="flex items-center gap-3"><span class="grid size-11 place-items-center rounded-2xl bg-brand-soft text-brand"><HardDrive :size="20" /></span><div><h2 class="font-extrabold">{{ isTauriRuntime() ? 'SQLite local' : 'Dados neste navegador' }}</h2><p class="text-xs text-subtle">Seus dados permanecem no aparelho.</p></div></div><div class="mt-5 grid gap-3 text-sm"><p class="flex items-center gap-2"><ShieldCheck :size="17" class="text-brand" /> Importações processadas localmente</p><p class="flex items-center gap-2"><Database :size="17" class="text-brand" /> Sem conexão bancária automática</p><p class="flex items-center gap-2"><Smartphone :size="17" class="text-brand" /> Pingo 0.12.0</p></div></article>
+          <article class="pingo-card p-5"><div class="flex items-center gap-3"><span class="grid size-11 place-items-center rounded-2xl bg-brand-soft text-brand"><HardDrive :size="20" /></span><div><h2 class="font-extrabold">{{ isTauriRuntime() ? 'SQLite local' : 'Dados neste navegador' }}</h2><p class="text-xs text-subtle">Seus dados permanecem no aparelho.</p></div></div><div class="mt-5 grid gap-3 text-sm"><p class="flex items-center gap-2"><ShieldCheck :size="17" class="text-brand" /> Importações processadas localmente</p><p class="flex items-center gap-2"><Database :size="17" class="text-brand" /> Sem conexão bancária automática</p><p class="flex items-center gap-2"><Smartphone :size="17" class="text-brand" /> Pingo 0.13.0</p></div></article>
           <article class="rounded-pingo-lg bg-hero p-5 text-white"><Eye :size="20" class="text-violet-300" /><h2 class="mt-4 font-extrabold">Privacidade primeiro</h2><p class="mt-1 text-sm leading-relaxed text-white/55">Backup e extratos contêm informações financeiras. Guarde os arquivos em um local protegido.</p></article>
         </aside>
       </div>
@@ -262,8 +253,8 @@ onBeforeUnmount(() => window.removeEventListener(APP_LOCK_CHANGED_EVENT, appLock
   </div>
 
   <Teleport to="body">
-    <div v-if="editingProfile" class="fixed inset-0 z-[110] grid place-items-end bg-black/50 sm:place-items-center sm:p-4" @click.self="editingProfile = false">
-      <form class="w-full rounded-t-[2rem] bg-surface p-5 shadow-float sm:max-w-md sm:rounded-[2rem]" @submit.prevent="saveProfile"><div class="flex items-center justify-between"><div><p class="text-sm font-semibold text-brand">Perfil</p><h2 class="text-2xl font-extrabold">Como chamar você?</h2></div><button type="button" class="grid size-11 place-items-center rounded-full bg-muted" aria-label="Fechar" @click="editingProfile = false"><X :size="18" /></button></div><label class="mt-6 grid gap-2 text-sm font-semibold">Nome<input v-model="profileDraft" maxlength="60" autocomplete="name" class="h-12 rounded-xl border border-line bg-canvas px-4" placeholder="Seu nome" /></label><button class="mt-5 min-h-12 w-full rounded-2xl bg-brand font-bold text-white">Salvar perfil</button></form>
+    <div v-if="editingProfile" class="pingo-modal-backdrop fixed inset-0 z-[110] grid place-items-end bg-black/50 sm:place-items-center sm:p-4" @click.self="editingProfile = false">
+      <form class="pingo-modal-panel w-full rounded-t-[2rem] bg-surface p-5 shadow-float sm:max-w-md sm:rounded-[2rem]" @submit.prevent="saveProfile"><div class="flex items-center justify-between"><div><p class="text-sm font-semibold text-brand">Perfil</p><h2 class="text-2xl font-extrabold">Como chamar você?</h2></div><button type="button" class="grid size-11 place-items-center rounded-full bg-muted" aria-label="Fechar" @click="editingProfile = false"><X :size="18" /></button></div><label class="mt-6 grid gap-2 text-sm font-semibold">Nome<input v-model="profileDraft" maxlength="60" autocomplete="name" class="h-12 rounded-xl border border-line bg-canvas px-4" placeholder="Seu nome" /></label><button class="mt-5 min-h-12 w-full rounded-full bg-brand font-bold text-white">Salvar perfil</button></form>
     </div>
   </Teleport>
   <FactoryResetDialog v-if="confirmingReset" :busy="resetting" @cancel="confirmingReset = false" @confirm="factoryReset" />

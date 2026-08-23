@@ -103,8 +103,8 @@ function submit() {
 
 <template>
   <Teleport to="body">
-    <div class="fixed inset-0 z-[100] flex items-end bg-slate-950/65 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-4" @click.self="!busy && emit('close')">
-      <form class="max-h-[94dvh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-3xl sm:rounded-[2rem] sm:p-6" @submit.prevent="submit">
+    <div class="pingo-modal-backdrop fixed inset-0 z-[100] flex items-end bg-slate-950/65 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-4" @click.self="!busy && emit('close')">
+      <form class="pingo-modal-panel max-h-[94dvh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-3xl sm:rounded-[2rem] sm:p-6" @submit.prevent="submit">
         <div class="flex items-start gap-3"><div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-sky-100 text-sky-700 dark:bg-sky-950"><FileSpreadsheet :size="22" /></div><div class="min-w-0 flex-1"><p class="text-sm font-bold text-sky-600">Conferência bancária</p><h2 class="text-xl font-black">Importar extrato</h2><p class="mt-1 text-xs leading-relaxed text-slate-500">CSV, OFX e PDF com texto. A leitura acontece neste dispositivo.</p></div><button type="button" :disabled="busy" class="grid size-10 place-items-center rounded-xl bg-slate-100 disabled:opacity-40 dark:bg-slate-800" aria-label="Fechar" @click="emit('close')"><X :size="18" /></button></div>
 
         <label class="mt-5 grid min-h-32 cursor-pointer place-items-center rounded-2xl border-2 border-dashed border-sky-200 bg-sky-50/60 p-5 text-center dark:border-sky-900 dark:bg-sky-950/20"><span><FileUp class="mx-auto text-sky-600" :size="30" /><strong class="mt-2 block">{{ parsing ? 'Lendo extrato…' : statement ? 'Escolher outro arquivo' : 'Escolher extrato do banco' }}</strong><span class="mt-1 block text-xs text-slate-500">.csv, .txt, .ofx ou .pdf · até 12 MB</span></span><input type="file" class="sr-only" accept=".csv,.txt,.ofx,.pdf,text/csv,text/plain,application/pdf" :disabled="parsing || busy" @change="loadFile" /></label>

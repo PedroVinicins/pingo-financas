@@ -17,7 +17,7 @@ const emit = defineEmits<{
 const error = ref('')
 const form = reactive({
   name: 'Reserva de emergência',
-  institution: 'Banco Inter',
+  institution: '',
   type: 'piggy_bank' as VaultType,
   transferNow: true,
   initialBalance: '',
@@ -75,8 +75,8 @@ function submit() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[70] grid place-items-end bg-slate-950/55 sm:place-items-center sm:p-4" @click.self="emit('close')">
-    <form class="max-h-[94vh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-xl sm:rounded-[2rem] sm:p-6" @submit.prevent="submit">
+  <div class="pingo-modal-backdrop fixed inset-0 z-[70] grid place-items-end bg-slate-950/55 sm:place-items-center sm:p-4" @click.self="emit('close')">
+    <form class="pingo-modal-panel max-h-[94vh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-xl sm:rounded-[2rem] sm:p-6" @submit.prevent="submit">
       <div class="flex items-start justify-between gap-4">
         <div><p class="text-sm font-bold text-amber-600">Pingo Cofres</p><h2 class="text-2xl font-black">Criar novo porquinho</h2></div>
         <button type="button" class="grid size-10 place-items-center rounded-xl bg-slate-100 dark:bg-slate-800" @click="emit('close')"><X :size="19" /></button>
@@ -88,7 +88,7 @@ function submit() {
 
       <div class="mt-5 grid gap-4 sm:grid-cols-2">
         <label class="grid gap-1.5 text-sm font-semibold sm:col-span-2">Nome do cofre<input v-model="form.name" maxlength="50" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" placeholder="Ex.: Reserva de emergência" /></label>
-        <label class="grid gap-1.5 text-sm font-semibold">Banco / instituição<input v-model="form.institution" maxlength="60" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" placeholder="Ex.: Nubank" /></label>
+        <label class="grid gap-1.5 text-sm font-semibold">Banco / instituição<input v-model="form.institution" maxlength="60" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" placeholder="Ex.: Banco Inter" /></label>
         <label class="grid gap-1.5 text-sm font-semibold">Tipo<select v-model="form.type" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700"><option value="piggy_bank">Porquinho</option><option value="box">Caixinha</option><option value="savings">Poupança</option><option value="investment">Investimento</option><option value="cash">Dinheiro físico</option></select></label>
         <label class="grid gap-1.5 text-sm font-semibold">Meta <span class="font-normal text-slate-400">(opcional)</span><LocalizedNumberInput v-model="form.targetAmount" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" placeholder="3.000,00" /></label>
         <label class="grid gap-1.5 text-sm font-semibold sm:col-span-2">Rentabilidade estimada ao ano <span class="font-normal text-slate-400">(opcional)</span><LocalizedNumberInput v-model="form.annualYieldRate" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" placeholder="Ex.: 12,00%" /></label>

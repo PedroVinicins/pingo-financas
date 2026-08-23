@@ -19,8 +19,8 @@ onMounted(() => cancelButton.value?.focus())
 
 <template>
   <Teleport to="body">
-    <div class="fixed inset-0 z-[110] grid place-items-end bg-slate-950/55 p-0 backdrop-blur-[2px] sm:place-items-center sm:p-4" @click.self="!busy && emit('cancel')" @keydown.esc="!busy && emit('cancel')">
-      <section class="w-full rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-md sm:rounded-[2rem] sm:p-6" role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
+    <div class="pingo-modal-backdrop fixed inset-0 z-[110] grid place-items-end bg-slate-950/55 p-0 backdrop-blur-[2px] sm:place-items-center sm:p-4" @click.self="!busy && emit('cancel')" @keydown.esc="!busy && emit('cancel')">
+      <section class="pingo-modal-panel w-full rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-md sm:rounded-[2rem] sm:p-6" role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
         <div class="flex items-start gap-3">
           <div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"><AlertTriangle :size="21" /></div>
           <div class="min-w-0 flex-1"><h2 id="confirm-dialog-title" class="text-xl font-black">{{ title }}</h2><p class="mt-1 text-sm leading-relaxed text-slate-500">{{ message }}</p></div>

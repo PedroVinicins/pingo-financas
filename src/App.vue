@@ -51,6 +51,8 @@ const appLockConfig = ref<AppLockConfig>({ enabled: false, biometricEnabled: fal
 const biometricAvailable = ref(false)
 const biometricLabel = ref('Biometria')
 const systemDark = ref(window.matchMedia('(prefers-color-scheme: dark)').matches)
+const pageSwipeOffset = ref(0)
+const pageSwipeAnimating = ref(false)
 let touchStart: { x: number; y: number; target: EventTarget | null } | null = null
 let removeDeepLinkListener: (() => void) | undefined
 let stopReminderWatcher: (() => void) | undefined
@@ -62,6 +64,7 @@ let removeSystemThemeListener: (() => void) | undefined
 let backgroundedAt: number | null = null
 let retryTimer: number | undefined
 let analysisNotificationTimer: number | undefined
+let pageSwipeTimer: number | undefined
 let biometricPromptOpen = false
 
 const navigationOrder: PrimaryView[] = ['accounts', 'home', 'analytics', 'settings']
@@ -69,6 +72,16 @@ const pageTitle = computed(() => ({ accounts: 'Contas', home: 'Início', analyti
 const displayName = computed(() => store.preferences.displayName || 'Você')
 const isDark = computed(() => store.preferences.themeMode === 'dark'
   || (store.preferences.themeMode === 'system' && systemDark.value))
+const pageSwipeStyle = computed(() => {
+  if (!pageSwipeAnimating.value && pageSwipeOffset.value === 0) return {}
+  return {
+    transform: `translate3d(${pageSwipeOffset.value}px, 0, 0)`,
+    opacity: String(1 - Math.min(Math.abs(pageSwipeOffset.value) / 140, 1) * 0.12),
+    transition: pageSwipeAnimating.value
+      ? 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease-out'
+      : 'none',
+  }
+})
 
 function applyTheme() {
   document.documentElement.classList.toggle('dark', isDark.value)
@@ -88,21 +101,70 @@ function openQuickExpense(cardId?: string) { quickCardId.value = cardId; showQui
 function closeQuickExpense() { showQuickExpense.value = false; quickCardId.value = undefined }
 function handleTouchStart(event: TouchEvent) {
   const point = event.touches[0]
-  touchStart = point ? { x: point.clientX, y: point.clientY, target: event.target } : null
+  const element = event.target instanceof Element ? event.target : null
+  if (!point || element?.closest('input, textarea, select, button, a, [role="slider"], [data-no-page-swipe]')) {
+    touchStart = null
+    return
+  }
+  if (pageSwipeTimer !== undefined) window.clearTimeout(pageSwipeTimer)
+  pageSwipeAnimating.value = false
+  pageSwipeOffset.value = 0
+  touchStart = { x: point.clientX, y: point.clientY, target: event.target }
+}
+function handleTouchMove(event: TouchEvent) {
+  const point = event.touches[0]
+  if (!touchStart || !point) return
+  const deltaX = point.clientX - touchStart.x
+  const deltaY = point.clientY - touchStart.y
+  if (Math.abs(deltaX) < 8 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.1) return
+  const index = navigationOrder.indexOf(activeView.value)
+  const nextIndex = deltaX < 0 ? index + 1 : index - 1
+  const hasDestination = nextIndex >= 0 && nextIndex < navigationOrder.length
+  const resistance = hasDestination ? 0.38 : 0.1
+  pageSwipeOffset.value = Math.max(-110, Math.min(110, deltaX * resistance))
 }
 function handleTouchEnd(event: TouchEvent) {
-  if (!touchStart || event.changedTouches.length === 0) return
+  if (!touchStart || event.changedTouches.length === 0) {
+    pageSwipeAnimating.value = true
+    pageSwipeOffset.value = 0
+    return
+  }
   const origin = touchStart
   touchStart = null
-  const element = origin.target instanceof Element ? origin.target : null
-  if (element?.closest('input, textarea, select, button, a, [role="slider"], [data-no-page-swipe]')) return
   const point = event.changedTouches[0]
   const deltaX = point.clientX - origin.x
   const deltaY = point.clientY - origin.y
-  if (Math.abs(deltaX) < 70 || Math.abs(deltaX) < Math.abs(deltaY) * 1.35) return
+  pageSwipeAnimating.value = true
+  if (Math.abs(deltaX) < 70 || Math.abs(deltaX) < Math.abs(deltaY) * 1.35) {
+    pageSwipeOffset.value = 0
+    return
+  }
   const index = navigationOrder.indexOf(activeView.value)
   const nextIndex = deltaX < 0 ? index + 1 : index - 1
-  if (nextIndex >= 0 && nextIndex < navigationOrder.length) navigate(navigationOrder[nextIndex])
+  if (nextIndex < 0 || nextIndex >= navigationOrder.length) {
+    pageSwipeOffset.value = 0
+    return
+  }
+  pageSwipeOffset.value = deltaX < 0 ? -110 : 110
+  pageSwipeTimer = window.setTimeout(() => {
+    pageSwipeTimer = undefined
+    navigate(navigationOrder[nextIndex])
+    pageSwipeAnimating.value = false
+    pageSwipeOffset.value = deltaX < 0 ? 42 : -42
+    requestAnimationFrame(() => {
+      pageSwipeAnimating.value = true
+      pageSwipeOffset.value = 0
+    })
+  }, 120)
+}
+function handleTouchCancel() {
+  touchStart = null
+  pageSwipeAnimating.value = true
+  pageSwipeOffset.value = 0
+}
+function handlePageSwipeTransitionEnd(event: TransitionEvent) {
+  if (event.propertyName !== 'transform' || pageSwipeOffset.value !== 0) return
+  pageSwipeAnimating.value = false
 }
 function handleLaunch(action: QuickLaunchAction) {
   if (action.type === 'expense') {
@@ -290,6 +352,7 @@ onBeforeUnmount(() => {
   if (recurringWatcher) window.clearInterval(recurringWatcher)
   if (pingoMessageTimer !== undefined) window.clearTimeout(pingoMessageTimer)
   if (analysisNotificationTimer !== undefined) window.clearTimeout(analysisNotificationTimer)
+  if (pageSwipeTimer !== undefined) window.clearTimeout(pageSwipeTimer)
   clearRetryTimer()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   window.removeEventListener(APP_LOCK_CHANGED_EVENT, handleAppLockChange)
@@ -325,8 +388,13 @@ onBeforeUnmount(() => {
       v-else-if="store.initialized"
       id="main-content"
       class="min-w-0 lg:ml-[248px]"
+      :class="pageSwipeOffset !== 0 || pageSwipeAnimating ? 'will-change-transform' : ''"
+      :style="pageSwipeStyle"
       @touchstart.passive="handleTouchStart"
+      @touchmove.passive="handleTouchMove"
       @touchend.passive="handleTouchEnd"
+      @touchcancel.passive="handleTouchCancel"
+      @transitionend="handlePageSwipeTransitionEnd"
     >
       <AccountsView v-if="activeView === 'accounts'" :focus-card-id="walletFocusCardId" :initial-section="accountsSection" @quick-expense="openQuickExpense" />
       <DashboardView v-else-if="activeView === 'home'" @new-transaction="openComposer" @navigate="navigate" />

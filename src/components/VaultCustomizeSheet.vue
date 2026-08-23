@@ -67,8 +67,8 @@ function submit() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[80] flex items-end bg-slate-950/55 sm:items-center sm:justify-center sm:p-4" @click.self="emit('close')">
-    <form class="max-h-[94vh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-[2rem] sm:p-6" @submit.prevent="submit">
+  <div class="pingo-modal-backdrop fixed inset-0 z-[80] flex items-end bg-slate-950/55 sm:items-center sm:justify-center sm:p-4" @click.self="emit('close')">
+    <form class="pingo-modal-panel max-h-[94vh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-[2rem] sm:p-6" @submit.prevent="submit">
       <div class="flex items-start justify-between"><div class="flex gap-3"><div class="grid size-11 place-items-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-950"><Paintbrush :size="21" /></div><div><p class="text-sm font-bold text-amber-600">Do seu jeito</p><h2 class="text-xl font-black">Personalizar porquinho</h2></div></div><button type="button" class="grid size-10 place-items-center rounded-xl bg-slate-100 dark:bg-slate-800" @click="emit('close')"><X :size="19" /></button></div>
 
       <div class="mt-5 rounded-[1.75rem] p-5 text-white shadow-lg" :style="{ background: `linear-gradient(135deg, ${form.color}, ${form.color}B8)` }"><div class="flex items-center justify-between"><span class="text-4xl">{{ form.emoji || '🔐' }}</span><Sparkles :size="26" class="opacity-70" /></div><p class="mt-5 text-xs font-bold text-white/70">MEU COFRE</p><p class="mt-1 text-2xl font-black">{{ form.name || 'Meu porquinho' }}</p><p class="mt-1 text-sm font-semibold text-white/70">{{ form.institution || 'Minha instituição' }}</p></div>

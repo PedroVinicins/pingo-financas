@@ -12,8 +12,13 @@
     --color-text-secondary: 145 145 158;
     --color-border: 232 232 238;
     --color-hero: 23 23 25;
+    --color-hero-muted: 167 167 174;
     --color-primary: 124 58 237;
     --color-primary-soft: 237 233 254;
+    --color-success: 34 197 94;
+    --color-danger: 239 68 68;
+    --radius: 22px;
+    --shadow-soft: 0 16px 44px rgba(21, 21, 26, 0.07);
   }
   :root.dark {
     color-scheme: dark;
@@ -24,16 +29,19 @@
     --color-text-secondary: 164 164 177;
     --color-border: 47 47 57;
     --color-hero: 8 8 10;
+    --color-hero-muted: 164 164 177;
     --color-primary: 167 139 250;
     --color-primary-soft: 46 34 74;
   }
-  html { @apply scroll-smooth; }
+  * { box-sizing: border-box; }
+  html { @apply scroll-smooth bg-canvas; }
   body {
-    @apply min-h-dvh bg-canvas text-ink antialiased;
+    @apply m-0 min-h-dvh bg-canvas text-ink antialiased;
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Inter, system-ui, sans-serif;
     overscroll-behavior-y: none;
   }
   button, input, select, textarea { @apply outline-none; font: inherit; }
+  a { color: inherit; text-decoration: none; }
   button, [role='button'], input, select, textarea { -webkit-tap-highlight-color: transparent; }
   button:focus-visible, [role='button']:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible {
     @apply ring-2 ring-brand ring-offset-2 ring-offset-surface;
@@ -48,7 +56,10 @@
   .touch-pan-x { touch-action: pan-x; }
   .keyboard-aware-modal { overscroll-behavior: contain; }
   .pingo-card { @apply rounded-pingo-lg border border-line bg-surface shadow-card; }
-  .pingo-interactive { @apply transition duration-200 ease-pingo active:scale-[0.985]; }
+  .pingo-interactive { @apply transition duration-200 ease-pingo active:scale-[0.97]; }
+  .soft-shadow { box-shadow: var(--shadow-soft); }
+  .hero-shadow { box-shadow: 0 20px 45px rgba(23, 23, 25, 0.14); }
+  .surface-control { @apply border border-line bg-surface transition duration-200 ease-pingo hover:bg-muted active:scale-[0.97]; }
   .no-scrollbar { scrollbar-width: none; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
 }
@@ -68,6 +79,58 @@
 :where(.fixed.inset-0) :is(input:not([type='checkbox']):not([type='radio']), textarea, select) {
   min-width: 0;
   max-width: 100%;
+}
+
+/* Flex e grid não devem deixar textos longos alargarem cartões ou páginas. */
+#main-content :where(section, article, aside, div, dl, dt, dd) { min-width: 0; }
+#main-content :where(h1, h2, h3, h4, p, dd) { overflow-wrap: anywhere; }
+
+/* Todos os formulários sobrepostos usam a mesma camada, rolagem e área segura.
+   Isso também impede a navegação móvel de cobrir ações no rodapé. */
+.pingo-modal-backdrop {
+  z-index: 120 !important;
+  background: rgba(21, 21, 26, 0.42) !important;
+  backdrop-filter: blur(4px);
+  overscroll-behavior: contain;
+}
+
+.pingo-modal-panel {
+  width: 100%;
+  min-width: 0;
+  max-height: calc(100dvh - env(safe-area-inset-top));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: 30px 30px 0 0 !important;
+  background: rgb(var(--color-surface)) !important;
+  padding-bottom: max(1.25rem, calc(1rem + env(safe-area-inset-bottom))) !important;
+  box-shadow: 0 24px 70px rgba(21, 21, 26, 0.18);
+}
+
+.pingo-modal-footer {
+  position: sticky;
+  bottom: -1.25rem;
+  z-index: 2;
+  margin-inline: -1.25rem;
+  padding: 0.75rem 1.25rem max(1rem, calc(.75rem + env(safe-area-inset-bottom)));
+  background: rgb(var(--color-surface) / 0.96);
+  backdrop-filter: blur(12px);
+}
+
+@media (min-width: 640px) {
+  .pingo-modal-panel {
+    max-height: calc(100dvh - 2rem);
+    border-radius: 30px !important;
+    padding-bottom: 1.5rem !important;
+  }
+  .pingo-modal-footer {
+    position: static;
+    margin-inline: 0;
+    padding: 0;
+    background: transparent;
+    backdrop-filter: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
