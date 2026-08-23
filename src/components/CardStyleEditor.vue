@@ -28,8 +28,8 @@ function submit() { emit('save', { id: props.card.id, colorFrom: form.colorFrom,
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[75] flex items-end bg-slate-950/50 sm:items-center sm:justify-center sm:p-4" @click.self="emit('close')">
-    <form class="max-h-[94vh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 dark:bg-slate-900 sm:max-w-xl sm:rounded-[2rem]" @submit.prevent="submit">
+  <div class="pingo-modal-backdrop fixed inset-0 z-[75] flex items-end bg-slate-950/50 sm:items-center sm:justify-center sm:p-4" @click.self="emit('close')">
+    <form class="pingo-modal-panel max-h-[94vh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 dark:bg-slate-900 sm:max-w-xl sm:rounded-[2rem]" @submit.prevent="submit">
       <div class="flex items-center justify-between"><div><p class="text-sm font-bold text-violet-600">Personalização</p><h2 class="text-2xl font-black">Deixe o cartão com a sua cara</h2></div><button type="button" class="grid size-10 place-items-center rounded-xl bg-slate-100 dark:bg-slate-800" @click="emit('close')"><X :size="19" /></button></div>
       <div class="mx-auto mt-5 max-w-[360px]"><DebitCardVisual :card="preview" /></div>
 
@@ -52,7 +52,7 @@ function submit() { emit('save', { id: props.card.id, colorFrom: form.colorFrom,
       <p class="mt-5 text-sm font-black">Sticker</p>
       <div class="mt-2 grid grid-cols-5 gap-2"><button v-for="emoji in emojis" :key="emoji || 'none'" type="button" class="grid h-12 place-items-center rounded-2xl border text-xl" :class="form.emoji === emoji ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/40' : 'border-slate-200 dark:border-slate-700'" @click="form.emoji = emoji">{{ emoji || '—' }}</button></div>
 
-      <button class="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 py-3.5 font-black text-white dark:bg-white dark:text-slate-950"><Palette :size="18" /> Salvar aparência</button>
+      <button class="mt-6 flex min-h-14 w-full items-center justify-center gap-2 rounded-full bg-brand font-black text-white"><Palette :size="18" /> Salvar aparência</button>
     </form>
   </div>
 </template>

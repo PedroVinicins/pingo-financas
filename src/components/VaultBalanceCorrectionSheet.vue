@@ -20,8 +20,8 @@ function submit() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[82] flex items-end bg-slate-950/60 sm:items-center sm:justify-center sm:p-4" @click.self="emit('close')">
-    <form class="min-w-0 w-full max-w-full rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-md sm:rounded-[2rem] sm:p-6" @submit.prevent="submit">
+  <div class="pingo-modal-backdrop fixed inset-0 z-[82] flex items-end bg-slate-950/60 sm:items-center sm:justify-center sm:p-4" @click.self="emit('close')">
+    <form class="pingo-modal-panel min-w-0 w-full max-w-full rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-md sm:rounded-[2rem] sm:p-6" @submit.prevent="submit">
       <div class="flex min-w-0 items-start justify-between gap-3"><div class="flex min-w-0 gap-3"><div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-950"><CircleDollarSign :size="22" /></div><div class="min-w-0"><p class="truncate text-sm font-bold text-amber-600">{{ vault.name }}</p><h2 class="break-words text-xl font-black">Pingou errado? Corrigir valor</h2></div></div><button type="button" class="grid size-10 shrink-0 place-items-center rounded-xl bg-slate-100 dark:bg-slate-800" aria-label="Fechar" @click="emit('close')"><X :size="18" /></button></div>
       <p class="mt-4 text-sm leading-relaxed text-slate-500">Informe quanto existe de verdade no porquinho. O Pingo transfere apenas a diferença entre a conta principal e o porquinho, sem alterar seu patrimônio total.</p>
       <label class="mt-5 grid min-w-0 gap-1.5 text-sm font-bold">Saldo correto<LocalizedNumberInput v-model="balance" autofocus class="w-full min-w-0 max-w-full rounded-2xl border border-amber-200 bg-transparent px-4 py-4 text-3xl font-black dark:border-amber-900" placeholder="0,00" /></label>

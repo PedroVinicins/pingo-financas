@@ -7,6 +7,7 @@ import {
 import AddTransactionModal from '../components/AddTransactionModal.vue'
 import TransactionList from '../components/TransactionList.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import CategoryIcon from '../components/CategoryIcon.vue'
 import { decimalToCents, useFinanceStore } from '../stores/financeStore'
 import { analyzeAccount } from '../services/accountAnalysis'
 import { privateCurrencyCents } from '../services/currency'
@@ -83,19 +84,20 @@ async function confirmDelete() {
   finally { deleting.value = false }
 }
 function dueDate(value: string) { return value.split('-').reverse().join('/') }
+function categoryFor(id: string | null) { return store.categories.find((item) => item.id === id) ?? null }
 </script>
 
 <template>
   <main class="mx-auto max-w-[1440px] px-5 pb-8 pt-[calc(1.25rem+env(safe-area-inset-top))] sm:px-7 sm:py-8 lg:px-10">
     <section class="relative overflow-hidden rounded-[2rem] bg-hero p-6 text-white shadow-float sm:p-8">
       <div class="absolute right-0 top-0 size-52 rounded-full bg-brand/15 blur-3xl"></div>
-      <div class="relative flex items-start justify-between gap-4">
-        <div>
+      <div class="relative flex min-w-0 items-start justify-between gap-3 sm:gap-4">
+        <div class="min-w-0 flex-1">
           <p class="flex items-center gap-2 text-sm font-bold text-violet-300"><ChartPie :size="17" /> Análises</p>
-          <h2 class="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">Gastos & economias</h2>
+          <h2 class="mt-2 break-words text-3xl font-extrabold tracking-tight sm:text-4xl">Gastos & economias</h2>
           <p class="mt-2 max-w-xl text-sm text-white/55">Descubra para onde o dinheiro foi e quanto conseguiu ficar.</p>
         </div>
-        <button class="hidden shrink-0 items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-950 sm:flex" @click="showModal = true"><Plus :size="18" /> Registrar</button>
+        <button class="pingo-interactive inline-flex size-11 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-white shadow-lg backdrop-blur hover:bg-white/20 sm:h-12 sm:w-auto sm:gap-2 sm:px-4" aria-label="Adicionar lançamento" @click="showModal = true"><span class="grid size-7 place-items-center rounded-xl bg-white text-slate-950"><Plus :size="17" stroke-width="3" /></span><span class="hidden text-sm font-black sm:inline">Novo lançamento</span></button>
       </div>
       <div class="relative mt-6 flex items-start gap-3 rounded-2xl bg-white/10 p-4 backdrop-blur">
         <img src="/pingo-icon.svg" alt="" class="size-11 shrink-0 rounded-2xl" />
@@ -124,10 +126,10 @@ function dueDate(value: string) { return value.split('-').reverse().join('/') }
     </section>
 
     <section class="mt-5 rounded-[1.75rem] border border-line bg-surface p-5 shadow-card sm:p-6">
-      <div class="flex items-start justify-between gap-3"><div><p class="flex items-center gap-2 text-sm font-bold text-brand"><AlertTriangle :size="17" /> Diagnóstico do período</p><h3 class="mt-1 text-xl font-black">O que merece sua atenção</h3><p class="mt-1 text-xs text-subtle">Sinais calculados pelos registros; não são cobranças nem movimentações bancárias.</p></div><span class="rounded-full bg-muted px-3 py-1 text-xs font-bold text-subtle">{{ accountAnalysis.transactionCount }} registros</span></div>
+      <div class="flex min-w-0 items-start justify-between gap-3"><div class="min-w-0 flex-1"><p class="flex items-center gap-2 text-sm font-bold text-brand"><AlertTriangle :size="17" class="shrink-0" /> Diagnóstico do período</p><h3 class="mt-1 break-words text-xl font-black">O que merece sua atenção</h3><p class="mt-1 text-xs text-subtle">Sinais calculados pelos registros; não são cobranças nem movimentações bancárias.</p></div><span class="shrink-0 whitespace-nowrap rounded-full bg-muted px-3 py-1 text-xs font-bold text-subtle">{{ accountAnalysis.transactionCount }} registros</span></div>
       <div class="mt-5 grid gap-3 lg:grid-cols-2">
         <article v-for="alert in accountAnalysis.alerts" :key="alert.id" class="rounded-2xl border p-4" :class="alertClass(alert.severity)">
-          <div class="flex items-start gap-3"><AlertTriangle v-if="alert.severity === 'critical' || alert.severity === 'warning'" :size="18" class="mt-0.5 shrink-0" /><ShieldCheck v-else :size="18" class="mt-0.5 shrink-0" /><div><h4 class="text-sm font-black">{{ alert.title }}</h4><p class="mt-1 text-xs leading-relaxed opacity-80">{{ alert.message }}</p></div></div>
+          <div class="flex min-w-0 items-start gap-3"><AlertTriangle v-if="alert.severity === 'critical' || alert.severity === 'warning'" :size="18" class="mt-0.5 shrink-0" /><ShieldCheck v-else :size="18" class="mt-0.5 shrink-0" /><div class="min-w-0"><h4 class="break-words text-sm font-black">{{ alert.title }}</h4><p class="mt-1 break-words text-xs leading-relaxed opacity-80">{{ alert.message }}</p></div></div>
         </article>
       </div>
       <dl v-if="accountAnalysis.expenseCount" class="mt-5 grid grid-cols-2 gap-3 border-t border-line pt-5 lg:grid-cols-4">
@@ -145,7 +147,7 @@ function dueDate(value: string) { return value.split('-').reverse().join('/') }
           <h4 class="flex items-center gap-2 text-sm font-black text-emerald-600"><ArrowDownLeft :size="17" /> Categorias de entrada · {{ privateMoney(accountAnalysis.incomeCents) }}</h4>
           <div v-if="incomeCategoryRows.length" class="mt-4 grid gap-4">
             <div v-for="row in incomeCategoryRows" :key="row.id">
-              <div class="mb-1.5 flex items-center justify-between gap-3 text-sm"><span class="truncate font-bold">{{ row.name }} <small class="text-subtle">· {{ row.transactionCount }}x</small></span><span class="shrink-0 font-black">{{ privateMoney(row.amountCents) }} · {{ row.percentage.toFixed(0) }}%</span></div>
+              <div class="mb-2 flex min-w-0 items-center gap-2 text-sm"><CategoryIcon :category="categoryFor(row.categoryId)" kind="income" :size="16" /><span class="min-w-0 flex-1 truncate font-bold">{{ row.name }} <small class="text-subtle">· {{ row.transactionCount }}x</small></span><span class="max-w-[48%] shrink-0 truncate text-right font-black" :title="`${privateMoney(row.amountCents)} · ${row.percentage.toFixed(0)}%`">{{ privateMoney(row.amountCents) }} · {{ row.percentage.toFixed(0) }}%</span></div>
               <div class="h-2.5 overflow-hidden rounded-full bg-muted"><div class="h-full rounded-full" :style="{ width: `${row.percentage}%`, backgroundColor: row.color }"></div></div>
             </div>
           </div>
@@ -155,7 +157,7 @@ function dueDate(value: string) { return value.split('-').reverse().join('/') }
           <h4 class="flex items-center gap-2 text-sm font-black text-rose-600"><ArrowUpRight :size="17" /> Categorias de saída · {{ privateMoney(accountAnalysis.expenseCents) }}</h4>
           <div v-if="expenseCategoryRows.length" class="mt-4 grid gap-4">
             <div v-for="row in expenseCategoryRows" :key="row.id">
-              <div class="mb-1.5 flex items-center justify-between gap-3 text-sm"><span class="truncate font-bold">{{ row.name }} <small class="text-subtle">· {{ row.transactionCount }}x</small></span><span class="shrink-0 font-black">{{ privateMoney(row.amountCents) }} · {{ row.percentage.toFixed(0) }}%</span></div>
+              <div class="mb-2 flex min-w-0 items-center gap-2 text-sm"><CategoryIcon :category="categoryFor(row.categoryId)" kind="expense" :size="16" /><span class="min-w-0 flex-1 truncate font-bold">{{ row.name }} <small class="text-subtle">· {{ row.transactionCount }}x</small></span><span class="max-w-[48%] shrink-0 truncate text-right font-black" :title="`${privateMoney(row.amountCents)} · ${row.percentage.toFixed(0)}%`">{{ privateMoney(row.amountCents) }} · {{ row.percentage.toFixed(0) }}%</span></div>
               <div class="h-2.5 overflow-hidden rounded-full bg-muted"><div class="h-full rounded-full" :style="{ width: `${row.percentage}%`, backgroundColor: row.color }"></div></div>
             </div>
           </div>
@@ -165,16 +167,16 @@ function dueDate(value: string) { return value.split('-').reverse().join('/') }
     </section>
 
     <div class="mt-5 grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
-      <section class="rounded-[1.75rem] border border-line bg-surface p-5 shadow-card sm:p-6">
-        <div class="flex items-start justify-between gap-3"><div><p class="flex items-center gap-2 text-sm font-bold text-brand"><Clock3 :size="17" /> Horários das saídas</p><h3 class="text-xl font-black">Quando o dinheiro saiu</h3></div><span class="text-xs font-bold text-subtle">{{ accountAnalysis.expenseCount }} saídas</span></div>
+      <section class="min-w-0 rounded-[1.75rem] border border-line bg-surface p-5 shadow-card sm:p-6">
+        <div class="flex min-w-0 items-start justify-between gap-3"><div class="min-w-0 flex-1"><p class="flex min-w-0 items-center gap-2 text-sm font-bold text-brand"><Clock3 :size="17" class="shrink-0" /><span class="truncate">Horários das saídas</span></p><h3 class="break-words text-xl font-black">Quando o dinheiro saiu</h3></div><span class="shrink-0 whitespace-nowrap text-xs font-bold text-subtle">{{ accountAnalysis.expenseCount }} saídas</span></div>
         <div v-if="timeRows.length" class="mt-5 grid gap-4">
           <div v-for="row in timeRows" :key="row.id">
-            <div class="mb-1.5 flex items-center justify-between gap-3 text-sm"><span class="font-bold">{{ row.label }} <small class="text-subtle">· {{ row.transactionCount }}x</small></span><span class="shrink-0 font-black">{{ privateMoney(row.amountCents) }} · {{ row.percentage.toFixed(0) }}%</span></div>
+            <div class="mb-1.5 flex min-w-0 items-center justify-between gap-3 text-sm"><span class="min-w-0 truncate font-bold">{{ row.label }} <small class="text-subtle">· {{ row.transactionCount }}x</small></span><span class="max-w-[58%] truncate text-right font-black" :title="`${privateMoney(row.amountCents)} · ${row.percentage.toFixed(0)}%`">{{ privateMoney(row.amountCents) }} · {{ row.percentage.toFixed(0) }}%</span></div>
             <div class="h-2.5 overflow-hidden rounded-full bg-muted"><div class="h-full rounded-full bg-brand" :style="{ width: `${row.percentage}%` }"></div></div>
           </div>
         </div>
         <p v-else class="mt-4 rounded-2xl bg-muted p-4 text-sm text-subtle">Registre saídas com data e hora para enxergar os períodos de maior gasto.</p>
-        <div v-if="accountAnalysis.largestExpense" class="mt-5 rounded-2xl border border-line p-4"><p class="text-xs font-bold text-subtle">Maior impacto individual</p><p class="mt-1 truncate font-black">{{ accountAnalysis.largestExpense.description }}</p><p class="mt-1 text-sm text-brand">{{ privateMoney(largestExpenseCents) }} · {{ accountAnalysis.largestExpense.occurredAt?.slice(11, 16) ?? 'hora não informada' }}</p></div>
+        <div v-if="accountAnalysis.largestExpense" class="mt-5 min-w-0 rounded-2xl border border-line p-4"><p class="text-xs font-bold text-subtle">Maior impacto individual</p><p class="mt-1 truncate font-black" :title="accountAnalysis.largestExpense.description">{{ accountAnalysis.largestExpense.description }}</p><p class="mt-1 truncate text-sm text-brand" :title="`${privateMoney(largestExpenseCents)} · ${accountAnalysis.largestExpense.occurredAt?.slice(11, 16) ?? 'hora não informada'}`">{{ privateMoney(largestExpenseCents) }} · {{ accountAnalysis.largestExpense.occurredAt?.slice(11, 16) ?? 'hora não informada' }}</p></div>
       </section>
 
       <section class="rounded-[1.75rem] border border-line bg-surface p-5 shadow-card sm:p-6">
@@ -193,7 +195,6 @@ function dueDate(value: string) { return value.split('-').reverse().join('/') }
     </section>
   </main>
 
-  <button class="fixed bottom-28 right-4 z-30 grid size-14 place-items-center rounded-2xl bg-rose-500 text-white shadow-xl sm:hidden" aria-label="Registrar entrada ou saída" @click="showModal = true"><Plus :size="25" /></button>
   <AddTransactionModal v-if="showModal" :categories="store.categories" :cards="store.debitCards" :transaction="editingTransaction" @close="showModal = false; editingTransaction = null" @save="save" @save-recurring="saveRecurring" @delete="deletingTransaction = $event" />
   <ConfirmDialog v-if="deletingTransaction" title="Excluir transação?" :message="`“${deletingTransaction.description}” será removida e os indicadores do mês serão recalculados.`" confirm-label="Excluir transação" :busy="deleting" @cancel="deletingTransaction = null" @confirm="confirmDelete" />
 </template>

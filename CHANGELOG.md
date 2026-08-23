@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.13.0 — Tudo no lugar
+
+- renova o Início com saldo em destaque, acesso rápido, últimas transações, resumo mensal e navegação coerente entre desktop e celular;
+- corrige a criação e seleção de categorias, inclusive nomes iniciados por P, H e E, sem limitar a lista exibida no Gasto rápido;
+- adiciona ícones semânticos às categorias, como casa, alimentação, transporte, lazer, saúde, educação, compras e fontes de renda;
+- padroniza todos os modais com camada acima da navegação, rolagem interna, área segura e ações alcançáveis em telas pequenas;
+- corrige especificamente o botão de adicionar em Análises que ficava atrás da barra de navegação móvel;
+- aplica a identidade visual violeta, superfícies, sombras e raios da nova interface à Carteira, aos cartões e aos seus estados vazios;
+- deixa blocos do painel acompanharem o toque durante o arraste e dá resposta visual ao gesto lateral entre seções;
+- impede textos, valores e horários de ultrapassarem cartões, gráficos, históricos e painéis sobrepostos;
+- simplifica Ajustes para a escolha de moeda e adiciona confirmações visuais ao criar categorias e concluir transferências;
+- atualiza Web/PWA, Tauri e Android para a versão 0.13.0 (`versionCode` 13000).
+
 ## 0.12.0 — Privacidade que acompanha você
 
 - adiciona Bloqueio do App na abertura e após retorno do segundo plano, com tela de privacidade imediata;

@@ -101,8 +101,8 @@ onMounted(async () => {
 
 <template>
   <Teleport to="body">
-    <div class="fixed inset-0 z-[130] grid place-items-end bg-slate-950/65 backdrop-blur-[2px] sm:place-items-center sm:p-4" @click.self="!busy && emit('close')">
-      <section class="min-w-0 w-full max-w-full rounded-t-[2rem] bg-surface p-5 shadow-2xl sm:max-w-md sm:rounded-[2rem] sm:p-6" role="dialog" aria-modal="true" aria-labelledby="app-lock-settings-title">
+    <div class="pingo-modal-backdrop fixed inset-0 z-[130] grid place-items-end bg-slate-950/65 backdrop-blur-[2px] sm:place-items-center sm:p-4" @click.self="!busy && emit('close')">
+      <section class="pingo-modal-panel min-w-0 w-full max-w-full rounded-t-[2rem] bg-surface p-5 shadow-2xl sm:max-w-md sm:rounded-[2rem] sm:p-6" role="dialog" aria-modal="true" aria-labelledby="app-lock-settings-title">
         <header class="flex min-w-0 items-start gap-3"><span class="grid size-11 shrink-0 place-items-center rounded-2xl bg-brand-soft text-brand"><LockKeyhole :size="21" /></span><div class="min-w-0 flex-1"><p class="text-sm font-bold text-brand">Privacidade local</p><h2 id="app-lock-settings-title" class="break-words text-xl font-extrabold">Bloqueio do aplicativo</h2></div><button :disabled="busy" class="grid size-10 shrink-0 place-items-center rounded-xl bg-muted" aria-label="Fechar" @click="emit('close')"><X :size="18" /></button></header>
 
         <div v-if="loading" class="grid min-h-48 place-items-center text-sm font-bold text-subtle">Conferindo a proteção…</div>

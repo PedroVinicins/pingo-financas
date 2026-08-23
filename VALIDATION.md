@@ -1,21 +1,17 @@
-# Validação do projeto — Pingo v0.12.0
+# Validação do projeto — Pingo v0.13.0
 
 ## Validado neste ambiente
 
-- `npm test`: 62 testes aprovados em 14 arquivos;
+- `npm test`: 64 testes aprovados em 15 arquivos;
 - `npm run build`: TypeScript, Vue e build PWA de produção aprovados;
 - `npm audit --audit-level=high`: nenhuma vulnerabilidade conhecida;
 - `cargo fmt --all -- --check`: aprovado;
 - `cargo test --locked`: 32 testes aprovados (29 no core e 3 de integração);
 - migrations SQLite `0001` até `0010` executadas em sequência nos bancos limpos dos testes;
 - lotes de extrato e transferências de Porquinho validados com rollback/atomicidade;
-- PWA gerado com cache `pingo-shell-v0.12.0`, manifest, ícone e service worker;
-- APK Android ARM64 debug gerado com pacote `com.pedrosilva.financas.debug`;
-- APK confirmado com `versionName` 0.12.0, `versionCode` 12000, `minSdk` 24, `targetSdk` 36 e ABI `arm64-v8a`;
-- APK assinado por certificado Android Debug e verificado com APK Signature Scheme v2;
-- Manifest Android confirmado com permissão biométrica, `windowSoftInputMode="adjustResize"`, backup externo desativado e quatro atalhos do launcher;
-- APK contém somente a biblioteca nativa `libpingo_financas_lib.so` em `arm64-v8a`;
-- SHA-256 do APK: `32d8bc0ba6f9b4d503788096a9ec1754bafc0fad0e56c5a31516ac10f0c1602a`.
+- PWA gerado com cache `pingo-shell-v0.13.0`, manifest, ícone e service worker;
+- configuração Android atualizada para `versionName` 0.13.0 e `versionCode` 13000;
+- manifesto Android mantém permissão biométrica, `windowSoftInputMode="adjustResize"`, backup externo desativado e quatro atalhos do launcher;
 
 ## Testes automatizados
 
@@ -43,16 +39,6 @@
 - hash Argon2 do PIN, limites de tamanho e verificação do Bloqueio do App;
 - período selecionado como fonte única dos indicadores, com histórico completo independente do mês;
 - ações rápidas abertas no tipo e fluxo corretos para gasto, entrada e Porquinho.
-
-## APK gerado
-
-Arquivo:
-
-```text
-src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
-```
-
-Tamanho: 184.056.130 bytes. Esta build é para celulares ARM64 e usa o sufixo `.debug`, portanto pode ser instalada ao lado do pacote de produção.
 
 ## Integração contínua
 

@@ -6,6 +6,7 @@ import { useFinanceStore } from '../stores/financeStore'
 import { localizedDecimalToStorage } from '../services/localizedNumber'
 import { localDateKey, localDateTimeKey } from '../services/recurringDates'
 import LocalizedNumberInput from './LocalizedNumberInput.vue'
+import CategoryIcon from './CategoryIcon.vue'
 import { useKeyboardAwareModal } from '../services/mobileViewport'
 
 const props = defineProps<{
@@ -44,8 +45,7 @@ const quickCategories = computed(() => {
   const ids = [...(props.recentCategoryIds ?? []), ...expenseCategories.value.map((item) => item.id)]
   return [...new Set(ids)]
     .map((id) => expenseCategories.value.find((item) => item.id === id))
-    .filter(Boolean)
-    .slice(0, 5) as Category[]
+    .filter(Boolean) as Category[]
 })
 
 const selectableCards = computed(() => props.cards.filter((card) => !card.isFrozen))
@@ -105,8 +105,8 @@ async function createCategory() {
 </script>
 
 <template>
-  <div class="keyboard-aware-modal fixed inset-0 z-[70] flex items-end bg-slate-950/45 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-4" :style="overlayStyle" @click.self="emit('close')" @focusin="keepFocusedFieldVisible">
-    <form class="w-full overflow-y-auto overscroll-contain rounded-t-[2rem] bg-white px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-[2rem] sm:p-5" :style="contentStyle" @submit.prevent="submit">
+  <div class="pingo-modal-backdrop keyboard-aware-modal fixed inset-0 z-[70] flex items-end bg-slate-950/45 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-4" :style="overlayStyle" @click.self="emit('close')" @focusin="keepFocusedFieldVisible">
+    <form class="pingo-modal-panel w-full overflow-y-auto overscroll-contain rounded-t-[2rem] bg-white px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-[2rem] sm:p-5" :style="contentStyle" @submit.prevent="submit">
       <div class="mx-auto mb-3 h-1.5 w-12 rounded-full bg-slate-200 dark:bg-slate-700 sm:hidden"></div>
       <div class="flex items-center justify-between gap-3">
         <div>
@@ -128,8 +128,8 @@ async function createCategory() {
       <div class="mt-5">
         <p class="text-xs font-black uppercase tracking-[0.12em] text-slate-400">Categoria</p>
         <div class="mt-2 flex gap-2 overflow-x-auto pb-1">
-          <button v-for="category in quickCategories" :key="category.id" type="button" class="shrink-0 rounded-2xl border px-3.5 py-2.5 text-sm font-bold transition" :class="form.categoryId === category.id ? 'border-slate-950 bg-slate-950 text-white dark:border-white dark:bg-white dark:text-slate-950' : 'border-slate-200 dark:border-slate-700'" @click="form.categoryId = category.id">
-            {{ category.name }}
+          <button v-for="category in quickCategories" :key="category.id" type="button" class="flex shrink-0 items-center gap-2 rounded-2xl border px-2.5 py-2 text-sm font-bold transition" :class="form.categoryId === category.id ? 'border-brand bg-brand-soft text-brand' : 'border-line bg-surface'" @click="form.categoryId = category.id">
+            <CategoryIcon :category="category" :size="16" /> {{ category.name }}
           </button>
           <button type="button" class="inline-flex shrink-0 items-center gap-1 rounded-2xl border border-dashed border-emerald-400 px-3.5 py-2.5 text-sm font-black text-emerald-600" @click="showNewCategory = !showNewCategory"><Plus :size="16" /> Nova</button>
         </div>
@@ -156,7 +156,7 @@ async function createCategory() {
 
       <p v-if="formError" class="mt-3 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-950/35 dark:text-rose-300" role="alert">{{ formError }}</p>
 
-      <button class="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-4 py-4 text-base font-black text-slate-950 active:scale-[0.99]">
+      <button class="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-brand px-4 py-4 text-base font-black text-white active:scale-[0.99]">
         <Check :size="20" stroke-width="3" /> Registrar gasto
       </button>
     </form>

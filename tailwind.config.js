@@ -17,11 +17,11 @@ export default {
       },
       borderRadius: {
         pingo: '1.125rem',
-        'pingo-lg': '1.75rem',
+        'pingo-lg': '1.375rem',
       },
       boxShadow: {
-        card: '0 18px 50px rgba(21, 21, 26, 0.07)',
-        float: '0 18px 60px rgba(21, 21, 26, 0.14)',
+        card: '0 16px 44px rgba(21, 21, 26, 0.07)',
+        float: '0 20px 45px rgba(23, 23, 25, 0.14)',
       },
       transitionTimingFunction: {
         pingo: 'cubic-bezier(0.2, 0.8, 0.2, 1)',

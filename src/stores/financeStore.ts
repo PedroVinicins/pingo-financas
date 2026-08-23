@@ -528,6 +528,7 @@ export const useFinanceStore = defineStore('finance', () => {
     const category = await repository.addCategory(input)
     categories.value.push(category)
     categories.value.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+    showFeedback('Categoria adicionada.', 'success')
     return category
   }
   async function deleteTransaction(id: string) {
@@ -597,11 +598,7 @@ export const useFinanceStore = defineStore('finance', () => {
     const index = vaults.value.findIndex((vault) => vault.id === updated.id)
     if (index >= 0) vaults.value[index] = updated
     vaultMovements.value = await repository.listVaultMovements()
-    if (source === 'manual') {
-      pingoMessage.value = input.kind === 'deposit'
-        ? 'Aí sim! Um pingo guardado hoje vira uma poça amanhã. 🐷'
-        : 'O porquinho abriu a porteira. Use com carinho! 😅'
-    }
+    if (source === 'manual') showFeedback('Sua transferência foi feita.', 'success')
     return updated
   }
   async function correctVaultBalance(id: string, balance: string) {

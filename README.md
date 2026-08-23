@@ -8,6 +8,17 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
+## Destaques da versão 0.13.0
+
+- Início redesenhado com saldo, ações rápidas, histórico e resumo mensal na mesma linguagem visual;
+- modais responsivos acima da navegação, com rolagem e área segura para manter as ações sempre alcançáveis;
+- categorias sem limitação por posição e com ícones próprios para casa, alimentação, transporte, saúde, lazer e renda;
+- Carteira e cartões alinhados ao tema violeta, com novos estados, botões, superfícies e sombras;
+- arraste de blocos e gesto lateral com acompanhamento visual do dedo;
+- textos, valores e horários protegidos contra overflow em toda a interface;
+- confirmações ao adicionar categorias e concluir transferências;
+- Android `versionCode` 13000 e cache Web renovado para a nova release.
+
 ## Destaques da versão 0.12.0
 
 - Bloqueio do App com PIN local, Face ID, impressão digital ou íris e proteção ao retornar do segundo plano;

@@ -4,6 +4,7 @@ import { BellRing, CalendarClock, PiggyBank, Plus, ReceiptText, Sparkles, Trash2
 import { useFinanceStore } from '../stores/financeStore'
 import { localizedDecimalToStorage, storageDecimalToLocalized } from '../services/localizedNumber'
 import LocalizedNumberInput from './LocalizedNumberInput.vue'
+import CategoryIcon from './CategoryIcon.vue'
 import { localDateKey } from '../services/recurringDates'
 import { useKeyboardAwareModal } from '../services/mobileViewport'
 import type {
@@ -63,6 +64,7 @@ const categoryError = ref('')
 const formError = ref('')
 const categoryDraft = reactive({ name: '', color: '#10B981' })
 const filteredCategories = computed(() => props.categories.filter((category) => category.kind === form.kind))
+const selectedCategory = computed(() => filteredCategories.value.find((category) => category.id === form.categoryId) ?? null)
 const dayOptions = Array.from({ length: 31 }, (_, index) => index + 1)
 const descriptionPlaceholder = computed(() => {
   if (form.flow === 'recurring') return form.kind === 'income' ? 'Ex.: Salário da Saga' : 'Ex.: Internet ou Netflix'
@@ -142,132 +144,140 @@ function submit() {
 </script>
 
 <template>
-  <div class="keyboard-aware-modal fixed inset-0 z-50 grid place-items-end bg-slate-950/45 p-0 sm:place-items-center sm:p-4" :style="overlayStyle" @click.self="emit('close')" @focusin="keepFocusedFieldVisible">
-    <form class="w-full overflow-y-auto overscroll-contain rounded-t-3xl bg-white p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-3xl sm:pb-5" :style="contentStyle" @submit.prevent="submit">
-      <div class="mb-5 flex items-center justify-between">
-        <div>
-          <p class="text-sm font-medium text-emerald-600">{{ transaction ? 'Correção do histórico' : 'Nova movimentação' }}</p>
-          <h2 class="text-xl font-black">{{ transaction ? 'Editar transação' : 'Adicionar transação' }}</h2>
+  <div class="pingo-modal-backdrop keyboard-aware-modal fixed inset-0 z-50 grid place-items-end bg-[#15151a]/35 p-0 backdrop-blur-[4px] sm:place-items-center sm:p-4" :style="overlayStyle" @click.self="emit('close')" @focusin="keepFocusedFieldVisible">
+    <form class="pingo-modal-panel w-full overflow-y-auto overscroll-contain rounded-t-[30px] border border-line bg-surface p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_24px_70px_rgba(21,21,26,.18)] sm:max-w-[560px] sm:rounded-[30px] sm:p-6" :style="contentStyle" @submit.prevent="submit">
+      <div class="mx-auto mb-4 h-1 w-10 rounded-full bg-line sm:hidden"></div>
+      <div class="mb-6 flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <p class="flex flex-wrap items-center gap-2 text-[13px] font-semibold text-subtle">
+            {{ transaction ? 'Edição do histórico' : 'Registro rápido' }}
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-subtle"><i class="block size-1.5 rounded-full bg-emerald-500"></i> protegido</span>
+          </p>
+          <h2 class="mt-1 truncate text-2xl font-extrabold tracking-tight">{{ transaction ? 'Editar transação' : form.flow === 'vault' ? 'Nova transferência' : form.kind === 'income' ? 'Nova entrada' : 'Novo gasto' }}</h2>
+          <p class="mt-1 text-sm text-subtle">Adicione uma movimentação em poucos segundos.</p>
         </div>
-        <button type="button" class="grid size-10 place-items-center rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800" @click="emit('close')">
-          <X :size="20" />
+        <button type="button" class="pingo-interactive grid size-11 shrink-0 place-items-center rounded-full bg-muted text-subtle" aria-label="Fechar formulário" @click="emit('close')">
+          <X :size="21" />
         </button>
       </div>
 
-      <div v-if="form.flow !== 'vault'" class="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1 dark:bg-slate-800">
-        <button type="button" class="rounded-xl px-3 py-2 text-sm font-bold" :class="form.kind === 'expense' ? 'bg-white shadow-sm dark:bg-slate-700' : ''" @click="form.kind = 'expense'">Despesa</button>
-        <button type="button" class="rounded-xl px-3 py-2 text-sm font-bold" :class="form.kind === 'income' ? 'bg-white shadow-sm dark:bg-slate-700' : ''" @click="form.kind = 'income'">Entrada</button>
+      <div v-if="form.flow !== 'vault'" class="grid grid-cols-2 gap-1 rounded-2xl bg-muted p-1">
+        <button type="button" class="min-h-11 rounded-xl px-3 text-[13px] font-bold text-subtle" :class="form.kind === 'expense' ? 'bg-surface text-brand shadow-sm' : ''" @click="form.kind = 'expense'">Gasto</button>
+        <button type="button" class="min-h-11 rounded-xl px-3 text-[13px] font-bold text-subtle" :class="form.kind === 'income' ? 'bg-surface text-brand shadow-sm' : ''" @click="form.kind = 'income'">Entrada</button>
       </div>
 
-      <section v-if="!transaction" class="mt-4">
-        <p class="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">Como o Pingo deve cuidar disso?</p>
+      <section v-if="!transaction" class="mt-5">
+        <p class="mb-2 text-xs font-bold uppercase tracking-wider text-subtle">Como o Pingo deve cuidar disso?</p>
         <div class="grid grid-cols-3 gap-2">
-          <button type="button" class="rounded-2xl border p-3 text-left transition" :class="form.flow === 'transaction' ? 'border-emerald-400 bg-emerald-50 text-emerald-950 dark:bg-emerald-950/35 dark:text-emerald-100' : 'border-slate-200 dark:border-slate-700'" @click="form.flow = 'transaction'">
+          <button type="button" class="rounded-2xl border p-3 text-left transition" :class="form.flow === 'transaction' ? 'border-brand bg-brand-soft text-brand' : 'border-line bg-surface'" @click="form.flow = 'transaction'">
             <ReceiptText :size="19" />
             <strong class="mt-2 block text-sm">Só desta vez</strong>
-            <span class="mt-0.5 block text-[11px] text-slate-500">Altera o saldo agora</span>
+            <span class="mt-0.5 block text-[11px] text-subtle">Altera o saldo agora</span>
           </button>
-          <button type="button" class="relative overflow-hidden rounded-2xl border p-3 text-left transition" :class="form.flow === 'recurring' ? 'border-violet-400 bg-violet-50 text-violet-950 dark:bg-violet-950/35 dark:text-violet-100' : 'border-slate-200 dark:border-slate-700'" @click="form.flow = 'recurring'">
-            <Sparkles class="absolute right-2 top-2 text-violet-400" :size="15" />
+          <button type="button" class="relative overflow-hidden rounded-2xl border p-3 text-left transition" :class="form.flow === 'recurring' ? 'border-brand bg-brand-soft text-brand' : 'border-line bg-surface'" @click="form.flow = 'recurring'">
+            <Sparkles class="absolute right-2 top-2 text-brand" :size="15" />
             <CalendarClock :size="19" />
             <strong class="mt-2 block text-sm">Piloto mensal</strong>
-            <span class="mt-0.5 block text-[11px] text-slate-500">O Pingo lembra todo mês</span>
+            <span class="mt-0.5 block text-[11px] text-subtle">O Pingo lembra todo mês</span>
           </button>
-          <button type="button" class="rounded-2xl border p-3 text-left transition" :class="form.flow === 'vault' ? 'border-amber-400 bg-amber-50 text-amber-950 dark:bg-amber-950/35 dark:text-amber-100' : 'border-slate-200 dark:border-slate-700'" @click="form.flow = 'vault'">
+          <button type="button" class="rounded-2xl border p-3 text-left transition" :class="form.flow === 'vault' ? 'border-brand bg-brand-soft text-brand' : 'border-line bg-surface'" @click="form.flow = 'vault'">
             <PiggyBank :size="19" />
             <strong class="mt-2 block text-sm">Porquinho</strong>
-            <span class="mt-0.5 block text-[11px] text-slate-500">Protege uma parte do saldo</span>
+            <span class="mt-0.5 block text-[11px] text-subtle">Protege uma parte do saldo</span>
           </button>
         </div>
       </section>
 
       <div class="mt-5 grid gap-4 sm:grid-cols-2">
-        <label class="grid gap-1.5 text-sm font-semibold">
+        <label class="grid gap-2 text-[13px] font-bold text-brand sm:col-span-2">
           Valor
-          <LocalizedNumberInput v-model="form.amount" placeholder="0,00" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" />
+          <LocalizedNumberInput v-model="form.amount" placeholder="0,00" class="min-h-[68px] rounded-2xl border border-line bg-surface px-4 text-[30px] font-extrabold tracking-[-.04em] text-ink outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft" />
         </label>
-        <label v-if="form.flow === 'transaction' || transaction" class="grid gap-1.5 text-sm font-semibold">
+        <label v-if="form.flow === 'transaction' || transaction" class="grid gap-2 text-[13px] font-bold">
           Data
-          <input v-model="form.date" type="date" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" />
+          <input v-model="form.date" type="date" class="min-h-[52px] rounded-2xl border border-line bg-muted px-4 outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft" />
         </label>
-        <label v-if="form.flow === 'transaction' || transaction" class="grid gap-1.5 text-sm font-semibold">
+        <label v-if="form.flow === 'transaction' || transaction" class="grid gap-2 text-[13px] font-bold">
           Hora
-          <input v-model="form.time" type="time" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" />
+          <input v-model="form.time" type="time" class="min-h-[52px] min-w-0 rounded-2xl border border-line bg-muted px-4 outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft" />
         </label>
-        <label v-if="form.flow !== 'vault'" class="grid gap-1.5 text-sm font-semibold sm:col-span-2">
+        <label v-if="form.flow !== 'vault'" class="grid gap-2 text-[13px] font-bold sm:col-span-2">
           Descrição
-          <input v-model="form.description" maxlength="160" :placeholder="descriptionPlaceholder" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700" />
+          <input v-model="form.description" maxlength="160" :placeholder="descriptionPlaceholder" class="min-h-[52px] rounded-2xl border border-line bg-muted px-4 outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft" />
         </label>
-        <div v-if="form.flow !== 'vault'" class="grid gap-1.5 text-sm font-semibold">
+        <div v-if="form.flow !== 'vault'" class="grid gap-2 text-[13px] font-bold">
           <div class="flex items-center justify-between gap-2">
             <span>Categoria de {{ form.kind === 'income' ? 'entrada' : 'despesa' }}</span>
-            <button type="button" class="inline-flex items-center gap-1 text-xs font-black text-emerald-600" @click="showNewCategory = !showNewCategory">
+            <button type="button" class="inline-flex items-center gap-1 text-xs font-extrabold text-brand" @click="showNewCategory = !showNewCategory">
               <Plus :size="14" /> Nova
             </button>
           </div>
-          <select v-model="form.categoryId" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700">
-            <option value="" disabled>Selecione</option>
-            <option v-for="category in filteredCategories" :key="category.id" :value="category.id">{{ category.name }}</option>
-          </select>
+          <div class="flex min-w-0 items-center gap-2">
+            <CategoryIcon :category="selectedCategory" :kind="form.kind" :size="18" />
+            <select v-model="form.categoryId" class="min-h-[52px] min-w-0 flex-1 rounded-2xl border border-line bg-muted px-4 outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft">
+              <option value="" disabled>Selecione</option>
+              <option v-for="category in filteredCategories" :key="category.id" :value="category.id">{{ category.name }}</option>
+            </select>
+          </div>
         </div>
-        <label v-if="form.flow === 'transaction' || transaction" class="grid gap-1.5 text-sm font-semibold">
+        <label v-if="form.flow === 'transaction' || transaction" class="grid gap-2 text-[13px] font-bold">
           Natureza
-          <select v-model="form.recurrence" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700">
+          <select v-model="form.recurrence" class="min-h-[52px] rounded-2xl border border-line bg-muted px-4 outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft">
             <option value="variable">Variável</option>
             <option value="fixed">Fixa</option>
           </select>
         </label>
-        <label v-else-if="form.flow === 'recurring'" class="grid gap-1.5 text-sm font-semibold">
+        <label v-else-if="form.flow === 'recurring'" class="grid gap-2 text-[13px] font-bold">
           Dia do mês
-          <select v-model.number="form.dayOfMonth" class="rounded-xl border border-violet-200 bg-transparent px-3 py-2.5 dark:border-violet-800">
+          <select v-model.number="form.dayOfMonth" class="min-h-[52px] rounded-2xl border border-line bg-muted px-4 outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft">
             <option :value="0" disabled>Escolha o vencimento</option>
             <option v-for="day in dayOptions" :key="day" :value="day">Dia {{ day }}</option>
           </select>
         </label>
-        <label v-if="form.kind === 'expense' && form.flow !== 'vault'" class="grid gap-1.5 text-sm font-semibold sm:col-span-2">
+        <label v-if="form.kind === 'expense' && form.flow !== 'vault'" class="grid gap-2 text-[13px] font-bold sm:col-span-2">
           Meio de pagamento
-          <select v-model="form.debitCardId" class="rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 dark:border-slate-700">
+          <select v-model="form.debitCardId" class="min-h-[52px] rounded-2xl border border-line bg-muted px-4 outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft">
             <option value="">Saldo / PIX / dinheiro</option>
             <option v-for="card in props.cards" :key="card.id" :value="card.id" :disabled="card.isFrozen">
               {{ card.name }} · {{ card.issuer }} · •••• {{ card.lastFour }}{{ card.isFrozen ? ' (congelado)' : '' }}
             </option>
           </select>
-          <span class="text-xs font-normal text-slate-500">O cartão apenas identifica a compra; o valor sai do mesmo saldo da conta.</span>
+          <span class="text-xs font-normal text-subtle">O cartão apenas identifica a compra; o valor sai do mesmo saldo da conta.</span>
         </label>
-        <label v-if="!transaction && form.flow === 'vault'" class="grid gap-1.5 text-sm font-semibold sm:col-span-2">
+        <label v-if="!transaction && form.flow === 'vault'" class="grid gap-2 text-[13px] font-bold sm:col-span-2">
           Porquinho de destino
-          <select v-model="form.vaultId" class="rounded-xl border border-amber-200 bg-transparent px-3 py-2.5 dark:border-amber-800">
+          <select v-model="form.vaultId" class="min-h-[52px] rounded-2xl border border-line bg-muted px-4 outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft">
             <option value="" disabled>{{ vaults.length ? 'Escolha o Porquinho' : 'Nenhum Porquinho criado' }}</option>
             <option v-for="vault in vaults" :key="vault.id" :value="vault.id">{{ vault.emoji ?? '🐷' }} {{ vault.name }} · {{ vault.institution }}</option>
           </select>
-          <span class="text-xs font-normal text-slate-500">O valor sai do saldo disponível e entra na reserva na mesma operação. Seu patrimônio total não muda.</span>
+          <span class="text-xs font-normal text-subtle">O valor sai do saldo disponível e entra na reserva na mesma operação. Seu patrimônio total não muda.</span>
         </label>
-        <div v-if="showNewCategory && form.flow !== 'vault'" class="grid gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/30 sm:col-span-2">
+        <div v-if="showNewCategory && form.flow !== 'vault'" class="grid gap-3 rounded-2xl border border-brand/25 bg-brand-soft p-4 sm:col-span-2">
           <div>
-            <p class="font-black">Nova categoria de {{ form.kind === 'income' ? 'entrada' : 'despesa' }}</p>
-            <p class="text-xs font-normal text-slate-500">Ela ficará disponível nos próximos lançamentos.</p>
+            <p class="font-extrabold">Nova categoria de {{ form.kind === 'income' ? 'entrada' : 'despesa' }}</p>
+            <p class="text-xs font-normal text-subtle">Ela ficará disponível nos próximos lançamentos.</p>
           </div>
           <div class="grid grid-cols-[1fr_auto] gap-2">
-            <input v-model="categoryDraft.name" maxlength="40" :placeholder="form.kind === 'income' ? 'Ex.: Comissão' : 'Ex.: Academia'" class="min-w-0 rounded-xl border border-emerald-200 bg-white px-3 py-2.5 dark:border-emerald-900 dark:bg-slate-900" @keyup.enter.prevent="createCategory" />
-            <input v-model="categoryDraft.color" type="color" class="h-11 w-12 rounded-xl border border-emerald-200 bg-white p-1 dark:border-emerald-900 dark:bg-slate-900" aria-label="Cor da categoria" />
+            <input v-model="categoryDraft.name" maxlength="40" :placeholder="form.kind === 'income' ? 'Ex.: Comissão' : 'Ex.: Academia'" class="min-h-11 min-w-0 rounded-xl border border-brand/25 bg-surface px-3 outline-none focus:border-brand" @keyup.enter.prevent="createCategory" />
+            <input v-model="categoryDraft.color" type="color" class="h-11 w-12 rounded-xl border border-brand/25 bg-surface p-1" aria-label="Cor da categoria" />
           </div>
           <p v-if="categoryError" class="text-xs font-bold text-rose-600">{{ categoryError }}</p>
-          <button type="button" class="rounded-xl bg-emerald-500 px-3 py-2.5 text-sm font-black text-white" @click="createCategory">Adicionar categoria</button>
+          <button type="button" class="pingo-interactive rounded-xl bg-brand px-3 py-2.5 text-sm font-extrabold text-white" @click="createCategory">Adicionar categoria</button>
         </div>
-        <label v-if="!transaction && form.flow === 'recurring'" class="flex cursor-pointer items-start gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-4 dark:border-violet-900 dark:bg-violet-950/30 sm:col-span-2">
+        <label v-if="!transaction && form.flow === 'recurring'" class="flex cursor-pointer items-start gap-3 rounded-2xl border border-brand/25 bg-brand-soft p-4 sm:col-span-2">
           <input v-model="form.reminderEnabled" type="checkbox" class="mt-1 size-4 accent-violet-600" />
-          <BellRing :size="20" class="shrink-0 text-violet-600" />
-          <span><strong class="block text-sm">{{ form.kind === 'expense' ? 'Se pinga, me lembre de pagar!' : 'Me avise quando o salário estiver previsto' }}</strong><span class="mt-1 block text-xs font-normal text-slate-500">A confirmação só aparece no vencimento. Contas não respondidas entram após três dias e somente se houver saldo.</span></span>
+          <BellRing :size="20" class="shrink-0 text-brand" />
+          <span><strong class="block text-sm">{{ form.kind === 'expense' ? 'Se pinga, me lembre de pagar!' : 'Me avise quando o salário estiver previsto' }}</strong><span class="mt-1 block text-xs font-normal text-subtle">A confirmação só aparece no vencimento. Contas não respondidas entram após três dias e somente se houver saldo.</span></span>
         </label>
       </div>
 
-      <div v-if="!transaction && form.flow === 'recurring'" class="mt-4 rounded-2xl bg-slate-950 p-4 text-white dark:bg-violet-950">
-        <div class="flex items-start gap-3"><div class="grid size-9 shrink-0 place-items-center rounded-xl bg-violet-400 font-black text-violet-950">P</div><p class="text-sm font-semibold leading-relaxed">Relaxa: eu anoto a data, mas não encosto no seu saldo antes da hora. Porquinho responsável tem limites. 😌</p></div>
+      <div v-if="!transaction && form.flow === 'recurring'" class="mt-4 rounded-2xl bg-hero p-4 text-white">
+        <div class="flex items-start gap-3"><div class="grid size-9 shrink-0 place-items-center rounded-xl bg-brand font-black text-white">P</div><p class="text-sm font-semibold leading-relaxed">Relaxa: eu anoto a data, mas não encosto no seu saldo antes da hora. Porquinho responsável tem limites. 😌</p></div>
       </div>
       <p v-if="formError" class="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-950/35 dark:text-rose-300">{{ formError }}</p>
-      <div class="mt-6 grid gap-2" :class="transaction ? 'grid-cols-[auto_1fr]' : ''">
-        <button v-if="transaction" type="button" class="grid size-12 place-items-center rounded-2xl border border-rose-200 text-rose-600 dark:border-rose-900" :aria-label="`Excluir ${transaction.description}`" @click="emit('delete', transaction)"><Trash2 :size="18" /></button>
-        <button class="w-full rounded-2xl bg-slate-950 px-4 py-3 font-bold text-white hover:bg-slate-800 dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400">
+      <div class="pingo-modal-footer mt-6 grid gap-2" :class="transaction ? 'grid-cols-[auto_1fr]' : ''">
+        <button v-if="transaction" type="button" class="pingo-interactive grid size-14 place-items-center rounded-2xl border border-rose-200 text-rose-600 dark:border-rose-900" :aria-label="`Excluir ${transaction.description}`" @click="emit('delete', transaction)"><Trash2 :size="18" /></button>
+        <button class="pingo-interactive min-h-14 w-full rounded-full bg-brand px-5 font-extrabold text-white shadow-[0_10px_24px_rgba(124,58,237,.18)] hover:bg-hero">
           {{ transaction ? 'Salvar alterações' : form.flow === 'recurring' ? 'Ligar Piloto Mensal' : form.flow === 'vault' ? 'Enviar para o Porquinho' : 'Salvar transação' }}
         </button>
       </div>

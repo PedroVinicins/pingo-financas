@@ -183,6 +183,18 @@ describe('financeStore', () => {
     expect(store.vaultTotalCents).toBe(50000n)
     expect(store.availableBalanceCents).toBe(50000n)
     expect(store.getMovementsForVault(storedVault.id)).toHaveLength(1)
+    expect(store.feedback?.message).toBe('Sua transferência foi feita.')
+  })
+
+  it('confirma quando uma categoria é adicionada', async () => {
+    const store = useFinanceStore()
+
+    await store.createCategory({
+      kind: 'expense', name: 'Higiene', icon: 'tag', color: '#10B981',
+    })
+
+    expect(store.categories.some((item) => item.name === 'Higiene')).toBe(true)
+    expect(store.feedback?.message).toBe('Categoria adicionada.')
   })
 
   it('não permite que uma nova despesa deixe a conta negativa', async () => {
