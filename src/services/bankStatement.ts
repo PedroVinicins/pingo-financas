@@ -1,5 +1,6 @@
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 import type {
+  BankMovementType,
   BankPaymentMethod,
   BankStatementFormat,
   ParsedBankStatement,
@@ -105,11 +106,36 @@ function parseBankMoment(value: string, separateTime = ''): { date: string; occu
 
 export function detectBankPaymentMethod(value: string): BankPaymentMethod {
   const normalized = normalizedHeader(value)
-  if (/\b(?:debito|debit)\b/.test(normalized)) return 'debit'
-  if (/\b(?:credito|credit)\b/.test(normalized)) return 'credit'
   if (/\bpix\b/.test(normalized)) return 'pix'
+  if (/\b(?:compra|cartao|card)\b.*\b(?:debito|debit)\b|\b(?:debito|debit)\b.*\b(?:compra|cartao|card)\b/.test(normalized)) return 'debit'
+  if (/\b(?:compra|cartao|card)\b.*\b(?:credito|credit)\b|\b(?:credito|credit)\b.*\b(?:compra|cartao|card)\b/.test(normalized)) return 'credit'
   if (/\bcartao\b/.test(normalized)) return 'card'
   return 'unknown'
+}
+
+export function detectBankMovementType(value: string, signedAmount = 0n): BankMovementType {
+  const normalized = normalizedHeader(value)
+  const outgoing = signedAmount < 0n
+
+  if (/\b(?:salario|ordenado|pagamento de salario|portabilidade de salario)\b/.test(normalized)) return 'salary'
+  if (/\b(?:resgate|retirada)\b.*\b(?:cdb|porq|porquinho|poupanca|investimento)\b|\b(?:cdb|porq|porquinho)\b.*\b(?:resgate|retirada)\b/.test(normalized)) return 'vault_withdrawal'
+  if (/\b(?:aplicacao|investimento|guardar)\b.*\b(?:cdb|porq|porquinho|poupanca|objetivo)\b|\b(?:cdb|porq|porquinho)\b.*\b(?:aplicacao|guardar)\b/.test(normalized)) return 'vault_deposit'
+  if (/\b(?:estorno|chargeback|devolucao|reembolso)\b/.test(normalized)) return 'refund'
+  if (/\b(?:compra|pagamento)\b.*\b(?:debito|debit)\b|\b(?:debito|debit)\b.*\b(?:compra|pagamento)\b/.test(normalized)) return 'debit_purchase'
+  if (/\b(?:compra|pagamento)\b.*\b(?:credito|credit)\b|\b(?:credito|credit)\b.*\b(?:compra|pagamento)\b/.test(normalized)) return 'credit_purchase'
+  if (/\b(?:compra|pagamento)\b.*\bcartao\b|\bcartao\b.*\b(?:compra|pagamento)\b/.test(normalized)) return 'card_purchase'
+  if (/\bpix\b/.test(normalized)) {
+    if (/\b(?:recebido|recebida|entrada|credito)\b/.test(normalized)) return 'pix_received'
+    if (/\b(?:enviado|enviada|saida|pagamento)\b/.test(normalized)) return 'pix_sent'
+    return outgoing ? 'pix_sent' : 'pix_received'
+  }
+  if (/\b(?:ted|doc|transferencia|transf)\b/.test(normalized)) {
+    if (/\b(?:recebida|recebido|entrada|credito)\b/.test(normalized)) return 'transfer_received'
+    if (/\b(?:enviada|enviado|saida|debito)\b/.test(normalized)) return 'transfer_sent'
+    return outgoing ? 'transfer_sent' : 'transfer_received'
+  }
+  if (/\b(?:tarifa|taxa|encargo|juros|iof)\b/.test(normalized)) return 'fee'
+  return 'other'
 }
 
 export function cleanBankDescription(...parts: Array<string | undefined | null>) {
@@ -119,14 +145,26 @@ export function cleanBankDescription(...parts: Array<string | undefined | null>)
     if (value && !unique.some((item) => normalizedHeader(item) === normalizedHeader(value))) unique.push(value)
   }
   let description = unique.join(' · ')
+    .replace(/\bcp\s*:\s*\d+\s*[-–]\s*/gi, '')
     .replace(/\b(?:end\s*to\s*end|e2e|nsu|aut(?:oriza[cç][aã]o)?|id|c[oó]d(?:igo)?|doc(?:umento)?)\s*[:#-]?\s*[a-z0-9-]{5,}\b/gi, ' ')
     .replace(/\b(?=[a-z0-9-]{12,}\b)(?=[a-z0-9-]*\d)[a-z0-9-]+\b/gi, ' ')
     .replace(/\s*[·|]\s*/g, ' · ')
     .replace(/\s+/g, ' ')
     .trim()
-  const operationalPrefix = /^(?:(?:pix(?:\s+(?:enviado|recebido))?(?:\s+(?:para|de))?)|(?:transfer[eê]ncia(?:\s+(?:enviada|recebida))?(?:\s+(?:para|de))?)|(?:compra\s+(?:(?:no|com)\s+)?(?:cart[aã]o\s+)?(?:de\s+)?(?:d[eé]bito|cr[eé]dito|debit|credit))|(?:(?:d[eé]bito|cr[eé]dito|debit|credit)(?:\s+em)?)|(?:pagamento\s+(?:de\s+)?cart[aã]o)|cart[aã]o)\s*(?:[-:·|]+\s*)?/i
+  const operationalPrefix = /^(?:(?:pix(?:\s+(?:enviado|recebido))?(?:\s+(?:para|de))?)|(?:transfer[eê]ncia(?:\s+(?:enviada|recebida))?(?:\s+(?:para|de))?)|(?:compra\s+(?:(?:no|com)\s+)?(?:cart[aã]o\s+)?(?:de\s+)?(?:d[eé]bito|cr[eé]dito|debit|credit))|(?:(?:d[eé]bito|cr[eé]dito|debit|credit)(?:\s+em)?)|(?:pagamento\s+(?:de\s+)?cart[aã]o)|(?:sal[aá]rio\s+recebido(?:\s*[-–]\s*portabilidade)?)|(?:resgate|aplica[cç][aã]o|estorno|devolu[cç][aã]o|reembolso)|cart[aã]o)\s*(?:[-:·|]+\s*)?/i
   while (operationalPrefix.test(description)) description = description.replace(operationalPrefix, '').trim()
-  description = description.replace(/^(?:lan[cç]amento|hist[oó]rico)\s*(?:[-:·|]+\s*)?/i, '').trim()
+  description = description
+    .replace(/^(?:lan[cç]amento|hist[oó]rico)\s*(?:[-:·|]+\s*)?/i, '')
+    .replace(/^["'“”]+|["'“”]+$/g, '')
+    .replace(/^(?:estorno|devolu[cç][aã]o|reembolso)\s+(?=no\s+estabelecimento)/i, '')
+    .replace(/^cp\s*:\s*\d+\s*[-–]\s*/i, '')
+    .replace(/^(?:\d{3,}\s+){2,3}(?=[a-zà-ÿ])/i, '')
+    .replace(/^no\s+estabelecimento\s+n[aã]o\s+informado/i, 'Estabelecimento não informado')
+    .replace(/^no\s+estabelecimento\s+/i, '')
+    .replace(/^cdb\s+porq(?:uinho)?\s+obj(?:etivo)?\s+/i, 'Porquinho · ')
+    .replace(/\bBANCO\s+INTER\s+S\s*A\b/i, 'Banco Inter')
+    .replace(/\s+/g, ' ')
+    .trim()
   return (description || 'Movimentação importada').slice(0, 160)
 }
 
@@ -142,7 +180,9 @@ function transactionFromValues(
   const signedAmount = parseBankAmount(amountValue)
   if (!moment || signedAmount === null || signedAmount === 0n) return null
   const balance = balanceValue ? parseBankAmount(balanceValue) : null
+  const movementType = detectBankMovementType(description, signedAmount)
   const paymentMethod = detectBankPaymentMethod(description)
+  const isInternalTransfer = movementType === 'vault_deposit' || movementType === 'vault_withdrawal'
   return {
     kind: signedAmount < 0n ? 'expense' : 'income',
     amount: centsToStorage(signedAmount < 0n ? -signedAmount : signedAmount),
@@ -152,7 +192,9 @@ function transactionFromValues(
     balance: balance === null ? null : centsToStorage(balance),
     externalId: externalId?.trim() || null,
     paymentMethod,
-    suggestedCardLink: paymentMethod === 'debit' || paymentMethod === 'credit' || paymentMethod === 'card',
+    movementType,
+    isInternalTransfer,
+    suggestedCardLink: movementType === 'debit_purchase' || movementType === 'credit_purchase' || movementType === 'card_purchase',
   }
 }
 
@@ -260,21 +302,96 @@ export function parseOfxStatement(content: string, fileName = 'extrato.ofx'): Pa
 
 const TEXT_MONEY_PATTERN = /[-+]?(?:R\$\s*)?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{2}|\.\d{2})/g
 
+const PORTUGUESE_MONTHS: Record<string, number> = {
+  janeiro: 1,
+  fevereiro: 2,
+  marco: 3,
+  abril: 4,
+  maio: 5,
+  junho: 6,
+  julho: 7,
+  agosto: 8,
+  setembro: 9,
+  outubro: 10,
+  novembro: 11,
+  dezembro: 12,
+}
+
+function textDateHeader(line: string) {
+  const normalized = normalizedHeader(line)
+  const writtenDate = /\b(\d{1,2})\s+de\s+(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\s+de\s+(\d{4})\b/.exec(normalized)
+  const numericDate = /\b(\d{2}[/-]\d{2}[/-]\d{4}|\d{4}-\d{2}-\d{2})\b/.exec(line)
+  const isDailyHeader = Boolean(writtenDate) || (/\bsaldo\s+do\s+dia\b/.test(normalized) && Boolean(numericDate))
+  if (!isDailyHeader) return null
+
+  const dateValue = writtenDate
+    ? `${writtenDate[1].padStart(2, '0')}/${String(PORTUGUESE_MONTHS[writtenDate[2]]).padStart(2, '0')}/${writtenDate[3]}`
+    : numericDate?.[1] ?? ''
+  const moment = parseBankMoment(dateValue)
+  if (!moment) return null
+  const balanceMatch = /\bsaldo\s+do\s+dia\b/.test(normalized)
+    ? [...line.matchAll(TEXT_MONEY_PATTERN)].at(-1)?.[0] ?? null
+    : null
+  const balance = balanceMatch ? parseBankAmount(balanceMatch) : null
+  return {
+    date: moment.date,
+    balance: balance === null ? null : centsToStorage(balance),
+  }
+}
+
+function transactionFromText(dateValue: string, rest: string) {
+  const timeMatch = /^\s+(\d{1,2}:\d{2}(?::\d{2})?)\b/.exec(rest)
+  const moneyMatches = [...rest.matchAll(TEXT_MONEY_PATTERN)]
+  if (!moneyMatches.length) return null
+  const amountMatch = moneyMatches.length >= 2 ? moneyMatches[moneyMatches.length - 2] : moneyMatches[0]
+  const balanceMatch = moneyMatches.length >= 2 ? moneyMatches[moneyMatches.length - 1] : null
+  const description = rest.slice(timeMatch?.[0].length ?? 0, amountMatch.index).replace(/[|\t]+/g, ' ')
+  return transactionFromValues(
+    dateValue, amountMatch[0], description, balanceMatch?.[0] ?? null, null, timeMatch?.[1] ?? '',
+  )
+}
+
+function looksLikeContextualTransaction(line: string) {
+  const normalized = normalizedHeader(line)
+  return /^(?:pix|salario|compra|pagamento|resgate|aplicacao|estorno|transferencia|ted|doc|tarifa|taxa|reembolso|devolucao)\b/.test(normalized)
+}
+
 export function parseStatementTextLines(lines: string[], fileName = 'extrato.pdf'): ParsedBankStatement {
   const transactions: ParsedBankStatementTransaction[] = []
-  for (const line of lines) {
+  let currentDate = ''
+  let pendingDescription = ''
+  let headerBalance: string | null = null
+  let headerBalanceDate = ''
+  const physicalLines = lines.flatMap((line) => line.split(/\r?\n/)).map((line) => line.replace(/\s+/g, ' ').trim())
+
+  for (const line of physicalLines) {
+    if (!line) continue
+    const header = textDateHeader(line)
+    if (header) {
+      currentDate = header.date
+      pendingDescription = ''
+      if (header.balance !== null && header.date >= headerBalanceDate) {
+        headerBalanceDate = header.date
+        headerBalance = header.balance
+      }
+      continue
+    }
+
     const dateMatch = /\b(\d{2}[/-]\d{2}[/-]\d{4}|\d{4}-\d{2}-\d{2})\b/.exec(line)
-    if (!dateMatch) continue
-    const rest = line.slice(dateMatch.index + dateMatch[0].length)
-    const timeMatch = /^\s+(\d{1,2}:\d{2}(?::\d{2})?)\b/.exec(rest)
-    const moneyMatches = [...rest.matchAll(TEXT_MONEY_PATTERN)]
-    if (!moneyMatches.length) continue
-    const amountMatch = moneyMatches.length >= 2 ? moneyMatches[moneyMatches.length - 2] : moneyMatches[0]
-    const balanceMatch = moneyMatches.length >= 2 ? moneyMatches[moneyMatches.length - 1] : null
-    const description = rest.slice(timeMatch?.[0].length ?? 0, amountMatch.index).replace(/[|\t]+/g, ' ')
-    const transaction = transactionFromValues(
-      dateMatch[0], amountMatch[0], description, balanceMatch?.[0] ?? null, null, timeMatch?.[1] ?? '',
-    )
+    let transaction: ParsedBankStatementTransaction | null = null
+    if (dateMatch) {
+      currentDate = parseBankMoment(dateMatch[0])?.date ?? currentDate
+      transaction = transactionFromText(dateMatch[0], line.slice(dateMatch.index + dateMatch[0].length))
+      pendingDescription = ''
+    } else if (currentDate) {
+      const rest = pendingDescription && TEXT_MONEY_PATTERN.test(line)
+        ? `${pendingDescription} ${line}`
+        : line
+      TEXT_MONEY_PATTERN.lastIndex = 0
+      transaction = transactionFromText(currentDate, rest)
+      if (transaction) pendingDescription = ''
+      else if (looksLikeContextualTransaction(line)) pendingDescription = line
+    }
     if (transaction) transactions.push(transaction)
     if (transactions.length >= MAX_IMPORT_ROWS) break
   }
@@ -283,7 +400,9 @@ export function parseStatementTextLines(lines: string[], fileName = 'extrato.pdf
   }
   return {
     format: 'pdf', fileName, transactions,
-    closingBalance: closingBalanceFrom(transactions),
+    closingBalance: headerBalanceDate >= transactions.reduce(
+      (latest, transaction) => transaction.date > latest ? transaction.date : latest, '',
+    ) ? headerBalance : closingBalanceFrom(transactions),
     warnings: [],
   }
 }

@@ -1,5 +1,55 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="128" fill="#0f172a"/>
-  <path d="M256 82c-82 98-132 164-132 244 0 73 59 132 132 132s132-59 132-132c0-80-50-146-132-244Z" fill="#6ee7b7"/>
-  <path d="M218 356V190h55c54 0 88 27 88 73 0 48-36 77-94 77h-8v16h-41Zm41-55h12c31 0 48-12 48-36 0-23-16-34-45-34h-15v70Z" fill="#0f172a"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Ícone do Pingo Finanças</title>
+  <desc id="desc">Uma gota amigável em forma de porquinho sobre fundo roxo.</desc>
+
+  <defs>
+    <linearGradient id="background" x1="120" y1="80" x2="904" y2="944" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8B5CF6"/>
+      <stop offset="0.55" stop-color="#6D3CEB"/>
+      <stop offset="1" stop-color="#4C1D95"/>
+    </linearGradient>
+    <linearGradient id="drop" x1="378" y1="237" x2="650" y2="808" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#EEE7FF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- App icon background -->
+  <rect width="1024" height="1024" rx="224" fill="url(#background)"/>
+  <path d="M135 272C204 142 337 86 471 76" fill="none" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="32" stroke-linecap="round"/>
+
+  <!-- Pingo: a droplet whose lower body becomes a friendly pig face -->
+  <path
+    d="M512 202C482 259 431 329 380 402C314 496 272 575 272 671C272 816 379 914 512 914C645 914 752 816 752 671C752 575 710 496 644 402C593 329 542 259 512 202Z"
+    fill="#27104F"
+    fill-opacity="0.25"
+  />
+  <g>
+    <path
+      d="M512 172C482 229 431 299 380 372C314 466 272 545 272 641C272 786 379 884 512 884C645 884 752 786 752 641C752 545 710 466 644 372C593 299 542 229 512 172Z"
+      fill="url(#drop)"
+    />
+
+    <!-- Pig ears integrated into the silhouette -->
+    <path d="M348 510C310 476 296 425 311 380C358 391 397 426 410 473Z" fill="#D9C8FF"/>
+    <path d="M676 510C714 476 728 425 713 380C666 391 627 426 614 473Z" fill="#D9C8FF"/>
+    <path d="M337 451C326 432 322 411 325 397C345 404 365 419 378 437Z" fill="#7C4DDF" fill-opacity="0.44"/>
+    <path d="M687 451C698 432 702 411 699 397C679 404 659 419 646 437Z" fill="#7C4DDF" fill-opacity="0.44"/>
+
+    <!-- Face -->
+    <circle cx="425" cy="597" r="24" fill="#342052"/>
+    <circle cx="599" cy="597" r="24" fill="#342052"/>
+    <circle cx="417" cy="589" r="7" fill="#FFFFFF" fill-opacity="0.9"/>
+    <circle cx="591" cy="589" r="7" fill="#FFFFFF" fill-opacity="0.9"/>
+
+    <!-- Snout, shaped like a tiny coin -->
+    <rect x="424" y="648" width="176" height="112" rx="56" fill="#8B5CF6"/>
+    <ellipse cx="477" cy="704" rx="13" ry="19" fill="#4C1D95"/>
+    <ellipse cx="547" cy="704" rx="13" ry="19" fill="#4C1D95"/>
+    <path d="M481 783C500 796 524 796 543 783" fill="none" stroke="#6D3CEB" stroke-width="14" stroke-linecap="round"/>
+  </g>
+
+  <!-- Small sparkle: growth and positive money habits -->
+  <path d="M790 262L802 298L838 310L802 322L790 358L778 322L742 310L778 298Z" fill="#D8FF64"/>
 </svg>

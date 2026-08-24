@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.13.1 — Extrato mais inteligente
+
+- entende datas por bloco e o “Saldo do dia” dos PDFs do Banco Inter, inclusive quando a movimentação e seus valores são extraídos em linhas separadas;
+- classifica Pix enviado e recebido, salário, compras no débito ou crédito, estorno, tarifa, transferência, aplicação e resgate;
+- aplica categorias inteligentes a salários, compras, tarifas e outras entradas, mantendo opções padrão para casos não identificados;
+- trata aplicações e resgates do Porquinho como transferências internas, sem inflar receitas ou despesas e preservando a conciliação bancária;
+- permite cadastrar um cartão durante a importação e já vinculá-lo às compras detectadas sem perder o extrato aberto;
+- corrige a interpretação do `DEBIT` técnico do OFX para não confundir uma saída Pix com compra no cartão;
+- melhora os estados de carregamento e as mensagens de erro ao criar cartões comuns e cartões ao vivo;
+- renova o ícone do Pingo com a identidade visual violeta e a gota em forma de porquinho;
+- atualiza Web/PWA, Tauri e Android para a versão 0.13.1 (`versionCode` 13001).
+
 ## 0.13.0 — Tudo no lugar
 
 - renova o Início com saldo em destaque, acesso rápido, últimas transações, resumo mensal e navegação coerente entre desktop e celular;

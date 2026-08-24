@@ -8,6 +8,16 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
+## Destaques da versão 0.13.1
+
+- importador de extratos mais inteligente para PDFs do Banco Inter, com datas por bloco e conciliação pelo saldo diário;
+- classificação automática de Pix, salário, débito, crédito, estorno, tarifas, aplicações e resgates;
+- categorias sugeridas por movimentação e transferências de Porquinho fora dos totais de receitas e despesas;
+- cadastro e vínculo de cartão durante a própria importação;
+- mensagens de erro e estados de salvamento mais claros na Carteira;
+- novo ícone do Pingo alinhado à identidade violeta;
+- Android `versionCode` 13001 e cache Web renovado para a nova release.
+
 ## Destaques da versão 0.13.0
 
 - Início redesenhado com saldo, ações rápidas, histórico e resumo mensal na mesma linguagem visual;

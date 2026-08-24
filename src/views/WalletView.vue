@@ -33,6 +33,10 @@ const removing = ref(false)
 const manualShortcut = ref('')
 const shortcutInput = ref<HTMLInputElement | null>(null)
 const showAddWalletItem = ref(false)
+const cardSaving = ref(false)
+const cardSaveError = ref('')
+const walletItemSaving = ref(false)
+const walletItemSaveError = ref('')
 const removingWalletItem = ref<DigitalWalletItem | null>(null)
 const editingTransaction = ref<Transaction | null>(null)
 const deletingTransaction = ref<Transaction | null>(null)
@@ -73,16 +77,23 @@ function openWalletItem(item: DigitalWalletItem) {
   selectWalletItem(item.id)
   if (item.fileDataUrl && item.mimeType?.startsWith('image/')) previewingWalletItem.value = item
 }
-function addDebitCardChoice() { showAddMenu.value = false; showAddCard.value = true }
-function addLiveCardChoice() { showAddMenu.value = false; showAddWalletItem.value = true }
+function addDebitCardChoice() { showAddMenu.value = false; cardSaveError.value = ''; showAddCard.value = true }
+function addLiveCardChoice() { showAddMenu.value = false; walletItemSaveError.value = ''; showAddWalletItem.value = true }
+function closeAddCard() { if (!cardSaving.value) showAddCard.value = false }
+function closeAddWalletItem() { if (!walletItemSaving.value) showAddWalletItem.value = false }
 
 async function addCard(input: NewDebitCardInput) {
+  if (cardSaving.value) return
+  cardSaving.value = true
+  cardSaveError.value = ''
   try {
     const card = await store.createDebitCard(input)
     selectCard(card.id)
     showAddCard.value = false
     store.showFeedback('Cartão adicionado à carteira.', 'success')
-  } catch (cause) { store.reportError(cause, 'Não foi possível adicionar o cartão.') }
+  } catch (cause) {
+    cardSaveError.value = store.reportError(cause, 'Não foi possível adicionar o cartão.')
+  } finally { cardSaving.value = false }
 }
 async function saveStyle(input: UpdateDebitCardStyleInput) {
   try { await store.updateCardStyle(input); showStyleEditor.value = false }
@@ -139,12 +150,17 @@ async function createHomeShortcut() {
   window.setTimeout(() => { copied.value = false }, 1800)
 }
 async function addWalletItem(input: NewDigitalWalletItemInput) {
+  if (walletItemSaving.value) return
+  walletItemSaving.value = true
+  walletItemSaveError.value = ''
   try {
     const item = await store.createDigitalWalletItem(input)
     selectWalletItem(item.id)
     showAddWalletItem.value = false
     store.showFeedback('Item guardado na carteira deste dispositivo.', 'success')
-  } catch (cause) { store.reportError(cause, 'Não foi possível guardar o item.') }
+  } catch (cause) {
+    walletItemSaveError.value = store.reportError(cause, 'Não foi possível guardar o item.')
+  } finally { walletItemSaving.value = false }
 }
 async function deleteWalletItem() {
   if (!removingWalletItem.value) return
@@ -235,10 +251,10 @@ function displayDate(value: string) {
   </main>
 
   <AddWalletEntryMenu v-if="showAddMenu" @close="showAddMenu = false" @card="addDebitCardChoice" @live="addLiveCardChoice" />
-  <AddDebitCardModal v-if="showAddCard" :existing-cards-count="store.debitCards.length" @close="showAddCard = false" @save="addCard" />
+  <AddDebitCardModal v-if="showAddCard" :existing-cards-count="store.debitCards.length" :busy="cardSaving" :save-error="cardSaveError" @close="closeAddCard" @save="addCard" />
   <CardStyleEditor v-if="showStyleEditor && selectedCard" :card="selectedCard" @close="showStyleEditor = false" @save="saveStyle" />
   <ConfirmDialog v-if="showRemoveConfirmation && selectedCard" title="Remover cartão?" :message="`“${selectedCard.name}” sairá da carteira. As despesas já registradas continuarão no histórico geral, sem vínculo com o cartão.`" confirm-label="Remover cartão" :busy="removing" @cancel="showRemoveConfirmation = false" @confirm="removeCard" />
-  <AddDigitalWalletItemModal v-if="showAddWalletItem" @close="showAddWalletItem = false" @save="addWalletItem" />
+  <AddDigitalWalletItemModal v-if="showAddWalletItem" :busy="walletItemSaving" :save-error="walletItemSaveError" @close="closeAddWalletItem" @save="addWalletItem" />
   <ConfirmDialog v-if="removingWalletItem" title="Remover da carteira?" :message="`“${removingWalletItem.title}” e seu arquivo local serão apagados deste dispositivo.`" confirm-label="Remover item" @cancel="removingWalletItem = null" @confirm="deleteWalletItem" />
   <AddTransactionModal v-if="editingTransaction" :categories="store.categories" :cards="store.debitCards" :transaction="editingTransaction" @close="editingTransaction = null" @save="saveTransaction" @delete="deletingTransaction = $event" />
   <ConfirmDialog v-if="deletingTransaction" title="Excluir compra?" :message="`“${deletingTransaction.description}” será removida e os saldos serão recalculados.`" confirm-label="Excluir compra" :busy="deletingTransactionBusy" @cancel="deletingTransaction = null" @confirm="confirmTransactionDelete" />
