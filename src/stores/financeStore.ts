@@ -369,7 +369,11 @@ export const useFinanceStore = defineStore('finance', () => {
     if (timeout > 0) feedbackTimer = window.setTimeout(clearFeedback, timeout)
   }
   function reportError(cause: unknown, fallback = 'Não foi possível concluir esta ação.') {
-    const message = cause instanceof Error ? cause.message : fallback
+    const message = cause instanceof Error
+      ? cause.message
+      : typeof cause === 'string' && cause.trim()
+        ? cause
+        : fallback
     showFeedback(message, 'error', 5_000)
     return message
   }

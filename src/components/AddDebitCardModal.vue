@@ -5,7 +5,12 @@ import type { CardBackground, CardNetwork, CardPattern, NewDebitCardInput } from
 import { localizedDecimalToStorage } from '../services/localizedNumber'
 import LocalizedNumberInput from './LocalizedNumberInput.vue'
 
-const props = defineProps<{ existingCardsCount: number }>()
+const props = withDefaults(defineProps<{
+  existingCardsCount: number
+  busy?: boolean
+  saveError?: string
+  elevated?: boolean
+}>(), { busy: false, saveError: '', elevated: false })
 const emit = defineEmits<{
   close: []
   save: [input: NewDebitCardInput]
@@ -47,6 +52,7 @@ const form = reactive({
 const selectedPalette = computed(() => palettes[form.palette])
 
 function submit() {
+  if (props.busy) return
   error.value = ''
   const lastFour = form.lastFour.replace(/\D/g, '')
 
@@ -99,14 +105,14 @@ function submit() {
 </script>
 
 <template>
-  <div class="pingo-modal-backdrop fixed inset-0 z-50 grid place-items-end bg-slate-950/50 sm:place-items-center sm:p-4" @click.self="emit('close')">
+  <div class="pingo-modal-backdrop fixed inset-0 grid place-items-end bg-slate-950/50 sm:place-items-center sm:p-4" :class="elevated ? 'z-[120]' : 'z-50'" @click.self="!busy && emit('close')">
     <form class="pingo-modal-panel max-h-[94vh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-xl sm:rounded-[2rem] sm:p-6" @submit.prevent="submit">
       <div class="flex items-start justify-between gap-4">
         <div>
           <p class="text-sm font-bold text-emerald-600">Carteira</p>
-          <h2 class="text-2xl font-black tracking-tight">Adicionar cartão de débito</h2>
+          <h2 class="text-2xl font-black tracking-tight">Adicionar cartão</h2>
         </div>
-        <button type="button" class="grid size-10 place-items-center rounded-xl transition hover:bg-slate-100 dark:hover:bg-slate-800" @click="emit('close')">
+        <button type="button" :disabled="busy" class="grid size-10 place-items-center rounded-xl transition hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800" @click="emit('close')">
           <X :size="20" />
         </button>
       </div>
@@ -275,14 +281,14 @@ function submit() {
       </label>
 
       <!-- Mensagem de Erro -->
-      <p v-if="error" class="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
-        {{ error }}
+      <p v-if="error || saveError" class="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300" role="alert">
+        {{ error || saveError }}
       </p>
 
       <!-- Botão de Ação -->
-      <button class="mt-6 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 font-bold text-white transition hover:bg-emerald-700 active:scale-[0.99]">
-        <Sparkles :size="18" />
-        Adicionar à carteira
+      <button :disabled="busy" class="mt-6 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 font-bold text-white transition hover:bg-emerald-700 active:scale-[0.99] disabled:cursor-wait disabled:opacity-60">
+        <Sparkles :size="18" :class="busy ? 'animate-pulse' : ''" />
+        {{ busy ? 'Guardando…' : 'Adicionar à carteira' }}
       </button>
     </form>
   </div>

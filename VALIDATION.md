@@ -1,16 +1,16 @@
-# Validação do projeto — Pingo v0.13.0
+# Validação do projeto — Pingo v0.13.1
 
 ## Validado neste ambiente
 
-- `npm test`: 64 testes aprovados em 15 arquivos;
+- `npm test`: 68 testes aprovados em 16 arquivos;
 - `npm run build`: TypeScript, Vue e build PWA de produção aprovados;
 - `npm audit --audit-level=high`: nenhuma vulnerabilidade conhecida;
 - `cargo fmt --all -- --check`: aprovado;
 - `cargo test --locked`: 32 testes aprovados (29 no core e 3 de integração);
 - migrations SQLite `0001` até `0010` executadas em sequência nos bancos limpos dos testes;
 - lotes de extrato e transferências de Porquinho validados com rollback/atomicidade;
-- PWA gerado com cache `pingo-shell-v0.13.0`, manifest, ícone e service worker;
-- configuração Android atualizada para `versionName` 0.13.0 e `versionCode` 13000;
+- PWA gerado com cache `pingo-shell-v0.13.1`, manifest, ícone e service worker;
+- configuração Android atualizada para `versionName` 0.13.1 e `versionCode` 13001;
 - manifesto Android mantém permissão biométrica, `windowSoftInputMode="adjustResize"`, backup externo desativado e quatro atalhos do launcher;
 
 ## Testes automatizados
@@ -30,8 +30,8 @@
 - ordem, visibilidade e tamanhos válidos do painel personalizável;
 - reset total do SQLite e do armazenamento Web;
 - restauração de backup validada no Web e aplicada de forma atômica no SQLite;
-- leitura do exemplo CSV/TSV do Banco Inter, OFX e linhas extraídas de PDF textual;
-- preservação de data/hora, limpeza de códigos operacionais e detecção de PIX, débito e crédito;
+- leitura do exemplo CSV/TSV do Banco Inter, OFX e linhas extraídas de PDF textual com datas por bloco;
+- preservação de data/hora, limpeza de códigos operacionais e classificação de Pix, salário, débito, crédito, estorno e Porquinho;
 - sugestão de vínculo de cartão, duplicatas, conciliação de saldo e rollback de extratos inválidos;
 - validação de anexos locais e visualizador da carteira ao vivo;
 - saudação por horário, sensibilidade e cooldown do gesto de agitar;

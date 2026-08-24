@@ -21,6 +21,20 @@ export type DashboardWidgetId =
 export type DashboardWidgetSize = 'small' | 'medium' | 'large'
 export type DigitalWalletItemKind = 'ticket' | 'document' | 'qr_code' | 'other'
 export type BankPaymentMethod = 'pix' | 'debit' | 'credit' | 'card' | 'unknown'
+export type BankMovementType =
+  | 'pix_sent'
+  | 'pix_received'
+  | 'salary'
+  | 'debit_purchase'
+  | 'credit_purchase'
+  | 'card_purchase'
+  | 'vault_withdrawal'
+  | 'vault_deposit'
+  | 'refund'
+  | 'transfer_sent'
+  | 'transfer_received'
+  | 'fee'
+  | 'other'
 export type ShakeSensitivity = 'low' | 'medium' | 'high'
 export type FeedbackDurationMs = 3000 | 4000 | 5000
 export type ThemeMode = 'light' | 'dark' | 'system'
@@ -239,6 +253,8 @@ export interface ParsedBankStatementTransaction {
   balance: string | null
   externalId: string | null
   paymentMethod: BankPaymentMethod
+  movementType: BankMovementType
+  isInternalTransfer: boolean
   suggestedCardLink: boolean
 }
 
