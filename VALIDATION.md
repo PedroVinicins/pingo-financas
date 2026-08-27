@@ -1,16 +1,17 @@
-# Validação do projeto — Pingo v0.13.1
+# Validação do projeto — Pingo v0.14.2
 
 ## Validado neste ambiente
 
-- `npm test`: 68 testes aprovados em 16 arquivos;
+- `npm test`: 78 testes aprovados em 18 arquivos;
 - `npm run build`: TypeScript, Vue e build PWA de produção aprovados;
 - `npm audit --audit-level=high`: nenhuma vulnerabilidade conhecida;
 - `cargo fmt --all -- --check`: aprovado;
 - `cargo test --locked`: 32 testes aprovados (29 no core e 3 de integração);
 - migrations SQLite `0001` até `0010` executadas em sequência nos bancos limpos dos testes;
 - lotes de extrato e transferências de Porquinho validados com rollback/atomicidade;
-- PWA gerado com cache `pingo-shell-v0.13.1`, manifest, ícone e service worker;
-- configuração Android atualizada para `versionName` 0.13.1 e `versionCode` 13001;
+- PWA gerado com cache `pingo-shell-v0.14.2`, manifest, ícone e service worker;
+- configuração Android atualizada para `versionName` 0.14.2 e `versionCode` 14002;
+- APK universal debug gerado para ARM64, validado com assinatura APK v2 e SHA-256 `0ed8fb65905f803d455fabc9b115bd9edfae6e3f9d809ad7290777cd0fff7642`;
 - manifesto Android mantém permissão biométrica, `windowSoftInputMode="adjustResize"`, backup externo desativado e quatro atalhos do launcher;
 
 ## Testes automatizados
@@ -30,8 +31,11 @@
 - ordem, visibilidade e tamanhos válidos do painel personalizável;
 - reset total do SQLite e do armazenamento Web;
 - restauração de backup validada no Web e aplicada de forma atômica no SQLite;
-- leitura do exemplo CSV/TSV do Banco Inter, OFX e linhas extraídas de PDF textual com datas por bloco;
+- leitura de CSV/TSV/TXT tabular, OFX/QFX moderno ou 1.x e linhas extraídas de PDF textual com datas por bloco;
+- CSV com metadados antes do cabeçalho, datas curtas, débito/crédito separados e valores brasileiros ou internacionais;
+- precisão adicional do OFX convertida e arredondada para centavos sem confundir decimal com separador de milhar;
 - preservação de data/hora, limpeza de códigos operacionais e classificação de Pix, salário, débito, crédito, estorno e Porquinho;
+- política conservadora para `PAYMENT`/`OTHER`, recomendação PIX sem cartão e vínculo apenas para compras explicitamente identificadas;
 - sugestão de vínculo de cartão, duplicatas, conciliação de saldo e rollback de extratos inválidos;
 - validação de anexos locais e visualizador da carteira ao vivo;
 - saudação por horário, sensibilidade e cooldown do gesto de agitar;

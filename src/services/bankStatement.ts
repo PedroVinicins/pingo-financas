@@ -28,7 +28,7 @@ function centsToStorage(value: bigint) {
 }
 
 export function parseBankAmount(value: string): bigint | null {
-  let normalized = value.replace(/\u00a0/g, ' ').replace(/R\$/gi, '').trim()
+  let normalized = value.replace(/\u00a0/g, ' ').replace(/(?:R\$|BRL)/gi, '').trim()
   if (!normalized) return null
   let negative = false
   if (normalized.startsWith('(') && normalized.endsWith(')')) {
@@ -47,7 +47,13 @@ export function parseBankAmount(value: string): bigint | null {
 
   const comma = normalized.lastIndexOf(',')
   const dot = normalized.lastIndexOf('.')
-  const decimalIndex = comma >= 0 ? comma : dot >= 0 && normalized.length - dot <= 3 ? dot : -1
+  const lastSeparator = Math.max(comma, dot)
+  const digitsAfterSeparator = lastSeparator >= 0
+    ? normalized.slice(lastSeparator + 1).replace(/[^0-9]/g, '').length
+    : 0
+  const decimalIndex = lastSeparator >= 0 && digitsAfterSeparator >= 1 && digitsAfterSeparator <= 2
+    ? lastSeparator
+    : -1
   const wholeRaw = decimalIndex >= 0 ? normalized.slice(0, decimalIndex) : normalized
   const fractionRaw = decimalIndex >= 0 ? normalized.slice(decimalIndex + 1) : ''
   const whole = wholeRaw.replace(/[^0-9]/g, '')
@@ -57,18 +63,29 @@ export function parseBankAmount(value: string): bigint | null {
   return negative ? -cents : cents
 }
 
+function parseOfxAmount(value: string): bigint | null {
+  const normalized = value.replace(/\u00a0/g, '').replace(/(?:R\$|BRL)/gi, '').trim()
+  const match = /^([+-]?)(\d+)(?:\.(\d+))?$/.exec(normalized)
+  if (!match) return parseBankAmount(value)
+  const fraction = match[3] ?? ''
+  let cents = BigInt(match[2]) * 100n + BigInt((fraction + '00').slice(0, 2))
+  if (fraction.length > 2 && Number(fraction[2]) >= 5) cents += 1n
+  return match[1] === '-' ? -cents : cents
+}
+
 function parseBankMoment(value: string, separateTime = ''): { date: string; occurredAt: string | null } | null {
   const clean = value.trim()
   let year: number
   let month: number
   let day: number
-  let match = /^(\d{2})[/-](\d{2})[/-](\d{4})(?:[ T]+(\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(clean)
+  let match = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4}|\d{2})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(clean)
   let hour = match?.[4] ? Number(match[4]) : 0
   let minute = match?.[5] ? Number(match[5]) : 0
   let second = match?.[6] ? Number(match[6]) : 0
   let hasTime = Boolean(match?.[4])
   if (match) {
     day = Number(match[1]); month = Number(match[2]); year = Number(match[3])
+    if (year < 100) year += 2000
   } else {
     match = /^(\d{4})-(\d{2})-(\d{2})(?:[ T]+(\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(clean)
     if (match) {
@@ -145,6 +162,9 @@ export function cleanBankDescription(...parts: Array<string | undefined | null>)
     if (value && !unique.some((item) => normalizedHeader(item) === normalizedHeader(value))) unique.push(value)
   }
   let description = unique.join(' · ')
+    .replace(/(?:^|\s*·\s*)(?:PAYMENT|DEBIT|CREDIT|OTHER|XFER|DEP|DIRECTDEBIT|DIRECTDEP|CHECK|ATM|CASH|PIX)(?=\s*·|$)/gi, ' · ')
+    .replace(/(?:^|\s*·\s*)(?:pix\s+(?:enviado|enviada|recebido|recebida))(?:\s+(?:para|de))?\s*[:\-–]?\s*/gi, ' · ')
+    .replace(/(?:^|\s*·\s*)(?:compra\s+(?:(?:no|com)\s+)?(?:cart[aã]o\s+)?(?:de\s+)?(?:d[eé]bito|cr[eé]dito)|pagamento\s+(?:de\s+)?cart[aã]o)(?=\s*·|$)/gi, ' · ')
     .replace(/\bcp\s*:\s*\d+\s*[-–]\s*/gi, '')
     .replace(/\b(?:end\s*to\s*end|e2e|nsu|aut(?:oriza[cç][aã]o)?|id|c[oó]d(?:igo)?|doc(?:umento)?)\s*[:#-]?\s*[a-z0-9-]{5,}\b/gi, ' ')
     .replace(/\b(?=[a-z0-9-]{12,}\b)(?=[a-z0-9-]*\d)[a-z0-9-]+\b/gi, ' ')
@@ -165,7 +185,11 @@ export function cleanBankDescription(...parts: Array<string | undefined | null>)
     .replace(/\bBANCO\s+INTER\s+S\s*A\b/i, 'Banco Inter')
     .replace(/\s+/g, ' ')
     .trim()
-  return (description || 'Movimentação importada').slice(0, 160)
+  const deduplicated = description.split(/\s*·\s*/).map((part) => part
+    .replace(/^["'“”]+|["'“”]+$/g, '').trim()).filter(Boolean)
+    .filter((part, index, all) => all.findIndex((candidate) => normalizedHeader(candidate) === normalizedHeader(part)) === index)
+    .join(' · ')
+  return (deduplicated || 'Movimentação importada').slice(0, 160)
 }
 
 function transactionFromValues(
@@ -175,9 +199,10 @@ function transactionFromValues(
   balanceValue?: string | null,
   externalId?: string | null,
   timeValue = '',
+  amountParser: (value: string) => bigint | null = parseBankAmount,
 ): ParsedBankStatementTransaction | null {
   const moment = parseBankMoment(dateValue, timeValue)
-  const signedAmount = parseBankAmount(amountValue)
+  const signedAmount = amountParser(amountValue)
   if (!moment || signedAmount === null || signedAmount === 0n) return null
   const balance = balanceValue ? parseBankAmount(balanceValue) : null
   const movementType = detectBankMovementType(description, signedAmount)
@@ -246,33 +271,61 @@ function closingBalanceFrom(transactions: ParsedBankStatementTransaction[]) {
   return balance
 }
 
+function delimitedColumnIndexes(headers: string[]) {
+  return {
+    date: headerIndex(headers, ['data lancamento', 'data movimento', 'data transacao', 'data', 'date']),
+    time: headerIndex(headers, ['hora lancamento', 'horario', 'hora', 'time']),
+    amount: headerIndex(headers, ['valor lancamento', 'valor transacao', 'valor', 'amount']),
+    debit: headerIndex(headers, ['valor debito', 'debitos', 'debito', 'saidas', 'saida', 'withdrawal']),
+    credit: headerIndex(headers, ['valor credito', 'creditos', 'credito', 'entradas', 'entrada', 'deposit']),
+    balance: headerIndex(headers, ['saldo apos lancamento', 'saldo disponivel', 'saldo', 'balance']),
+    history: headerIndex(headers, ['historico', 'lancamento', 'tipo', 'transaction type']),
+    description: headerIndex(headers, ['descricao', 'detalhes', 'memo', 'favorecido', 'estabelecimento', 'nome']),
+    externalId: headerIndex(headers, ['identificador', 'id transacao', 'fitid']),
+  }
+}
+
+function delimitedAmount(row: string[], indexes: ReturnType<typeof delimitedColumnIndexes>) {
+  const amount = indexes.amount >= 0 ? row[indexes.amount]?.trim() : ''
+  if (amount) return amount
+  const debit = indexes.debit >= 0 ? row[indexes.debit]?.trim() : ''
+  if (debit && parseBankAmount(debit) !== null) return debit.startsWith('-') ? debit : `-${debit}`
+  const credit = indexes.credit >= 0 ? row[indexes.credit]?.trim() : ''
+  return credit ?? ''
+}
+
 export function parseDelimitedStatement(content: string, fileName = 'extrato.csv'): ParsedBankStatement {
-  const firstLine = content.split(/\r?\n/, 1)[0] ?? ''
-  const delimiter = ['\t', ';', ','].sort((a, b) => firstLine.split(b).length - firstLine.split(a).length)[0]
-  const rows = parseDelimited(content, delimiter)
+  const parsedCandidates = ['\t', ';', ','].map((delimiter) => ({
+    delimiter,
+    rows: parseDelimited(content, delimiter),
+  }))
+  const candidate = parsedCandidates.sort((a, b) => {
+    const width = (rows: string[][]) => Math.max(0, ...rows.slice(0, 30).map((row) => row.length))
+    return width(b.rows) - width(a.rows)
+  })[0]
+  const rows = candidate.rows
   if (rows.length < 2) throw new Error('O arquivo não possui cabeçalho e lançamentos reconhecíveis.')
-  const headers = rows[0].map(normalizedHeader)
-  const dateIndex = headerIndex(headers, ['data lancamento', 'data movimento', 'data', 'date'])
-  const timeIndex = headerIndex(headers, ['hora lancamento', 'horario', 'hora', 'time'])
-  const amountIndex = headerIndex(headers, ['valor lancamento', 'valor', 'amount'])
-  const balanceIndex = headerIndex(headers, ['saldo', 'balance'])
-  const historyIndex = headerIndex(headers, ['historico', 'lancamento', 'tipo'])
-  const descriptionIndex = headerIndex(headers, ['descricao', 'detalhes', 'memo', 'nome'])
-  if (dateIndex < 0 || amountIndex < 0) {
+  const headerRowIndex = rows.slice(0, 30).findIndex((row) => {
+    const indexes = delimitedColumnIndexes(row.map(normalizedHeader))
+    return indexes.date >= 0 && (indexes.amount >= 0 || indexes.debit >= 0 || indexes.credit >= 0)
+  })
+  if (headerRowIndex < 0) {
     throw new Error('Não encontrei as colunas de data e valor. Use um CSV/TSV com cabeçalho.')
   }
-  const transactions = rows.slice(1).map((row) => transactionFromValues(
-    row[dateIndex] ?? '', row[amountIndex] ?? '',
-    [row[historyIndex], row[descriptionIndex]].filter(Boolean).join(' · '),
-    balanceIndex >= 0 ? row[balanceIndex] : null,
-    null,
-    timeIndex >= 0 ? row[timeIndex] : '',
+  const indexes = delimitedColumnIndexes(rows[headerRowIndex].map(normalizedHeader))
+  const dataRows = rows.slice(headerRowIndex + 1)
+  const transactions = dataRows.map((row) => transactionFromValues(
+    row[indexes.date] ?? '', delimitedAmount(row, indexes),
+    [row[indexes.history], row[indexes.description]].filter(Boolean).join(' · '),
+    indexes.balance >= 0 ? row[indexes.balance] : null,
+    indexes.externalId >= 0 ? row[indexes.externalId] : null,
+    indexes.time >= 0 ? row[indexes.time] : '',
   )).filter((item): item is ParsedBankStatementTransaction => item !== null).slice(0, MAX_IMPORT_ROWS)
   if (!transactions.length) throw new Error('Nenhum lançamento válido foi encontrado no arquivo.')
   return {
     format: 'csv', fileName, transactions,
     closingBalance: closingBalanceFrom(transactions),
-    warnings: rows.length - 1 > MAX_IMPORT_ROWS ? [`Somente os primeiros ${MAX_IMPORT_ROWS} lançamentos foram carregados.`] : [],
+    warnings: dataRows.length > MAX_IMPORT_ROWS ? [`Somente os primeiros ${MAX_IMPORT_ROWS} lançamentos foram carregados.`] : [],
   }
 }
 
@@ -282,17 +335,17 @@ function ofxValue(block: string, tag: string) {
 
 export function parseOfxStatement(content: string, fileName = 'extrato.ofx'): ParsedBankStatement {
   const transactions: ParsedBankStatementTransaction[] = []
-  const blocks = content.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi) ?? []
+  const blocks = content.match(/<STMTTRN>[\s\S]*?(?=<STMTTRN>|<\/BANKTRANLIST>|$)/gi) ?? []
   for (const block of blocks.slice(0, MAX_IMPORT_ROWS)) {
     const transaction = transactionFromValues(
       ofxValue(block, 'DTPOSTED'), ofxValue(block, 'TRNAMT'),
       [ofxValue(block, 'TRNTYPE'), ofxValue(block, 'NAME'), ofxValue(block, 'MEMO')].filter(Boolean).join(' · '),
-      null, ofxValue(block, 'FITID'),
+      null, ofxValue(block, 'FITID'), '', parseOfxAmount,
     )
     if (transaction) transactions.push(transaction)
   }
   if (!transactions.length) throw new Error('Nenhum lançamento válido foi encontrado no OFX.')
-  const ledgerBalance = parseBankAmount(ofxValue(content, 'BALAMT'))
+  const ledgerBalance = parseOfxAmount(ofxValue(content, 'BALAMT'))
   return {
     format: 'ofx', fileName, transactions,
     closingBalance: ledgerBalance === null ? null : centsToStorage(ledgerBalance),
@@ -437,11 +490,12 @@ export async function parseBankStatementFile(file: File): Promise<ParsedBankStat
   if (file.size > MAX_STATEMENT_BYTES) throw new Error('O extrato deve ter no máximo 12 MB.')
   const extension = file.name.split('.').pop()?.toLowerCase()
   const buffer = await file.arrayBuffer()
-  if (extension === 'pdf' || file.type === 'application/pdf') {
+  const signature = new TextDecoder('ascii').decode(buffer.slice(0, 8))
+  if (extension === 'pdf' || file.type === 'application/pdf' || signature.startsWith('%PDF-')) {
     return parseStatementTextLines(await extractPdfLines(buffer), file.name)
   }
   const content = decodeStatement(buffer)
-  if (extension === 'ofx' || /<OFX[>\s]/i.test(content)) return parseOfxStatement(content, file.name)
+  if (extension === 'ofx' || extension === 'qfx' || /<OFX[>\s]/i.test(content)) return parseOfxStatement(content, file.name)
   return parseDelimitedStatement(content, file.name)
 }
 

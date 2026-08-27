@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.14.2 — Importação segura no celular
+
+- reorganiza os modais no mobile com área segura, rolagem previsível, fundo bloqueado e controles protegidos contra o zoom automático da WebView;
+- mantém cabeçalho, conteúdo rolável e confirmação em regiões separadas na importação de extratos, sem campos ou ações sobrepostos;
+- corrige o saldo principal para exibir todos os dígitos mesmo com valores longos em telas estreitas;
+- libera o seletor de arquivos Android para CSV, TSV, TXT tabular, OFX, QFX e PDF textual, sem ficar restrito a PDF;
+- amplia CSV/TSV para cabeçalhos após metadados, datas com ano curto, colunas separadas de débito/crédito e valores nos padrões brasileiro e internacional;
+- aceita OFX/QFX 1.x sem tags de fechamento e reconhece PDF pelo conteúdo quando o provedor móvel informa um MIME genérico;
+- interpreta corretamente valores OFX com precisão adicional, como `4.6000` = R$ 4,60, incluindo arredondamento seguro para centavos;
+- limpa códigos técnicos e nomes duplicados, transformando `PAYMENT · Nivea · Pix enviado: Nivea` em apenas `Nivea`;
+- aplica o modo seguro recomendado: `PAYMENT` e `OTHER` não viram cartão; o vínculo só é sugerido quando cartão, débito ou crédito aparecem explicitamente;
+- mostra na prévia recomendações como “PIX · sem cartão” para facilitar a conferência antes da importação;
+- atualiza Web/PWA, Tauri e Android para a versão 0.14.2 (`versionCode` 14002).
+
 ## 0.13.1 — Extrato mais inteligente
 
 - entende datas por bloco e o “Saldo do dia” dos PDFs do Banco Inter, inclusive quando a movimentação e seus valores são extraídos em linhas separadas;

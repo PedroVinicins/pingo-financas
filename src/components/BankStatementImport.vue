@@ -77,6 +77,14 @@ function movementLabel(type: BankMovementType) {
     other: 'Outra movimentação',
   })[type]
 }
+function importRecommendation(item: ParsedBankStatementTransaction) {
+  if (item.movementType === 'pix_sent' || item.movementType === 'pix_received') return 'Recomendado: PIX · sem cartão'
+  if (item.suggestedCardLink) return 'Recomendado: vincular cartão'
+  if (item.movementType === 'salary') return 'Recomendado: entrada · sem cartão'
+  if (item.movementType === 'transfer_sent' || item.movementType === 'transfer_received') return 'Recomendado: transferência · sem cartão'
+  if (item.movementType === 'fee') return 'Recomendado: tarifa · sem cartão'
+  return 'Recomendado: revisar · sem cartão'
+}
 function normalizedName(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR')
 }
@@ -110,7 +118,8 @@ function chooseDefaults() {
   suggestedCardId.value = props.cards.find((item) => item.isDefault && !item.isFrozen)?.id ?? ''
 }
 async function loadFile(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0]
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
   if (!file) return
   parsing.value = true
   error.value = ''
@@ -126,7 +135,10 @@ async function loadFile(event: Event) {
     chooseDefaults()
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : 'Não foi possível ler este extrato.'
-  } finally { parsing.value = false }
+  } finally {
+    parsing.value = false
+    input.value = ''
+  }
 }
 function submit() {
   if (!statement.value || !canImport.value) return
@@ -168,10 +180,11 @@ async function createCard(input: NewDebitCardInput) {
 <template>
   <Teleport to="body">
     <div class="pingo-modal-backdrop fixed inset-0 z-[100] flex items-end bg-slate-950/65 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-4" @click.self="!busy && emit('close')">
-      <form class="pingo-modal-panel max-h-[94dvh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-3xl sm:rounded-[2rem] sm:p-6" @submit.prevent="submit">
-        <div class="flex items-start gap-3"><div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-sky-100 text-sky-700 dark:bg-sky-950"><FileSpreadsheet :size="22" /></div><div class="min-w-0 flex-1"><p class="text-sm font-bold text-sky-600">Conferência bancária</p><h2 class="text-xl font-black">Importar extrato</h2><p class="mt-1 text-xs leading-relaxed text-slate-500">CSV, OFX e PDF com texto. A leitura acontece neste dispositivo.</p></div><button type="button" :disabled="busy" class="grid size-10 place-items-center rounded-xl bg-slate-100 disabled:opacity-40 dark:bg-slate-800" aria-label="Fechar" @click="emit('close')"><X :size="18" /></button></div>
+      <form class="pingo-modal-panel pingo-modal-frame flex w-full flex-col rounded-t-[2rem] bg-white p-0 shadow-2xl dark:bg-slate-900 sm:max-w-3xl sm:rounded-[2rem]" role="dialog" aria-modal="true" aria-labelledby="bank-import-title" @submit.prevent="submit">
+        <header class="flex shrink-0 items-start gap-3 border-b border-slate-100 px-4 pb-4 pt-5 dark:border-slate-800 sm:px-6 sm:pt-6"><div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-sky-100 text-sky-700 dark:bg-sky-950"><FileSpreadsheet :size="22" /></div><div class="min-w-0 flex-1"><p class="text-sm font-bold text-sky-600">Conferência bancária</p><h2 id="bank-import-title" class="text-xl font-black">Importar extrato</h2><p class="mt-1 text-xs leading-relaxed text-slate-500">CSV, OFX/QFX, TXT e PDF textual. Tudo é lido neste dispositivo.</p></div><button type="button" :disabled="busy" class="grid size-10 shrink-0 place-items-center rounded-xl bg-slate-100 disabled:opacity-40 dark:bg-slate-800" aria-label="Fechar" @click="emit('close')"><X :size="18" /></button></header>
 
-        <label class="mt-5 grid min-h-32 cursor-pointer place-items-center rounded-2xl border-2 border-dashed border-sky-200 bg-sky-50/60 p-5 text-center dark:border-sky-900 dark:bg-sky-950/20"><span><FileUp class="mx-auto text-sky-600" :size="30" /><strong class="mt-2 block">{{ parsing ? 'Lendo extrato…' : statement ? 'Escolher outro arquivo' : 'Escolher extrato do banco' }}</strong><span class="mt-1 block text-xs text-slate-500">.csv, .txt, .ofx ou .pdf · até 12 MB</span></span><input type="file" class="sr-only" accept=".csv,.txt,.ofx,.pdf,text/csv,text/plain,application/pdf" :disabled="parsing || busy" @change="loadFile" /></label>
+        <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-5 sm:px-6">
+        <label class="mt-4 grid min-h-24 cursor-pointer place-items-center rounded-2xl border-2 border-dashed border-sky-200 bg-sky-50/60 p-4 text-center dark:border-sky-900 dark:bg-sky-950/20 sm:min-h-28 sm:p-5"><span><FileUp class="mx-auto text-sky-600" :size="28" /><strong class="mt-2 block">{{ parsing ? 'Lendo extrato…' : statement ? 'Escolher outro arquivo' : 'Escolher extrato do banco' }}</strong><span class="mt-1 block text-xs text-slate-500">CSV, TSV, TXT, OFX, QFX ou PDF · até 12 MB</span><span v-if="statement" class="mt-1 block truncate text-[11px] font-bold text-sky-700">{{ statement.fileName }}</span></span><input type="file" class="sr-only" :disabled="parsing || busy" @change="loadFile" /></label>
 
         <p v-if="error" class="mt-4 flex gap-2 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"><AlertCircle :size="18" class="shrink-0" /> {{ error }}</p>
 
@@ -180,7 +193,7 @@ async function createCard(input: NewDebitCardInput) {
 
           <p v-for="warning in statement.warnings" :key="warning" class="mt-3 text-xs font-bold text-amber-600">{{ warning }}</p>
 
-          <section class="mt-4 rounded-2xl border border-slate-200 p-4 dark:border-slate-800"><h3 class="text-sm font-black">Classificação inteligente</h3><p class="mt-1 text-xs leading-relaxed text-slate-500">Salário, compras, tarifas e outras entradas recebem a categoria adequada. Use as opções abaixo como padrão para Pix, transferências e casos não identificados.</p><div class="mt-3 grid gap-3 sm:grid-cols-2"><label v-if="statement.transactions.some((item) => item.kind === 'expense' && !item.isInternalTransfer)" class="grid gap-1 text-xs font-bold">Padrão para outras saídas<select v-model="expenseCategoryId" class="h-11 rounded-xl border border-slate-200 bg-transparent px-3 text-sm dark:border-slate-700"><option v-for="category in expenseCategories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label><label v-if="statement.transactions.some((item) => item.kind === 'income' && !item.isInternalTransfer)" class="grid gap-1 text-xs font-bold">Padrão para outras entradas<select v-model="incomeCategoryId" class="h-11 rounded-xl border border-slate-200 bg-transparent px-3 text-sm dark:border-slate-700"><option v-for="category in incomeCategories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label></div></section>
+          <section class="mt-4 rounded-2xl border border-slate-200 p-4 dark:border-slate-800"><h3 class="text-sm font-black">Classificação inteligente</h3><p class="mt-1 text-xs leading-relaxed text-slate-500">Salário, compras, tarifas e outras entradas recebem a categoria adequada. Use as opções abaixo como padrão para Pix, transferências e casos não identificados.</p><p class="mt-3 rounded-xl bg-sky-50 p-3 text-xs font-bold leading-relaxed text-sky-800 dark:bg-sky-950/30 dark:text-sky-200">Modo seguro recomendado: PAYMENT e OTHER ficam sem cartão. O Pingo só sugere cartão quando o extrato diz explicitamente cartão, débito ou crédito.</p><div class="mt-3 grid gap-3 sm:grid-cols-2"><label v-if="statement.transactions.some((item) => item.kind === 'expense' && !item.isInternalTransfer)" class="grid gap-1 text-xs font-bold">Padrão para outras saídas<select v-model="expenseCategoryId" class="h-11 rounded-xl border border-slate-200 bg-transparent px-3 text-sm dark:border-slate-700"><option v-for="category in expenseCategories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label><label v-if="statement.transactions.some((item) => item.kind === 'income' && !item.isInternalTransfer)" class="grid gap-1 text-xs font-bold">Padrão para outras entradas<select v-model="incomeCategoryId" class="h-11 rounded-xl border border-slate-200 bg-transparent px-3 text-sm dark:border-slate-700"><option v-for="category in incomeCategories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label></div></section>
 
           <section v-if="internalCount" class="mt-3 rounded-2xl border border-violet-200 bg-violet-50 p-4 dark:border-violet-900 dark:bg-violet-950/25">
             <h3 class="text-sm font-black text-violet-800 dark:text-violet-200">Aplicações e resgates reconhecidos</h3>
@@ -195,11 +208,12 @@ async function createCard(input: NewDebitCardInput) {
 
           <label v-if="statement.closingBalance !== null" class="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border p-4" :class="canReconcile ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/25' : 'border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/25'"><input v-model="reconcileBalance" type="checkbox" class="mt-1 size-4 accent-emerald-600" :disabled="!canReconcile" /><Landmark :size="19" class="mt-0.5 shrink-0" /><span><strong class="block text-sm">Ajustar saldo da carteira para {{ money(statement.closingBalance) }}</strong><span class="mt-1 block text-xs text-slate-500">{{ canReconcile ? `Usa o saldo mais recente informado pelo banco em ${date(statementDate)}.` : hasNewerTransactions ? 'O Pingo já possui lançamentos mais novos; por segurança, este extrato antigo não substituirá o saldo atual.' : 'O saldo do extrato está negativo e não pode ser conciliado nesta versão.' }}</span></span></label>
 
-          <section class="mt-4 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800"><div class="flex items-center justify-between bg-slate-50 px-4 py-3 dark:bg-slate-950"><h3 class="text-sm font-black">Prévia dos lançamentos</h3><button type="button" class="text-xs font-black text-sky-600" @click="selectNewRows">Selecionar novos</button></div><div class="max-h-72 divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800"><label v-for="(item, index) in statement.transactions" :key="`${item.date}-${index}`" class="flex items-center gap-3 px-4 py-3" :class="duplicates[index] || item.isInternalTransfer ? 'opacity-55' : ''"><input v-model="selected[index]" type="checkbox" class="size-4 accent-emerald-600" :disabled="duplicates[index] || item.isInternalTransfer" /><span class="min-w-0 flex-1"><strong class="block truncate text-sm">{{ item.description }}</strong><span class="mt-0.5 block truncate text-xs text-slate-500">{{ moment(item.date, item.occurredAt) }} · {{ movementLabel(item.movementType) }}<template v-if="!item.isInternalTransfer"> · {{ categoryNameFor(item) }}</template><template v-if="item.suggestedCardLink"> · Vincular cartão</template><template v-if="item.isInternalTransfer"> · Transferência interna</template><template v-if="duplicates[index]"> · Já está no Pingo</template></span></span><strong class="max-w-[35%] shrink truncate text-right text-sm tabular-nums" :title="money(item.amount)" :class="item.isInternalTransfer ? 'text-violet-600' : item.kind === 'income' ? 'text-emerald-600' : 'text-rose-600'">{{ item.kind === 'income' ? '+' : '-' }}{{ money(item.amount) }}</strong></label></div></section>
+          <section class="mt-4 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800"><div class="flex items-center justify-between gap-3 bg-slate-50 px-3 py-3 dark:bg-slate-950 sm:px-4"><div><h3 class="text-sm font-black">Prévia dos lançamentos</h3><p class="text-[11px] text-slate-500">Toque para incluir ou retirar</p></div><button type="button" class="shrink-0 text-xs font-black text-sky-600" @click="selectNewRows">Selecionar novos</button></div><div class="max-h-[22rem] divide-y divide-slate-100 overflow-y-auto overscroll-contain dark:divide-slate-800"><label v-for="(item, index) in statement.transactions" :key="`${item.date}-${index}`" class="flex min-w-0 items-center gap-2.5 px-3 py-3 sm:gap-3 sm:px-4" :class="duplicates[index] || item.isInternalTransfer ? 'opacity-55' : ''"><input v-model="selected[index]" type="checkbox" class="size-4 shrink-0 accent-emerald-600" :disabled="duplicates[index] || item.isInternalTransfer" /><span class="min-w-0 flex-1"><strong class="block truncate text-sm">{{ item.description }}</strong><span class="mt-0.5 block truncate text-[11px] text-slate-500 sm:text-xs">{{ moment(item.date, item.occurredAt) }} · {{ movementLabel(item.movementType) }}<template v-if="!item.isInternalTransfer"> · {{ categoryNameFor(item) }}</template><template v-if="item.isInternalTransfer"> · Transferência interna</template><template v-if="duplicates[index]"> · Já está no Pingo</template></span><span v-if="!item.isInternalTransfer && !duplicates[index]" class="mt-1 block truncate text-[10px] font-black text-sky-700 dark:text-sky-300">{{ importRecommendation(item) }}</span></span><strong class="max-w-[38%] shrink-0 truncate text-right text-xs tabular-nums sm:text-sm" :title="money(item.amount)" :class="item.isInternalTransfer ? 'text-violet-600' : item.kind === 'income' ? 'text-emerald-600' : 'text-rose-600'">{{ item.kind === 'income' ? '+' : '-' }}{{ money(item.amount) }}</strong></label></div></section>
 
           <div v-if="duplicateCount" class="mt-3 flex gap-2 text-xs text-slate-500"><CheckCircle2 :size="16" class="shrink-0 text-emerald-600" /><p>Duplicatas são comparadas por data, tipo, valor e descrição e ficam fora da importação.</p></div>
-          <button :disabled="busy || !canImport" class="mt-5 w-full rounded-2xl bg-sky-600 py-3.5 font-black text-white disabled:opacity-40">{{ busy ? 'Importando…' : `Importar ${selectedCount} lançamento${selectedCount === 1 ? '' : 's'}` }}</button>
         </template>
+        </div>
+        <footer v-if="statement" class="shrink-0 border-t border-slate-100 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6 sm:pb-5"><button :disabled="busy || !canImport" class="w-full rounded-2xl bg-sky-600 py-3.5 font-black text-white shadow-lg shadow-sky-600/15 disabled:opacity-40">{{ busy ? 'Importando…' : `Importar ${selectedCount} lançamento${selectedCount === 1 ? '' : 's'}` }}</button></footer>
       </form>
     </div>
   </Teleport>

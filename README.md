@@ -8,6 +8,17 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
+## Destaques da versão 0.14.2
+
+- modais mobile com área segura, rolagem sem sobreposição e campos que não acionam zoom indevido;
+- saldo principal responsivo, mantendo o último dígito visível mesmo em valores longos;
+- importação local de CSV, TSV, TXT tabular, OFX, QFX e PDF textual também no seletor de arquivos Android;
+- CSV mais flexível para metadados antes do cabeçalho, débito/crédito separados, datas curtas e formatos monetários diferentes;
+- OFX/QFX antigo sem tags de fechamento e valores com precisão adicional convertidos corretamente para centavos;
+- descrição bancária limpa, sem `PAYMENT`, códigos técnicos ou nomes repetidos;
+- modo seguro recomendado que prioriza PIX e só vincula cartão quando o extrato declara cartão, débito ou crédito;
+- Android `versionCode` 14002 e cache Web renovado para a nova release.
+
 ## Destaques da versão 0.13.1
 
 - importador de extratos mais inteligente para PDFs do Banco Inter, com datas por bloco e conciliação pelo saldo diário;

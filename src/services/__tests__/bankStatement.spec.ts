@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   duplicateStatementRows,
+  parseBankAmount,
   parseDelimitedStatement,
+  parseBankStatementFile,
   parseOfxStatement,
   parseStatementTextLines,
 } from '../bankStatement'
@@ -32,6 +34,88 @@ describe('bank statement import', () => {
       description: 'Mercado', paymentMethod: 'pix', movementType: 'pix_sent', suggestedCardLink: false,
     })
     expect(statement.closingBalance).toBe('98.76')
+  })
+
+  it('reads OFX 1.x/QFX without transaction closing tags', () => {
+    const statement = parseOfxStatement(`OFXHEADER:100
+<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKTRANLIST>
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260827103000<TRNAMT>-9.90<FITID>one<NAME>PIX<MEMO>Padaria
+<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20260828110000<TRNAMT>100.00<FITID>two<NAME>PIX RECEBIDO<MEMO>Cliente
+</BANKTRANLIST><LEDGERBAL><BALAMT>90.10</LEDGERBAL></OFX>`, 'banco.qfx')
+
+    expect(statement.transactions).toHaveLength(2)
+    expect(statement.transactions.map((item) => item.amount)).toEqual(['9.90', '100.00'])
+    expect(statement.closingBalance).toBe('90.10')
+  })
+
+  it('treats PAYMENT with an explicit Pix as Pix and keeps OFX decimal precision', () => {
+    const statement = parseOfxStatement(`<OFX><BANKTRANLIST>
+      <STMTTRN><TRNTYPE>PAYMENT<DTPOSTED>20260827120000<TRNAMT>-4.6000<FITID>pix-one
+      <NAME>Nivea Maria Vale Da Silva<MEMO>Pix enviado: "Nivea Maria Vale da Silva"</STMTTRN>
+      </BANKTRANLIST><LEDGERBAL><BALAMT>1.5300</LEDGERBAL></OFX>`)
+
+    expect(statement.transactions[0]).toMatchObject({
+      kind: 'expense', amount: '4.60', description: 'Nivea Maria Vale Da Silva',
+      paymentMethod: 'pix', movementType: 'pix_sent', suggestedCardLink: false,
+    })
+    expect(statement.closingBalance).toBe('1.53')
+  })
+
+  it('keeps an ambiguous PAYMENT away from cards', () => {
+    const statement = parseOfxStatement(`<OFX><BANKTRANLIST>
+      <STMTTRN><TRNTYPE>PAYMENT<DTPOSTED>20260827<TRNAMT>-19.9900<NAME>Academia</STMTTRN>
+      </BANKTRANLIST></OFX>`)
+
+    expect(statement.transactions[0]).toMatchObject({
+      amount: '19.99', description: 'Academia', paymentMethod: 'unknown',
+      movementType: 'other', suggestedCardLink: false,
+    })
+  })
+
+  it('only recommends a card when PAYMENT explicitly describes a card purchase', () => {
+    const statement = parseOfxStatement(`<OFX><BANKTRANLIST>
+      <STMTTRN><TRNTYPE>PAYMENT<DTPOSTED>20260827<TRNAMT>-4.605<NAME>Mercado
+      <MEMO>Compra no débito</STMTTRN></BANKTRANLIST></OFX>`)
+
+    expect(statement.transactions[0]).toMatchObject({
+      amount: '4.61', description: 'Mercado', paymentMethod: 'debit',
+      movementType: 'debit_purchase', suggestedCardLink: true,
+    })
+  })
+
+  it('finds a CSV header after bank metadata and supports debit/credit columns', () => {
+    const statement = parseDelimitedStatement(`Conta;12345-6
+Período;Agosto de 2026
+Data;Descrição;Débito;Crédito;Saldo
+27/08/26;Mercado;1.234,56;;5.000,00
+28/08/26;Salário;;2.500,00;7.500,00`, 'exportacao.csv')
+
+    expect(statement.transactions).toHaveLength(2)
+    expect(statement.transactions[0]).toMatchObject({
+      date: '2026-08-27', kind: 'expense', amount: '1234.56', description: 'Mercado',
+    })
+    expect(statement.transactions[1]).toMatchObject({
+      date: '2026-08-28', kind: 'income', amount: '2500.00', description: 'Salário',
+    })
+    expect(statement.closingBalance).toBe('7500.00')
+  })
+
+  it('understands Brazilian and international thousands separators', () => {
+    expect(parseBankAmount('R$ 1.234,56')).toBe(123456n)
+    expect(parseBankAmount('BRL 1,234.56')).toBe(123456n)
+    expect(parseBankAmount('-1,234.56')).toBe(-123456n)
+  })
+
+  it('detects QFX content through the file importer', async () => {
+    const contents = '<OFX><BANKTRANLIST><STMTTRN><DTPOSTED>20260827<TRNAMT>-10.00<NAME>PIX<MEMO>Teste</BANKTRANLIST></OFX>'
+    const file = {
+      name: 'movimentos.qfx', type: 'application/vnd.intu.qfx', size: contents.length,
+      arrayBuffer: async () => new TextEncoder().encode(contents).buffer,
+    } as File
+
+    const statement = await parseBankStatementFile(file)
+    expect(statement.format).toBe('ofx')
+    expect(statement.transactions[0]).toMatchObject({ amount: '10.00', date: '2026-08-27' })
   })
 
   it('preserves a separate bank time and removes operational identifiers', () => {
