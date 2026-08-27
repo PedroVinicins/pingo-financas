@@ -88,11 +88,12 @@
 /* Todos os formulários sobrepostos usam a mesma camada, rolagem e área segura.
    Isso também impede a navegação móvel de cobrir ações no rodapé. */
 .pingo-modal-backdrop {
-  z-index: 120 !important;
-  background: rgba(21, 21, 26, 0.42) !important;
-  backdrop-filter: blur(4px);
+  isolation: isolate;
+  overflow: hidden;
   overscroll-behavior: contain;
 }
+
+body:has(.pingo-modal-backdrop) { overflow: hidden; }
 
 .pingo-modal-panel {
   width: 100%;
@@ -100,37 +101,53 @@
   max-height: calc(100dvh - env(safe-area-inset-top));
   overflow-x: hidden;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   overscroll-behavior: contain;
   border: 1px solid rgb(var(--color-border));
-  border-radius: 30px 30px 0 0 !important;
-  background: rgb(var(--color-surface)) !important;
-  padding-bottom: max(1.25rem, calc(1rem + env(safe-area-inset-bottom))) !important;
+  border-radius: 30px 30px 0 0;
+  background: rgb(var(--color-surface));
+  padding-bottom: max(1.25rem, calc(1rem + env(safe-area-inset-bottom)));
   box-shadow: 0 24px 70px rgba(21, 21, 26, 0.18);
 }
 
+.pingo-modal-frame {
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
 .pingo-modal-footer {
-  position: sticky;
-  bottom: -1.25rem;
-  z-index: 2;
-  margin-inline: -1.25rem;
-  padding: 0.75rem 1.25rem max(1rem, calc(.75rem + env(safe-area-inset-bottom)));
-  background: rgb(var(--color-surface) / 0.96);
-  backdrop-filter: blur(12px);
+  position: static;
+  margin-inline: 0;
+  padding: 0;
+  background: transparent;
+}
+
+@media (max-width: 639px) {
+  .pingo-modal-backdrop {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+
+  .pingo-modal-panel {
+    max-height: calc(100dvh - max(0.75rem, env(safe-area-inset-top)));
+    scroll-padding-block: 1rem 5rem;
+  }
+
+  /* Evita o zoom automático do Safari/WebView ao focar controles pequenos,
+     sem reduzir os campos monetários que já usam uma tipografia maior. */
+  .pingo-modal-panel :is(input, textarea, select):not([type='checkbox']):not([type='radio']):not([type='color']):not([inputmode='decimal']):not([inputmode='numeric']) {
+    font-size: 16px;
+  }
 }
 
 @media (min-width: 640px) {
   .pingo-modal-panel {
     max-height: calc(100dvh - 2rem);
-    border-radius: 30px !important;
-    padding-bottom: 1.5rem !important;
+    border-radius: 30px;
+    padding-bottom: 1.5rem;
   }
-  .pingo-modal-footer {
-    position: static;
-    margin-inline: 0;
-    padding: 0;
-    background: transparent;
-    backdrop-filter: none;
-  }
+
+  .pingo-modal-frame { padding-bottom: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

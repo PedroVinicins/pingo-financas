@@ -118,7 +118,7 @@ async function createCategory() {
 
       <div class="mt-5 rounded-[1.5rem] bg-slate-100 p-4 dark:bg-slate-950">
         <div class="flex items-center gap-2 text-slate-400"><span class="text-xl font-black">R$</span>
-          <LocalizedNumberInput ref="amountInput" v-model="form.amount" placeholder="0,00" class="min-w-0 flex-1 bg-transparent text-4xl font-black tracking-tight placeholder:text-slate-300 dark:placeholder:text-slate-700" />
+          <LocalizedNumberInput ref="amountInput" v-model="form.amount" placeholder="0,00" class="min-w-0 flex-1 bg-transparent pr-1 text-4xl font-black tracking-tight placeholder:text-slate-300 dark:placeholder:text-slate-700" />
         </div>
         <div class="mt-3 grid grid-cols-4 gap-2">
           <button v-for="value in ['5,00','10,00','20,00','50,00']" :key="value" type="button" class="rounded-xl bg-white py-2 text-xs font-black shadow-sm dark:bg-slate-800" @click="setAmount(value)">R$ {{ value.replace(',00','') }}</button>

@@ -101,7 +101,7 @@ export async function exportBackup(data: PingoBackup['data']) {
   const backup: PingoBackup = {
     format: 'pingo-backup',
     version: 1,
-    appVersion: '0.13.1',
+    appVersion: '0.14.2',
     exportedAt: new Date().toISOString(),
     data,
   }

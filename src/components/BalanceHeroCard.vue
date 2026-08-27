@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Eye, EyeOff } from 'lucide-vue-next'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   balance: string
   month: string
   income: string
@@ -11,6 +12,14 @@ withDefaults(defineProps<{
   budgetProgress?: number | null
 }>(), { netWorth: '', hidden: false, budgetProgress: null })
 const emit = defineEmits<{ details: []; togglePrivacy: [] }>()
+
+const balanceSize = computed(() => {
+  const length = [...props.balance].length
+  if (length <= 9) return 'clamp(2.65rem, 10vw, 4rem)'
+  if (length <= 13) return 'clamp(2rem, 8vw, 3.4rem)'
+  if (length <= 17) return 'clamp(1.65rem, 6.5vw, 2.8rem)'
+  return 'clamp(1.35rem, 5.25vw, 2.3rem)'
+})
 </script>
 
 <template>
@@ -19,8 +28,8 @@ const emit = defineEmits<{ details: []; togglePrivacy: [] }>()
       <p class="font-medium text-white/65">Saldo disponível</p>
       <p class="text-xs font-bold uppercase tracking-[.12em] text-white/45">{{ month }}</p>
     </div>
-    <div class="relative mt-8 flex min-w-0 items-center gap-3">
-      <h2 class="min-w-0 truncate text-[clamp(2.65rem,10vw,4rem)] font-extrabold leading-none tracking-[-0.065em] tabular-nums" :title="balance">{{ balance }}</h2>
+    <div class="relative mt-8 flex min-w-0 items-center gap-2">
+      <h2 class="min-w-0 flex-1 whitespace-nowrap pr-1 font-extrabold leading-none tracking-[-0.045em] tabular-nums" :style="{ fontSize: balanceSize }" :title="balance">{{ balance }}</h2>
       <button class="grid size-10 shrink-0 place-items-center rounded-full text-white/55 transition hover:bg-white/10 hover:text-white" :aria-label="hidden ? 'Mostrar valores' : 'Ocultar valores'" @click="emit('togglePrivacy')"><Eye v-if="hidden" :size="19" /><EyeOff v-else :size="19" /></button>
     </div>
     <div class="relative mt-7 h-1.5 overflow-hidden rounded-full bg-white/12">
