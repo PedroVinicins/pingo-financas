@@ -17,4 +17,12 @@ describe('mobile viewport', () => {
       keyboardHeight: 0,
     })
   })
+
+  it('keeps a non-zero visual height for a bottom sheet while the keyboard is open', () => {
+    expect(calculateKeyboardViewport(780, { height: 356, offsetTop: 0 })).toMatchObject({
+      height: 356,
+      offsetTop: 0,
+      keyboardHeight: 424,
+    })
+  })
 })
