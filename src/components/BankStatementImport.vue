@@ -3,10 +3,10 @@ import { computed, ref } from 'vue'
 import { AlertCircle, CheckCircle2, CreditCard, FileSpreadsheet, FileUp, Landmark, X } from 'lucide-vue-next'
 import type {
   BankMovementType, BankStatementImportInput, Category, DebitCard, NewDebitCardInput,
-  ParsedBankStatement, ParsedBankStatementTransaction, Transaction,
+  ParsedBankStatement, ParsedBankStatementTransaction, SupportedStatementBank, Transaction,
 } from '../types/finance'
 import {
-  duplicateStatementRows, parseBankStatementFile, statementFormatLabel,
+  duplicateStatementRows, parseBankStatementFile, statementFormatLabel, SUPPORTED_STATEMENT_BANKS,
 } from '../services/bankStatement'
 import { useFinanceStore } from '../stores/financeStore'
 import { formatCurrencyValue } from '../services/currency'
@@ -27,6 +27,7 @@ const error = ref('')
 const showCardCreator = ref(false)
 const cardSaving = ref(false)
 const cardSaveError = ref('')
+const selectedBank = ref<SupportedStatementBank>('inter')
 
 const expenseCategories = computed(() => props.categories.filter((item) => item.kind === 'expense'))
 const incomeCategories = computed(() => props.categories.filter((item) => item.kind === 'income'))
@@ -125,7 +126,7 @@ async function loadFile(event: Event) {
   error.value = ''
   statement.value = null
   try {
-    const parsed = await parseBankStatementFile(file)
+    const parsed = await parseBankStatementFile(file, selectedBank.value)
     statement.value = parsed
     duplicates.value = duplicateStatementRows(parsed.transactions, props.transactions)
     selected.value = duplicates.value.map((duplicate, index) => !duplicate && !parsed.transactions[index].isInternalTransfer)
@@ -184,6 +185,8 @@ async function createCard(input: NewDebitCardInput) {
         <header class="flex shrink-0 items-start gap-3 border-b border-slate-100 px-4 pb-4 pt-5 dark:border-slate-800 sm:px-6 sm:pt-6"><div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-sky-100 text-sky-700 dark:bg-sky-950"><FileSpreadsheet :size="22" /></div><div class="min-w-0 flex-1"><p class="text-sm font-bold text-sky-600">Conferência bancária</p><h2 id="bank-import-title" class="text-xl font-black">Importar extrato</h2><p class="mt-1 text-xs leading-relaxed text-slate-500">CSV, OFX/QFX, TXT e PDF textual. Tudo é lido neste dispositivo.</p></div><button type="button" :disabled="busy" class="grid size-10 shrink-0 place-items-center rounded-xl bg-slate-100 disabled:opacity-40 dark:bg-slate-800" aria-label="Fechar" @click="emit('close')"><X :size="18" /></button></header>
 
         <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-5 sm:px-6">
+        <fieldset class="mt-4"><legend class="text-xs font-black uppercase tracking-wide text-slate-500">Banco do extrato</legend><div class="mt-2 grid gap-2 sm:grid-cols-2"><label v-for="bank in SUPPORTED_STATEMENT_BANKS" :key="bank.id" class="flex cursor-pointer items-start gap-3 rounded-2xl border p-3 transition" :class="selectedBank === bank.id ? 'border-sky-500 bg-sky-50 dark:border-sky-500 dark:bg-sky-950/30' : 'border-slate-200 dark:border-slate-800'"><input v-model="selectedBank" type="radio" name="statement-bank" :value="bank.id" class="mt-1 accent-sky-600" :disabled="parsing || busy" /><span><strong class="block text-sm">{{ bank.label }}</strong><span class="mt-0.5 block text-xs text-slate-500">{{ bank.hint }}</span></span></label></div></fieldset>
+        <p class="mt-3 text-xs leading-relaxed text-slate-500">Escolha o banco antes do arquivo para aplicar a leitura e as classificações adequadas ao extrato.</p>
         <label class="mt-4 grid min-h-24 cursor-pointer place-items-center rounded-2xl border-2 border-dashed border-sky-200 bg-sky-50/60 p-4 text-center dark:border-sky-900 dark:bg-sky-950/20 sm:min-h-28 sm:p-5"><span><FileUp class="mx-auto text-sky-600" :size="28" /><strong class="mt-2 block">{{ parsing ? 'Lendo extrato…' : statement ? 'Escolher outro arquivo' : 'Escolher extrato do banco' }}</strong><span class="mt-1 block text-xs text-slate-500">CSV, TSV, TXT, OFX, QFX ou PDF · até 12 MB</span><span v-if="statement" class="mt-1 block truncate text-[11px] font-bold text-sky-700">{{ statement.fileName }}</span></span><input type="file" class="sr-only" :disabled="parsing || busy" @change="loadFile" /></label>
 
         <p v-if="error" class="mt-4 flex gap-2 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"><AlertCircle :size="18" class="shrink-0" /> {{ error }}</p>

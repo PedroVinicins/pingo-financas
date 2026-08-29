@@ -243,6 +243,7 @@ export interface UpdateTransactionInput extends NewTransactionInput {
 }
 
 export type BankStatementFormat = 'csv' | 'ofx' | 'pdf'
+export type SupportedStatementBank = 'inter' | 'nubank'
 
 export interface ParsedBankStatementTransaction {
   kind: TransactionType

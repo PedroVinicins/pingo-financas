@@ -1,17 +1,17 @@
-# Validação do projeto — Pingo v0.14.2
+# Validação do projeto — Pingo v0.14.3
 
 ## Validado neste ambiente
 
-- `npm test`: 78 testes aprovados em 18 arquivos;
+- `npm test`: 80 testes aprovados em 18 arquivos;
 - `npm run build`: TypeScript, Vue e build PWA de produção aprovados;
 - `npm audit --audit-level=high`: nenhuma vulnerabilidade conhecida;
 - `cargo fmt --all -- --check`: aprovado;
 - `cargo test --locked`: 32 testes aprovados (29 no core e 3 de integração);
 - migrations SQLite `0001` até `0010` executadas em sequência nos bancos limpos dos testes;
 - lotes de extrato e transferências de Porquinho validados com rollback/atomicidade;
-- PWA gerado com cache `pingo-shell-v0.14.2`, manifest, ícone e service worker;
-- configuração Android atualizada para `versionName` 0.14.2 e `versionCode` 14002;
-- APK universal debug gerado para ARM64, validado com assinatura APK v2 e SHA-256 `0ed8fb65905f803d455fabc9b115bd9edfae6e3f9d809ad7290777cd0fff7642`;
+- PWA gerado com cache `pingo-shell-v0.14.3`, manifest, ícone e service worker;
+- configuração Android atualizada para `versionName` 0.14.3 e `versionCode` 14003;
+- APK universal debug para ARM64 gerado e validado com assinatura APK v2 e SHA-256 `e5921aea46ae4ef21afdaa70acb644a77ee5df91216061fc6b92d55eb0fffcb5`;
 - manifesto Android mantém permissão biométrica, `windowSoftInputMode="adjustResize"`, backup externo desativado e quatro atalhos do launcher;
 
 ## Testes automatizados
