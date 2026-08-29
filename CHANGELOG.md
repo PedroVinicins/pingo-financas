@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.3 — Extratos Nubank e modais estáveis no APK
+
+- adiciona a escolha de Banco Inter ou Nubank antes da importação do extrato;
+- reconhece no formato Nubank Pix, compras no débito, pagamento de fatura, aplicações e resgates de Caixinhas;
+- sincroniza todos os modais mobile com a viewport visual do Android para manter campos, rolagem e ações acessíveis com o teclado aberto;
+- atualiza Web/PWA, Tauri e Android para a versão 0.14.3 (`versionCode` 14003).
+
 ## 0.14.2 — Importação segura no celular
 
 - reorganiza os modais no mobile com área segura, rolagem previsível, fundo bloqueado e controles protegidos contra o zoom automático da WebView;

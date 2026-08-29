@@ -25,6 +25,23 @@ describe('bank statement import', () => {
     expect(statement.closingBalance).toBe('1.53')
   })
 
+  it('reads the Nubank account CSV and classifies Pix, debit, invoice and Caixinhas', () => {
+    const statement = parseDelimitedStatement(`Data,Descrição da Transação,Valor (R$),Saldo Disponível (R$)
+25/08/2026,Transferência recebida (Pix) - João Silva,+200.00,200.00
+26/08/2026,Compra no débito - Supermercado,-45.50,154.50
+27/08/2026,Pagamento de fatura Cartão de Crédito,-100.00,54.50
+28/08/2026,Aplicação Caixinha Reserva de Emergência,-50.00,4.50
+29/08/2026,Resgate dinheiro guardado Caixinha,+20.00,24.50`, 'nubank.csv')
+
+    expect(statement.transactions).toHaveLength(5)
+    expect(statement.transactions.map((item) => item.movementType)).toEqual([
+      'pix_received', 'debit_purchase', 'credit_purchase', 'vault_deposit', 'vault_withdrawal',
+    ])
+    expect(statement.transactions[2]).toMatchObject({ paymentMethod: 'credit', suggestedCardLink: true })
+    expect(statement.transactions.slice(3).every((item) => item.isInternalTransfer)).toBe(true)
+    expect(statement.closingBalance).toBe('24.50')
+  })
+
   it('reads OFX transactions and ledger balance', () => {
     const statement = parseOfxStatement(`<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKTRANLIST>
       <STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260807120000<TRNAMT>-12.34<FITID>abc<NAME>PIX<MEMO>Mercado</STMTTRN>

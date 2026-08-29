@@ -5,11 +5,17 @@ import type {
   BankStatementFormat,
   ParsedBankStatement,
   ParsedBankStatementTransaction,
+  SupportedStatementBank,
   Transaction,
 } from '../types/finance'
 
 const MAX_STATEMENT_BYTES = 12 * 1024 * 1024
 const MAX_IMPORT_ROWS = 2_000
+
+export const SUPPORTED_STATEMENT_BANKS: Array<{ id: SupportedStatementBank; label: string; hint: string }> = [
+  { id: 'inter', label: 'Banco Inter', hint: 'CSV, OFX/QFX ou PDF textual do Inter' },
+  { id: 'nubank', label: 'Nubank', hint: 'CSV do extrato da conta Nubank' },
+]
 
 function normalizedHeader(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
@@ -127,6 +133,7 @@ export function detectBankPaymentMethod(value: string): BankPaymentMethod {
   if (/\b(?:compra|cartao|card)\b.*\b(?:debito|debit)\b|\b(?:debito|debit)\b.*\b(?:compra|cartao|card)\b/.test(normalized)) return 'debit'
   if (/\b(?:compra|cartao|card)\b.*\b(?:credito|credit)\b|\b(?:credito|credit)\b.*\b(?:compra|cartao|card)\b/.test(normalized)) return 'credit'
   if (/\bcartao\b/.test(normalized)) return 'card'
+  if (/\b(?:pagamento|quitacao)\b.*\bfatura\b|\bfatura\b.*\b(?:cartao|credito)\b/.test(normalized)) return 'credit'
   return 'unknown'
 }
 
@@ -135,9 +142,10 @@ export function detectBankMovementType(value: string, signedAmount = 0n): BankMo
   const outgoing = signedAmount < 0n
 
   if (/\b(?:salario|ordenado|pagamento de salario|portabilidade de salario)\b/.test(normalized)) return 'salary'
-  if (/\b(?:resgate|retirada)\b.*\b(?:cdb|porq|porquinho|poupanca|investimento)\b|\b(?:cdb|porq|porquinho)\b.*\b(?:resgate|retirada)\b/.test(normalized)) return 'vault_withdrawal'
-  if (/\b(?:aplicacao|investimento|guardar)\b.*\b(?:cdb|porq|porquinho|poupanca|objetivo)\b|\b(?:cdb|porq|porquinho)\b.*\b(?:aplicacao|guardar)\b/.test(normalized)) return 'vault_deposit'
+  if (/\b(?:resgate|retirada)\b.*\b(?:cdb|porq|porquinho|poupanca|investimento|caixinha|dinheiro guardado)\b|\b(?:cdb|porq|porquinho|caixinha|dinheiro guardado)\b.*\b(?:resgate|retirada)\b/.test(normalized)) return 'vault_withdrawal'
+  if (/\b(?:aplicacao|investimento|guardar)\b.*\b(?:cdb|porq|porquinho|poupanca|objetivo|caixinha|dinheiro guardado)\b|\b(?:cdb|porq|porquinho|caixinha|dinheiro guardado)\b.*\b(?:aplicacao|guardar)\b/.test(normalized)) return 'vault_deposit'
   if (/\b(?:estorno|chargeback|devolucao|reembolso)\b/.test(normalized)) return 'refund'
+  if (/\b(?:pagamento|quitacao)\b.*\bfatura\b|\bfatura\b.*\b(?:cartao|credito)\b/.test(normalized)) return 'credit_purchase'
   if (/\b(?:compra|pagamento)\b.*\b(?:debito|debit)\b|\b(?:debito|debit)\b.*\b(?:compra|pagamento)\b/.test(normalized)) return 'debit_purchase'
   if (/\b(?:compra|pagamento)\b.*\b(?:credito|credit)\b|\b(?:credito|credit)\b.*\b(?:compra|pagamento)\b/.test(normalized)) return 'credit_purchase'
   if (/\b(?:compra|pagamento)\b.*\bcartao\b|\bcartao\b.*\b(?:compra|pagamento)\b/.test(normalized)) return 'card_purchase'
@@ -486,7 +494,7 @@ async function extractPdfLines(buffer: ArrayBuffer) {
   return lines
 }
 
-export async function parseBankStatementFile(file: File): Promise<ParsedBankStatement> {
+export async function parseBankStatementFile(file: File, bank: SupportedStatementBank = 'inter'): Promise<ParsedBankStatement> {
   if (file.size > MAX_STATEMENT_BYTES) throw new Error('O extrato deve ter no máximo 12 MB.')
   const extension = file.name.split('.').pop()?.toLowerCase()
   const buffer = await file.arrayBuffer()
@@ -496,6 +504,9 @@ export async function parseBankStatementFile(file: File): Promise<ParsedBankStat
   }
   const content = decodeStatement(buffer)
   if (extension === 'ofx' || extension === 'qfx' || /<OFX[>\s]/i.test(content)) return parseOfxStatement(content, file.name)
+  // Inter e Nubank usam CSVs com cabeçalhos diferentes; o leitor por colunas
+  // reconhece ambos e mantém a escolha explícita para futuras regras do banco.
+  void bank
   return parseDelimitedStatement(content, file.name)
 }
 

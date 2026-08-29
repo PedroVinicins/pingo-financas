@@ -8,6 +8,13 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
+## Destaques da versão 0.14.3
+
+- escolha explícita entre os extratos do Banco Inter e Nubank;
+- leitura das movimentações Nubank de Pix, débito, fatura e Caixinhas;
+- todos os modais mobile acompanham a área visível do teclado no APK Android;
+- Android `versionCode` 14003 e cache Web renovado para a nova release.
+
 ## Destaques da versão 0.14.2
 
 - modais mobile com área segura, rolagem sem sobreposição e campos que não acionam zoom indevido;

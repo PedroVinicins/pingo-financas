@@ -125,12 +125,37 @@ body:has(.pingo-modal-backdrop) { overflow: hidden; }
 
 @media (max-width: 639px) {
   .pingo-modal-backdrop {
+    /* No app Android os modais precisam sempre ficar acima da navegação fixa
+       e usar o mesmo fundo, mesmo quando o componente define outro z-index. */
+    z-index: 120 !important;
+    background: rgba(21, 21, 26, 0.42) !important;
+    backdrop-filter: blur(4px);
+    /* Em Android, a altura visual pode diminuir com o teclado sem que 100dvh
+       acompanhe. Estas variáveis vêm de visualViewport e valem para todos os
+       modais, inclusive os que não possuem campos de valor. */
+    top: var(--pingo-modal-viewport-top, 0px);
+    bottom: auto;
+    height: var(--pingo-modal-viewport-height, 100dvh);
     padding-top: max(0.75rem, env(safe-area-inset-top));
+    touch-action: none;
   }
 
   .pingo-modal-panel {
-    max-height: calc(100dvh - max(0.75rem, env(safe-area-inset-top)));
+    max-height: calc(var(--pingo-modal-viewport-height, 100dvh) - max(0.75rem, env(safe-area-inset-top)));
     scroll-padding-block: 1rem 5rem;
+    touch-action: pan-y;
+  }
+
+  /* Ações de formulários longos continuam visíveis no bottom sheet, inclusive
+     acima da área segura e do teclado do WebView Android. */
+  .pingo-modal-footer {
+    position: sticky;
+    bottom: -1.25rem;
+    z-index: 2;
+    margin-inline: -1.25rem;
+    padding: 0.75rem 1.25rem max(1rem, calc(.75rem + env(safe-area-inset-bottom)));
+    background: rgb(var(--color-surface) / 0.96);
+    backdrop-filter: blur(12px);
   }
 
   /* Evita o zoom automático do Safari/WebView ao focar controles pequenos,
