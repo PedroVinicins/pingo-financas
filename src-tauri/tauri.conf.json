@@ -4,7 +4,7 @@
   "version": "0.14.3",
   "identifier": "com.pedrosilva.financas",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "node scripts/tauri-dev-server.mjs",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"

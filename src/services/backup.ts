@@ -29,6 +29,32 @@ const REQUIRED_ARRAYS = [
   'automaticReserveRules', 'monthlyReserveRules', 'digitalWalletItems', 'recurringRules',
 ] as const
 
+function isTauriApp() {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+}
+
+async function saveExportFile(file: File, filename: string, filterName: string, extensions: string[]) {
+  if (isTauriApp()) {
+    const { save } = await import('@tauri-apps/plugin-dialog')
+    const destination = await save({
+      defaultPath: filename,
+      title: `Salvar ${filterName}`,
+      filters: [{ name: filterName, extensions }],
+    })
+    if (!destination) throw new Error('Salvamento cancelado. Nenhum arquivo foi criado.')
+    const { writeFile } = await import('@tauri-apps/plugin-fs')
+    await writeFile(destination, new Uint8Array(await file.arrayBuffer()))
+    return
+  }
+
+  const url = URL.createObjectURL(file)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+}
+
 function amountToCents(value: unknown) {
   if (typeof value !== 'string' || !/^-?\d+(\.\d{1,2})?$/.test(value)) throw new Error('O backup contém um valor monetário inválido.')
   const negative = value.startsWith('-')
@@ -109,17 +135,12 @@ export async function exportBackup(data: PingoBackup['data']) {
   const filename = `pingo-backup-${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}.json`
   const file = new File([JSON.stringify(backup, null, 2)], filename, { type: 'application/json' })
 
-  if (navigator.share && navigator.canShare?.({ files: [file] })) {
+  if (!isTauriApp() && navigator.share && navigator.canShare?.({ files: [file] })) {
     await navigator.share({ title: 'Backup do Pingo', text: 'Cópia local dos meus dados no Pingo.', files: [file] })
     return
   }
 
-  const url = URL.createObjectURL(file)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+  await saveExportFile(file, filename, 'Backup do Pingo', ['json'])
 }
 
 function csvCell(value: string) { return `"${value.replaceAll('"', '""')}"` }
@@ -138,12 +159,9 @@ export async function exportTransactionsCsv(transactions: Transaction[], categor
   const date = new Date().toISOString().slice(0, 10)
   const filename = `pingo-transacoes-${date}.csv`
   const file = new File([csv], filename, { type: 'text/csv;charset=utf-8' })
-  if (navigator.share && navigator.canShare?.({ files: [file] })) {
+  if (!isTauriApp() && navigator.share && navigator.canShare?.({ files: [file] })) {
     await navigator.share({ title: 'Transações do Pingo', files: [file] })
     return
   }
-  const url = URL.createObjectURL(file)
-  const link = document.createElement('a')
-  link.href = url; link.download = filename; link.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+  await saveExportFile(file, filename, 'CSV de transações', ['csv'])
 }
