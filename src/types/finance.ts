@@ -314,6 +314,7 @@ export interface AppFeedback {
   id: number
   tone: FeedbackTone
   message: string
+  title?: string
 }
 
 export interface TransactionFilters {

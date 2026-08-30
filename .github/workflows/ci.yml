@@ -4,13 +4,14 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -59,11 +60,16 @@ jobs:
 
       - name: Configurar Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
 
       - name: Restaurar cache do Rust
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+
+      - name: Verificar formatação
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
 
       - name: Verificar o core Rust
         run: cargo check --locked --manifest-path src-tauri/Cargo.toml

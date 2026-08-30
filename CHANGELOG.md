@@ -201,3 +201,12 @@
 - adiciona cartões de débito com saldo compartilhado;
 - adiciona gasto rápido e atalhos por deep link;
 - adiciona personalização, congelamento e histórico por cartão.
+
+## v0.14.4 — Correção de bugs e melhorias UI
+
+- melhora visual do modal de feedback com título + mensagem, ícones coloridos e fundo translúcido
+- backup em JSON agora salva via diálogo nativo no Tauri Desktop (não mais prompt manual)
+- mobile: compartilhamento via share API antes do backup local
+- refinamentos tipagem TypeScript em financeStore para suporte a títulos de feedback
+- plugin dialog e fs adicionados ao runtime Tauri
+

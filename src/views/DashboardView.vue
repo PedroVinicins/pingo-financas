@@ -115,8 +115,17 @@ async function importStatement(input: BankStatementImportInput) {
   importingStatement.value = true
   try {
     const count = await store.importBankStatement(input)
+    if (count === 0) throw new Error('Nenhum lançamento novo foi importado. Revise a seleção e tente novamente.')
+    const newest = input.transactions.reduce((latest, item) => item.date > latest ? item.date : latest, '')
+    if (newest) {
+      const [year, month] = newest.split('-').map(Number)
+      store.setReportingPeriod(year, month)
+    }
     showStatementImport.value = false
-    store.showFeedback(`${count} lançamento${count === 1 ? '' : 's'} importado${count === 1 ? '' : 's'} e saldo conferido.`, 'success')
+    store.showFeedback(
+      `${count} lançamento${count === 1 ? '' : 's'} entrou${count === 1 ? '' : 'ram'} no histórico e o mês importado foi aberto.`,
+      'success', undefined, 'Extrato importado',
+    )
   } catch (cause) { store.reportError(cause, 'Não foi possível importar o extrato.') }
   finally { importingStatement.value = false }
 }

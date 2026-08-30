@@ -11,6 +11,7 @@ describe('modais de criação da carteira', () => {
         busy: true,
         saveError: 'Banco de dados indisponível.',
       },
+      global: { stubs: { Teleport: true } },
     })
 
     await wrapper.get('form').trigger('submit')

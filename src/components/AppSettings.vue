@@ -139,13 +139,13 @@ function backupData() {
 }
 async function downloadBackup() {
   exporting.value = true
-  try { await exportBackup(backupData()); store.showFeedback('Backup local gerado.', 'success') }
+  try { await exportBackup(backupData()); store.showFeedback('Seu arquivo JSON foi preparado para salvar ou compartilhar neste dispositivo.', 'success', undefined, 'Backup pronto') }
   catch (cause) { store.reportError(cause, 'Não foi possível gerar o backup.') }
   finally { exporting.value = false }
 }
 async function downloadCsv() {
   exportingCsv.value = true
-  try { await exportTransactionsCsv(store.transactions, store.categories, store.debitCards); store.showFeedback('CSV exportado.', 'success') }
+  try { await exportTransactionsCsv(store.transactions, store.categories, store.debitCards); store.showFeedback('A planilha de transações foi preparada para salvar ou compartilhar.', 'success', undefined, 'CSV exportado') }
   catch (cause) { store.reportError(cause, 'Não foi possível exportar o CSV.') }
   finally { exportingCsv.value = false }
 }
@@ -160,11 +160,14 @@ async function chooseBackup(event: Event) {
 async function confirmRestoreBackup() {
   if (!pendingBackup.value) return
   restoringBackup.value = true
-  try { await store.restoreBackup(pendingBackup.value.data) }
-  catch (cause) {
-    restoringBackup.value = false
-    store.reportError(cause, 'Não foi possível restaurar o backup.')
+  try {
+    await store.restoreBackup(pendingBackup.value.data)
+    pendingBackup.value = null
+    store.showFeedback('Seus dados foram substituídos pelo conteúdo do backup e já estão atualizados.', 'success', undefined, 'Backup restaurado')
   }
+  catch (cause) {
+    store.reportError(cause, 'Não foi possível restaurar o backup.')
+  } finally { restoringBackup.value = false }
 }
 async function factoryReset() {
   resetting.value = true

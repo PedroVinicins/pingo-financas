@@ -362,9 +362,9 @@ export const useFinanceStore = defineStore('finance', () => {
     if (feedbackTimer !== undefined) window.clearTimeout(feedbackTimer)
     feedbackTimer = undefined
   }
-  function showFeedback(message: string, tone: AppFeedback['tone'] = 'info', duration?: number) {
+  function showFeedback(message: string, tone: AppFeedback['tone'] = 'info', duration?: number, title?: string) {
     clearFeedback()
-    feedback.value = { id: ++feedbackSequence, tone, message }
+    feedback.value = { id: ++feedbackSequence, tone, message, title }
     const timeout = duration ?? preferences.value.feedbackDurationMs
     if (timeout > 0) feedbackTimer = window.setTimeout(clearFeedback, timeout)
   }
@@ -705,7 +705,8 @@ export const useFinanceStore = defineStore('finance', () => {
       await cancelRecurringRuleNotification(rule.id).catch(() => undefined)
     }
     await repository.restoreBackup(data)
-    window.location.reload()
+    preferences.value = loadPingoPreferences()
+    await initialize()
   }
   async function setAvailableBalance(amount: string) {
     const desired = decimalToCents(amount)
