@@ -53,16 +53,32 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          if ! gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+          RELEASE_ID="$(
+            gh api --paginate "/repos/${GITHUB_REPOSITORY}/releases" \
+              --jq ".[] | select(.tag_name == \"${GITHUB_REF_NAME}\") | .id" \
+              | head -n 1
+          )"
+
+          if [[ -z "${RELEASE_ID}" ]]; then
             gh release create "${GITHUB_REF_NAME}" \
               --repo "${GITHUB_REPOSITORY}" \
               --verify-tag \
               --draft \
               --generate-notes \
               --title "Pingo ${GITHUB_REF_NAME}"
+
+            RELEASE_ID="$(
+              gh api --paginate "/repos/${GITHUB_REPOSITORY}/releases" \
+                --jq ".[] | select(.tag_name == \"${GITHUB_REF_NAME}\") | .id" \
+                | head -n 1
+            )"
           fi
 
-          RELEASE_ID="$(gh api "/repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" --jq '.id')"
+          if [[ -z "${RELEASE_ID}" ]]; then
+            echo "Não foi possível localizar a release ${GITHUB_REF_NAME}."
+            exit 1
+          fi
+
           echo "id=${RELEASE_ID}" >> "${GITHUB_OUTPUT}"
 
   build:
@@ -133,14 +149,15 @@ jobs:
 
   publish:
     name: Publicar release
-    needs: build
+    needs: [prepare-release, build]
     runs-on: ubuntu-latest
     steps:
       - name: Publicar depois de todos os builds
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.prepare-release.outputs.release-id }}
         run: |
-          gh release edit "${GITHUB_REF_NAME}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --draft=false \
-            --latest
+          gh api --method PATCH "/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            -F draft=false \
+            -f make_latest=true \
+            >/dev/null
