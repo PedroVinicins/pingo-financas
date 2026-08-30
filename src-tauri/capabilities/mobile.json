@@ -13,6 +13,8 @@
     "core:event:default",
     "biometric:default",
     "deep-link:default",
-    "notification:default"
+    "notification:default",
+    "dialog:default",
+    "fs:default"
   ]
 }

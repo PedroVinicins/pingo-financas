@@ -105,6 +105,7 @@ function submit() {
 </script>
 
 <template>
+  <Teleport to="body">
   <div class="pingo-modal-backdrop fixed inset-0 grid place-items-end bg-slate-950/50 sm:place-items-center sm:p-4" :class="elevated ? 'z-[120]' : 'z-50'" @click.self="!busy && emit('close')">
     <form class="pingo-modal-panel max-h-[94vh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-xl sm:rounded-[2rem] sm:p-6" @submit.prevent="submit">
       <div class="flex items-start justify-between gap-4">
@@ -292,4 +293,5 @@ function submit() {
       </button>
     </form>
   </div>
+  </Teleport>
 </template>
