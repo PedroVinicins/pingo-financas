@@ -13,21 +13,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  validate:
-    name: Validar versão
+  release:
+    name: Publicar release
     runs-on: ubuntu-latest
     steps:
       - name: Baixar o código
         uses: actions/checkout@v7
 
-      - name: Validar tag e arquivos de versão
+      - name: Validar versão
         shell: bash
         run: |
-          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
-            echo "A publicação precisa ser executada a partir de uma tag."
-            exit 1
-          fi
-
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           PACKAGE_VERSION="$(node -p "require('./package.json').version")"
           TAURI_VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
@@ -40,15 +35,7 @@ jobs:
             fi
           done
 
-  prepare-release:
-    name: Criar release
-    needs: validate
-    runs-on: ubuntu-latest
-    outputs:
-      release-id: ${{ steps.release.outputs.id }}
-    steps:
-      - name: Criar ou localizar a release
-        id: release
+      - name: Criar ou publicar a release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -63,101 +50,12 @@ jobs:
             gh release create "${GITHUB_REF_NAME}" \
               --repo "${GITHUB_REPOSITORY}" \
               --verify-tag \
-              --draft \
               --generate-notes \
+              --latest \
               --title "Pingo ${GITHUB_REF_NAME}"
-
-            RELEASE_ID="$(
-              gh api --paginate "/repos/${GITHUB_REPOSITORY}/releases" \
-                --jq ".[] | select(.tag_name == \"${GITHUB_REF_NAME}\") | .id" \
-                | head -n 1
-            )"
+          else
+            gh api --method PATCH "/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+              -F draft=false \
+              -f make_latest=true \
+              >/dev/null
           fi
-
-          if [[ -z "${RELEASE_ID}" ]]; then
-            echo "Não foi possível localizar a release ${GITHUB_REF_NAME}."
-            exit 1
-          fi
-
-          echo "id=${RELEASE_ID}" >> "${GITHUB_OUTPUT}"
-
-  build:
-    name: ${{ matrix.name }}
-    needs: prepare-release
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Linux x86_64
-            platform: ubuntu-22.04
-            args: ""
-            rust-targets: ""
-          - name: Windows x86_64
-            platform: windows-latest
-            args: ""
-            rust-targets: ""
-          - name: macOS Apple Silicon
-            platform: macos-latest
-            args: "--target aarch64-apple-darwin"
-            rust-targets: "aarch64-apple-darwin"
-          - name: macOS Intel
-            platform: macos-15-intel
-            args: "--target x86_64-apple-darwin"
-            rust-targets: "x86_64-apple-darwin"
-    runs-on: ${{ matrix.platform }}
-    steps:
-      - name: Baixar o código
-        uses: actions/checkout@v7
-
-      - name: Configurar Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Configurar Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust-targets }}
-
-      - name: Instalar dependências do Tauri no Linux
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf
-
-      - name: Restaurar cache do Rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
-
-      - name: Instalar dependências
-        run: npm ci
-
-      - name: Compilar e anexar instaladores
-        uses: tauri-apps/tauri-action@v0.6.2
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        with:
-          releaseId: ${{ needs.prepare-release.outputs.release-id }}
-          tagName: ${{ github.ref_name }}
-          args: ${{ matrix.args }}
-
-  publish:
-    name: Publicar release
-    needs: [prepare-release, build]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Publicar depois de todos os builds
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_ID: ${{ needs.prepare-release.outputs.release-id }}
-        run: |
-          gh api --method PATCH "/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
-            -F draft=false \
-            -f make_latest=true \
-            >/dev/null
