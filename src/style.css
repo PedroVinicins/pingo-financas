@@ -66,7 +66,7 @@
 
 /* Protege todos os painéis sobrepostos contra overflow em telas estreitas e
    mantém o conteúdo alcançável quando o teclado virtual reduz a viewport. */
-:where(.fixed.inset-0) > :is(form, section) {
+:where(.pingo-modal-backdrop) > :is(form, section, div) {
   min-width: 0;
   max-width: 100%;
   max-height: 100dvh;
@@ -76,9 +76,23 @@
   overscroll-behavior: contain;
 }
 
-:where(.fixed.inset-0) :is(input:not([type='checkbox']):not([type='radio']), textarea, select) {
-  min-width: 0;
-  max-width: 100%;
+/* O DaisyUI posiciona `.modal` via CSS, sem adicionar as classes utilitárias
+   `fixed inset-0` ao HTML. Por isso os limites precisam partir do painel real.
+   `inline-size` também vence o tamanho intrínseco de date/time no WebView. */
+.pingo-modal-panel :where(label, fieldset) {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.pingo-modal-panel :is(input:not([type='checkbox']):not([type='radio']):not([type='color']):not([type='file']):not([type='hidden']), textarea, select) {
+  display: block;
+  inline-size: 100%;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.pingo-modal-panel select {
+  text-overflow: ellipsis;
 }
 
 /* Flex e grid não devem deixar textos longos alargarem cartões ou páginas. */
@@ -179,6 +193,8 @@ body:has(.pingo-modal-backdrop), body.pingo-modal-open { overflow: hidden; }
   }
 
   .pingo-modal-panel {
+    inline-size: 100%;
+    max-inline-size: 100%;
     max-height: calc(var(--pingo-modal-viewport-height, 100dvh) - max(0.75rem, env(safe-area-inset-top)));
     scroll-padding-block: 1rem 5rem;
     touch-action: pan-y;

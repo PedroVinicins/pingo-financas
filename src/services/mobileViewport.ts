@@ -40,6 +40,7 @@ export function installMobileModalViewportSync() {
     window.setTimeout(() => {
       target.scrollIntoView?.({
         block: 'center',
+        inline: 'nearest',
         behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
       })
     }, 180)
@@ -78,6 +79,7 @@ export function useKeyboardAwareModal() {
     window.setTimeout(() => {
       target.scrollIntoView?.({
         block: 'center',
+        inline: 'nearest',
         behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
       })
     }, 180)

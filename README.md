@@ -8,6 +8,13 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
+## Destaques da versão 0.15.1
+
+- campos de todos os modais permanecem dentro da tela em celulares estreitos;
+- inputs nativos de data e hora agora encolhem corretamente no Android;
+- o foco e o teclado virtual não deslocam mais os formulários na horizontal;
+- Android `versionCode` 15001 e cache Web renovado para a correção.
+
 ## Destaques da versão 0.15.0
 
 - todos os modais usam uma base DaisyUI consistente e totalmente responsiva;

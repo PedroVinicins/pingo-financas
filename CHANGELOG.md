@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.15.1 — Campos contidos no mobile
+
+- corrige a regra responsiva dos modais DaisyUI para atuar sobre o painel real;
+- mantém `input`, `select` e `textarea` integralmente dentro da largura útil do celular;
+- corrige especialmente os tamanhos intrínsecos dos campos nativos de data e hora no Android WebView;
+- evita deslocamento horizontal da tela ao focar campos com o teclado virtual aberto;
+- atualiza Web/PWA, backup, Tauri e Android para a versão 0.15.1 (`versionCode` 15001).
+
 ## 0.15.0 — Modais mobile em qualquer tela
 
 - integra DaisyUI como base visual para modais e botões;
