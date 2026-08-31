@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { Fingerprint, KeyRound, LockKeyhole, ShieldCheck, Trash2, X } from 'lucide-vue-next'
 import AppSwitch from './AppSwitch.vue'
+import AppModal from './AppModal.vue'
 import {
   announceAppLockChange, changeAppLockPin, configureAppLock, disableAppLock,
   authenticateAppLockBiometric, biometricErrorMessage, getAppLockConfig, getBiometricAvailability,
@@ -100,10 +101,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <Teleport to="body">
-    <div class="pingo-modal-backdrop fixed inset-0 z-[130] grid place-items-end bg-slate-950/65 backdrop-blur-[2px] sm:place-items-center sm:p-4" @click.self="!busy && emit('close')">
-      <section class="pingo-modal-panel min-w-0 w-full max-w-full rounded-t-[2rem] bg-surface p-5 shadow-2xl sm:max-w-md sm:rounded-[2rem] sm:p-6" role="dialog" aria-modal="true" aria-labelledby="app-lock-settings-title">
-        <header class="flex min-w-0 items-start gap-3"><span class="grid size-11 shrink-0 place-items-center rounded-2xl bg-brand-soft text-brand"><LockKeyhole :size="21" /></span><div class="min-w-0 flex-1"><p class="text-sm font-bold text-brand">Privacidade local</p><h2 id="app-lock-settings-title" class="break-words text-xl font-extrabold">Bloqueio do aplicativo</h2></div><button :disabled="busy" class="grid size-10 shrink-0 place-items-center rounded-xl bg-muted" aria-label="Fechar" @click="emit('close')"><X :size="18" /></button></header>
+  <AppModal aria-labelledby="app-lock-settings-title" root-class="z-[130]" panel-class="p-5 sm:max-w-md sm:p-6" :closeable="!busy" @close="emit('close')">
+        <header class="flex min-w-0 items-start gap-3"><span class="grid size-11 shrink-0 place-items-center rounded-2xl bg-brand-soft text-brand"><LockKeyhole :size="21" /></span><div class="min-w-0 flex-1"><p class="text-sm font-bold text-brand">Privacidade local</p><h2 id="app-lock-settings-title" class="break-words text-xl font-extrabold">Bloqueio do aplicativo</h2></div><button :disabled="busy" class="pingo-modal-close" aria-label="Fechar" @click="emit('close')"><X :size="18" /></button></header>
 
         <div v-if="loading" class="grid min-h-48 place-items-center text-sm font-bold text-subtle">Conferindo a proteção…</div>
         <form v-else-if="!config.enabled" class="mt-6 grid min-w-0 gap-4" @submit.prevent="enable">
@@ -112,7 +111,7 @@ onMounted(async () => {
           <label class="grid min-w-0 gap-1.5 text-sm font-bold">Repetir PIN<input :value="confirmation" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="new-password" class="h-12 w-full rounded-xl border border-line bg-canvas px-4 text-center text-xl tracking-[0.35em]" @input="confirmation = onlyDigits(($event.target as HTMLInputElement).value)" /></label>
           <div class="flex items-center gap-3 rounded-2xl bg-muted p-4"><Fingerprint :size="20" class="shrink-0 text-brand" /><div class="min-w-0 flex-1"><p class="font-bold">Usar {{ biometricLabel }}</p><p class="text-xs text-subtle">{{ biometricAvailable ? 'Será confirmada agora pelo Android. O PIN continuará disponível.' : biometricReason }}</p></div><AppSwitch v-if="biometricAvailable" v-model="biometricDraft" :label="`Usar ${biometricLabel}`" /></div>
           <p v-if="error" class="rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-950/30 dark:text-rose-300" role="alert">{{ error }}</p>
-          <button :disabled="!canEnable" class="min-h-12 cursor-pointer rounded-2xl bg-brand px-5 font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-40"><ShieldCheck :size="18" class="mr-1.5 inline" />{{ busy ? 'Ativando…' : 'Ativar bloqueio' }}</button>
+          <button :disabled="!canEnable" class="pingo-modal-primary"><ShieldCheck :size="18" />{{ busy ? 'Ativando…' : 'Ativar bloqueio' }}</button>
           <p class="text-center text-xs text-subtle">O PIN não pode ser recuperado. Sem ele, será necessário limpar os dados locais do aplicativo.</p>
         </form>
 
@@ -123,10 +122,8 @@ onMounted(async () => {
           <button type="button" class="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl px-2 text-left text-sm font-bold text-brand hover:bg-brand-soft" @click="changingPin = !changingPin"><KeyRound :size="17" />{{ changingPin ? 'Manter PIN atual' : 'Alterar PIN' }}</button>
           <template v-if="changingPin"><label class="grid min-w-0 gap-1.5 text-sm font-bold">Novo PIN<input :value="newPin" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" class="h-12 w-full rounded-xl border border-line bg-canvas px-4 text-center text-xl tracking-[0.35em]" @input="newPin = onlyDigits(($event.target as HTMLInputElement).value)" /></label><label class="grid min-w-0 gap-1.5 text-sm font-bold">Repetir novo PIN<input :value="newPinConfirmation" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" class="h-12 w-full rounded-xl border border-line bg-canvas px-4 text-center text-xl tracking-[0.35em]" @input="newPinConfirmation = onlyDigits(($event.target as HTMLInputElement).value)" /></label></template>
           <p v-if="error" class="rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-950/30 dark:text-rose-300" role="alert">{{ error }}</p>
-          <button :disabled="!canSave" class="min-h-12 cursor-pointer rounded-2xl bg-brand px-5 font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-40">{{ busy ? 'Salvando…' : 'Salvar proteção' }}</button>
-          <button type="button" :disabled="busy || !validateAppLockPin(currentPin)" class="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-rose-200 font-extrabold text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900 dark:hover:bg-rose-950/20" @click="disable"><Trash2 :size="17" /> Desativar bloqueio</button>
+          <button :disabled="!canSave" class="pingo-modal-primary">{{ busy ? 'Salvando…' : 'Salvar proteção' }}</button>
+          <button type="button" :disabled="busy || !validateAppLockPin(currentPin)" class="btn min-h-12 rounded-2xl border-rose-200 bg-surface font-extrabold text-rose-600 hover:bg-rose-50 disabled:opacity-40 dark:border-rose-900 dark:hover:bg-rose-950/20" @click="disable"><Trash2 :size="17" /> Desativar bloqueio</button>
         </form>
-      </section>
-    </div>
-  </Teleport>
+  </AppModal>
 </template>

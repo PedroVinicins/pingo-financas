@@ -11,7 +11,7 @@ export function calculateKeyboardViewport(
   viewport?: Pick<VisualViewport, 'height' | 'offsetTop'> | null,
 ): KeyboardViewportMetrics {
   if (!viewport) return { height: layoutHeight, offsetTop: 0, keyboardHeight: 0 }
-  const height = Math.max(320, Math.round(viewport.height))
+  const height = Math.max(1, Math.round(viewport.height))
   const offsetTop = Math.max(0, Math.round(viewport.offsetTop))
   return {
     height,
@@ -38,9 +38,9 @@ export function installMobileModalViewportSync() {
     if (!(target instanceof HTMLElement) || !target.closest('.pingo-modal-panel')) return
     if (!target.matches('input, textarea, select, [contenteditable="true"]')) return
     window.setTimeout(() => {
-      target.scrollIntoView({
+      target.scrollIntoView?.({
         block: 'center',
-        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
       })
     }, 180)
   }
@@ -69,16 +69,16 @@ export function useKeyboardAwareModal() {
       bottom: 'auto',
       height: `${metrics.height}px`,
     }
-    contentStyle.value = { maxHeight: `${Math.max(304, metrics.height - 12)}px` }
+    contentStyle.value = { maxHeight: `${Math.max(0, metrics.height - 12)}px` }
   }
 
   function keepFocusedFieldVisible(event: FocusEvent) {
     const target = event.target
     if (!(target instanceof HTMLElement)) return
     window.setTimeout(() => {
-      target.scrollIntoView({
+      target.scrollIntoView?.({
         block: 'center',
-        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
       })
     }, 180)
   }

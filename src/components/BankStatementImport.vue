@@ -12,6 +12,7 @@ import { useFinanceStore } from '../stores/financeStore'
 import { formatCurrencyValue } from '../services/currency'
 import { useKeyboardAwareModal } from '../services/mobileViewport'
 import AddDebitCardModal from './AddDebitCardModal.vue'
+import AppModal from './AppModal.vue'
 
 const props = defineProps<{ categories: Category[]; cards: DebitCard[]; transactions: Transaction[]; busy?: boolean }>()
 const emit = defineEmits<{ close: []; import: [input: BankStatementImportInput] }>()
@@ -197,10 +198,8 @@ async function createCard(input: NewDebitCardInput) {
 </script>
 
 <template>
-  <Teleport to="body">
-    <div class="pingo-modal-backdrop keyboard-aware-modal fixed inset-0 z-[100] flex items-end bg-slate-950/65 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-4" :style="overlayStyle" data-no-page-swipe @click.self="!busy && emit('close')" @focusin="keepFocusedFieldVisible">
-      <form class="pingo-modal-panel pingo-modal-frame flex min-h-0 w-full max-w-full flex-col rounded-t-[2rem] bg-white p-0 shadow-2xl dark:bg-slate-900 sm:max-w-3xl sm:rounded-[2rem]" :style="contentStyle" role="dialog" aria-modal="true" aria-labelledby="bank-import-title" @submit.prevent="submit">
-        <header class="flex shrink-0 items-start gap-3 border-b border-slate-100 px-4 pb-4 pt-5 dark:border-slate-800 sm:px-6 sm:pt-6"><div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-sky-100 text-sky-700 dark:bg-sky-950"><FileSpreadsheet :size="22" /></div><div class="min-w-0 flex-1"><p class="text-sm font-bold text-sky-600">Conferência bancária</p><h2 id="bank-import-title" class="text-xl font-black">Importar extrato</h2><p class="mt-1 text-xs leading-relaxed text-slate-500">CSV, OFX/QFX, TXT e PDF textual. Tudo é lido neste dispositivo.</p></div><button type="button" :disabled="busy" class="grid size-10 shrink-0 place-items-center rounded-xl bg-slate-100 disabled:opacity-40 dark:bg-slate-800" aria-label="Fechar" @click="emit('close')"><X :size="18" /></button></header>
+    <AppModal as="form" aria-labelledby="bank-import-title" root-class="keyboard-aware-modal z-[100]" panel-class="pingo-modal-frame flex min-h-0 flex-col p-0 sm:max-w-3xl" :root-style="overlayStyle" :panel-style="contentStyle" :closeable="!busy" data-no-page-swipe @close="emit('close')" @submit="submit" @focusin="keepFocusedFieldVisible">
+        <header class="flex shrink-0 items-start gap-3 border-b border-slate-100 px-4 pb-4 pt-5 dark:border-slate-800 sm:px-6 sm:pt-6"><div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-sky-100 text-sky-700 dark:bg-sky-950"><FileSpreadsheet :size="22" /></div><div class="min-w-0 flex-1"><p class="text-sm font-bold text-sky-600">Conferência bancária</p><h2 id="bank-import-title" class="text-xl font-black">Importar extrato</h2><p class="mt-1 text-xs leading-relaxed text-slate-500">CSV, OFX/QFX, TXT e PDF textual. Tudo é lido neste dispositivo.</p></div><button type="button" :disabled="busy" class="pingo-modal-close" aria-label="Fechar" @click="emit('close')"><X :size="18" /></button></header>
 
         <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-5 sm:px-6">
         <fieldset class="mt-4"><legend class="text-xs font-black uppercase tracking-wide text-slate-500">Banco do extrato</legend><div class="mt-2 grid gap-2 sm:grid-cols-2"><label v-for="bank in SUPPORTED_STATEMENT_BANKS" :key="bank.id" class="flex cursor-pointer items-start gap-3 rounded-2xl border p-3 transition" :class="selectedBank === bank.id ? 'border-sky-500 bg-sky-50 dark:border-sky-500 dark:bg-sky-950/30' : 'border-slate-200 dark:border-slate-800'"><input v-model="selectedBank" type="radio" name="statement-bank" :value="bank.id" class="mt-1 accent-sky-600" :disabled="parsing || busy" @change="clearStatement" /><span><span class="flex items-center gap-2"><strong class="block text-sm">{{ bank.label }}</strong><span v-if="bank.beta" class="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-700 dark:bg-amber-950 dark:text-amber-300">Beta</span></span><span class="mt-0.5 block text-xs text-slate-500">{{ bank.hint }}</span></span></label></div></fieldset>
@@ -241,9 +240,7 @@ async function createCard(input: NewDebitCardInput) {
           <div v-if="duplicateCount" class="mt-3 flex gap-2 text-xs text-slate-500"><CheckCircle2 :size="16" class="shrink-0 text-emerald-600" /><p>Duplicatas são comparadas por data, tipo, valor e descrição e ficam fora da importação.</p></div>
         </template>
         </div>
-        <footer v-if="statement" class="shrink-0 border-t border-slate-100 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6 sm:pb-5"><button :disabled="busy || !canImport" class="w-full rounded-2xl bg-sky-600 py-3.5 font-black text-white shadow-lg shadow-sky-600/15 disabled:opacity-40">{{ busy ? 'Importando…' : `Importar ${selectedCount} lançamento${selectedCount === 1 ? '' : 's'}` }}</button></footer>
-      </form>
-    </div>
-  </Teleport>
+        <footer v-if="statement" class="pingo-modal-footer shrink-0 border-t border-slate-100 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6 sm:pb-5"><button :disabled="busy || !canImport" class="btn min-h-12 w-full rounded-2xl border-0 bg-sky-600 font-black text-white shadow-lg shadow-sky-600/15 disabled:opacity-40">{{ busy ? 'Importando…' : `Importar ${selectedCount} lançamento${selectedCount === 1 ? '' : 's'}` }}</button></footer>
+    </AppModal>
   <AddDebitCardModal v-if="showCardCreator" elevated :existing-cards-count="cards.length" :busy="cardSaving" :save-error="cardSaveError" @close="showCardCreator = false" @save="createCard" />
 </template>

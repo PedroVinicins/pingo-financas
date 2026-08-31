@@ -4,6 +4,7 @@ import { ArrowRightLeft, Landmark, PiggyBank, ShieldCheck, X } from 'lucide-vue-
 import type { AutomaticReserveMode, AutomaticReserveRule, MonthlyReserveRule, NewVaultInput, VaultType } from '../types/finance'
 import { localizedDecimalToStorage } from '../services/localizedNumber'
 import LocalizedNumberInput from './LocalizedNumberInput.vue'
+import AppModal from './AppModal.vue'
 
 defineProps<{ availableBalance: string }>()
 const emit = defineEmits<{
@@ -75,11 +76,10 @@ function submit() {
 </script>
 
 <template>
-  <div class="pingo-modal-backdrop fixed inset-0 z-[70] grid place-items-end bg-slate-950/55 sm:place-items-center sm:p-4" @click.self="emit('close')">
-    <form class="pingo-modal-panel max-h-[94vh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-xl sm:rounded-[2rem] sm:p-6" @submit.prevent="submit">
+  <AppModal as="form" aria-labelledby="add-vault-title" root-class="z-[70]" panel-class="p-5 sm:max-w-xl sm:p-6" @close="emit('close')" @submit="submit">
       <div class="flex items-start justify-between gap-4">
-        <div><p class="text-sm font-bold text-amber-600">Pingo Cofres</p><h2 class="text-2xl font-black">Criar novo porquinho</h2></div>
-        <button type="button" class="grid size-10 place-items-center rounded-xl bg-slate-100 dark:bg-slate-800" @click="emit('close')"><X :size="19" /></button>
+        <div><p class="text-sm font-bold text-amber-600">Pingo Cofres</p><h2 id="add-vault-title" class="break-words text-2xl font-black">Criar novo porquinho</h2></div>
+        <button type="button" class="pingo-modal-close" aria-label="Fechar" @click="emit('close')"><X :size="19" /></button>
       </div>
 
       <div class="mt-5 flex gap-3 rounded-2xl bg-amber-50 p-4 text-sm text-amber-950 dark:bg-amber-950/40 dark:text-amber-100">
@@ -112,7 +112,6 @@ function submit() {
       <div class="mt-2 flex flex-wrap gap-2"><button v-for="color in colors" :key="color" type="button" class="size-10 rounded-full border-4" :class="form.color === color ? 'border-slate-950 dark:border-white' : 'border-transparent'" :style="{ backgroundColor: color }" @click="form.color = color"></button><input v-model="form.emoji" maxlength="4" class="h-10 w-16 rounded-xl border border-slate-200 bg-transparent text-center text-xl dark:border-slate-700" aria-label="Emoji do cofre" /></div>
 
       <p v-if="error" class="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">{{ error }}</p>
-      <button class="mt-6 w-full rounded-2xl bg-slate-950 py-3.5 font-black text-white dark:bg-amber-400 dark:text-slate-950">{{ form.transferNow ? 'Criar e transferir' : 'Criar porquinho vazio' }}</button>
-    </form>
-  </div>
+      <div class="pingo-modal-footer mt-6"><button class="btn min-h-12 w-full rounded-2xl border-0 bg-slate-950 font-black text-white dark:bg-amber-400 dark:text-slate-950">{{ form.transferNow ? 'Criar e transferir' : 'Criar porquinho vazio' }}</button></div>
+  </AppModal>
 </template>

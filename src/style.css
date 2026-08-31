@@ -93,7 +93,7 @@
   overscroll-behavior: contain;
 }
 
-body:has(.pingo-modal-backdrop) { overflow: hidden; }
+body:has(.pingo-modal-backdrop), body.pingo-modal-open { overflow: hidden; }
 
 .pingo-modal-panel {
   width: 100%;
@@ -111,6 +111,45 @@ body:has(.pingo-modal-backdrop) { overflow: hidden; }
   box-shadow: 0 24px 70px rgba(21, 21, 26, 0.18);
 }
 
+/* DaisyUI fornece a semântica visual e interativa de modal/btn; estas regras
+   adaptam os componentes ao bottom sheet do Pingo e às safe areas móveis. */
+.pingo-modal-backdrop.modal {
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  place-items: end center;
+  background: rgba(21, 21, 26, 0.42);
+  color: rgb(var(--color-text-primary));
+  pointer-events: auto;
+}
+
+.pingo-modal-panel.modal-box {
+  margin: 0;
+  translate: none;
+  scale: 1;
+  color: rgb(var(--color-text-primary));
+}
+
+.pingo-modal-panel button {
+  min-block-size: 2.75rem;
+  touch-action: manipulation;
+}
+
+.pingo-modal-close {
+  @apply btn btn-circle btn-ghost h-11 min-h-11 w-11 shrink-0 border-0 bg-muted text-subtle;
+}
+
+.pingo-modal-primary {
+  @apply btn min-h-12 w-full rounded-2xl border-0 bg-brand px-5 font-extrabold text-white;
+}
+
+.pingo-modal-secondary {
+  @apply btn min-h-12 rounded-2xl border-line bg-surface px-4 font-extrabold text-ink;
+}
+
 .pingo-modal-frame {
   overflow: hidden;
   padding-bottom: 0;
@@ -125,10 +164,9 @@ body:has(.pingo-modal-backdrop) { overflow: hidden; }
 
 @media (max-width: 639px) {
   .pingo-modal-backdrop {
-    /* No app Android os modais precisam sempre ficar acima da navegação fixa
-       e usar o mesmo fundo, mesmo quando o componente define outro z-index. */
-    z-index: 120 !important;
-    background: rgba(21, 21, 26, 0.42) !important;
+    /* No app Android os modais usam o mesmo fundo e permanecem acima da
+       navegação; o z-index individual preserva a ordem de modais aninhados. */
+    background: rgba(21, 21, 26, 0.42);
     backdrop-filter: blur(4px);
     /* Em Android, a altura visual pode diminuir com o teclado sem que 100dvh
        acompanhe. Estas variáveis vêm de visualViewport e valem para todos os
@@ -166,6 +204,11 @@ body:has(.pingo-modal-backdrop) { overflow: hidden; }
 }
 
 @media (min-width: 640px) {
+  .pingo-modal-backdrop.modal {
+    padding: 1rem;
+    place-items: center;
+  }
+
   .pingo-modal-panel {
     max-height: calc(100dvh - 2rem);
     border-radius: 30px;

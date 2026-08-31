@@ -2,6 +2,7 @@
 import { computed, reactive } from 'vue'
 import { Image, Palette, X } from 'lucide-vue-next'
 import DebitCardVisual from './DebitCardVisual.vue'
+import AppModal from './AppModal.vue'
 import type { CardBackground, CardPattern, DebitCard, UpdateDebitCardStyleInput } from '../types/finance'
 
 const props = defineProps<{ card: DebitCard }>()
@@ -28,9 +29,8 @@ function submit() { emit('save', { id: props.card.id, colorFrom: form.colorFrom,
 </script>
 
 <template>
-  <div class="pingo-modal-backdrop fixed inset-0 z-[75] flex items-end bg-slate-950/50 sm:items-center sm:justify-center sm:p-4" @click.self="emit('close')">
-    <form class="pingo-modal-panel max-h-[94vh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 dark:bg-slate-900 sm:max-w-xl sm:rounded-[2rem]" @submit.prevent="submit">
-      <div class="flex items-center justify-between"><div><p class="text-sm font-bold text-violet-600">Personalização</p><h2 class="text-2xl font-black">Deixe o cartão com a sua cara</h2></div><button type="button" class="grid size-10 place-items-center rounded-xl bg-slate-100 dark:bg-slate-800" @click="emit('close')"><X :size="19" /></button></div>
+  <AppModal as="form" aria-labelledby="card-style-title" root-class="z-[75]" panel-class="p-5 sm:max-w-xl" @close="emit('close')" @submit="submit">
+      <div class="flex items-center justify-between gap-3"><div class="min-w-0"><p class="text-sm font-bold text-violet-600">Personalização</p><h2 id="card-style-title" class="break-words text-2xl font-black">Deixe o cartão com a sua cara</h2></div><button type="button" class="pingo-modal-close" aria-label="Fechar" @click="emit('close')"><X :size="19" /></button></div>
       <div class="mx-auto mt-5 max-w-[360px]"><DebitCardVisual :card="preview" /></div>
 
       <p class="mt-6 text-sm font-black">Cores</p>
@@ -52,7 +52,6 @@ function submit() { emit('save', { id: props.card.id, colorFrom: form.colorFrom,
       <p class="mt-5 text-sm font-black">Sticker</p>
       <div class="mt-2 grid grid-cols-5 gap-2"><button v-for="emoji in emojis" :key="emoji || 'none'" type="button" class="grid h-12 place-items-center rounded-2xl border text-xl" :class="form.emoji === emoji ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/40' : 'border-slate-200 dark:border-slate-700'" @click="form.emoji = emoji">{{ emoji || '—' }}</button></div>
 
-      <button class="mt-6 flex min-h-14 w-full items-center justify-center gap-2 rounded-full bg-brand font-black text-white"><Palette :size="18" /> Salvar aparência</button>
-    </form>
-  </div>
+      <div class="pingo-modal-footer mt-6"><button class="btn min-h-14 w-full rounded-full border-0 bg-brand font-black text-white"><Palette :size="18" /> Salvar aparência</button></div>
+  </AppModal>
 </template>
