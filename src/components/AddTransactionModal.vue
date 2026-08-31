@@ -5,6 +5,7 @@ import { useFinanceStore } from '../stores/financeStore'
 import { localizedDecimalToStorage, storageDecimalToLocalized } from '../services/localizedNumber'
 import LocalizedNumberInput from './LocalizedNumberInput.vue'
 import CategoryIcon from './CategoryIcon.vue'
+import AppModal from './AppModal.vue'
 import { localDateKey } from '../services/recurringDates'
 import { useKeyboardAwareModal } from '../services/mobileViewport'
 import type {
@@ -62,7 +63,18 @@ const form = reactive({
 const showNewCategory = ref(false)
 const categoryError = ref('')
 const formError = ref('')
-const categoryDraft = reactive({ name: '', color: '#10B981' })
+const categoryDraft = reactive({ name: '', color: '#10B981', icon: initialKind === 'income' ? 'hand-coins' : 'tag' })
+const expenseIconOptions = [
+  ['tag', 'Geral'], ['utensils', 'Alimentação'], ['house', 'Casa'], ['car', 'Carro'],
+  ['shopping-cart', 'Mercado'], ['shirt', 'Roupas'], ['paw-print', 'Pets'], ['dumbbell', 'Academia'],
+  ['plane', 'Viagem'], ['smartphone', 'Celular'], ['heart-pulse', 'Saúde'], ['graduation-cap', 'Estudos'],
+] as const
+const incomeIconOptions = [
+  ['hand-coins', 'Pagamento'], ['badge-dollar-sign', 'Salário'], ['briefcase-business', 'Trabalho'],
+  ['store', 'Vendas'], ['trending-up', 'Investimento'], ['gift', 'Presente'],
+  ['landmark', 'Banco'], ['wallet-cards', 'Reembolso'], ['piggy-bank', 'Reserva'],
+] as const
+const categoryIconOptions = computed(() => form.kind === 'income' ? incomeIconOptions : expenseIconOptions)
 const filteredCategories = computed(() => props.categories.filter((category) => category.kind === form.kind))
 const selectedCategory = computed(() => filteredCategories.value.find((category) => category.id === form.categoryId) ?? null)
 const dayOptions = Array.from({ length: 31 }, (_, index) => index + 1)
@@ -76,6 +88,7 @@ watch(() => form.kind, (kind) => {
   form.categoryId = props.categories.find((category) => category.kind === kind)?.id ?? ''
   showNewCategory.value = false
   categoryError.value = ''
+  categoryDraft.icon = kind === 'income' ? 'hand-coins' : 'tag'
 })
 
 async function createCategory() {
@@ -84,7 +97,7 @@ async function createCategory() {
     const category = await store.createCategory({
       kind: form.kind,
       name: categoryDraft.name,
-      icon: form.kind === 'income' ? 'circle-dollar-sign' : 'tag',
+      icon: categoryDraft.icon,
       color: categoryDraft.color,
     })
     form.categoryId = category.id
@@ -144,8 +157,7 @@ function submit() {
 </script>
 
 <template>
-  <div class="pingo-modal-backdrop keyboard-aware-modal fixed inset-0 z-50 grid place-items-end bg-[#15151a]/35 p-0 backdrop-blur-[4px] sm:place-items-center sm:p-4" :style="overlayStyle" @click.self="emit('close')" @focusin="keepFocusedFieldVisible">
-    <form class="pingo-modal-panel w-full overflow-y-auto overscroll-contain rounded-t-[30px] border border-line bg-surface p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-[0_24px_70px_rgba(21,21,26,.18)] sm:max-w-[560px] sm:rounded-[30px] sm:p-6" :style="contentStyle" @submit.prevent="submit">
+  <AppModal as="form" aria-labelledby="transaction-modal-title" root-class="keyboard-aware-modal z-50" panel-class="p-5 sm:max-w-[560px] sm:p-6" :root-style="overlayStyle" :panel-style="contentStyle" @close="emit('close')" @submit="submit" @focusin="keepFocusedFieldVisible">
       <div class="mx-auto mb-4 h-1 w-10 rounded-full bg-line sm:hidden"></div>
       <div class="mb-6 flex items-start justify-between gap-4">
         <div class="min-w-0">
@@ -153,10 +165,10 @@ function submit() {
             {{ transaction ? 'Edição do histórico' : 'Registro rápido' }}
             <span class="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-subtle"><i class="block size-1.5 rounded-full bg-emerald-500"></i> protegido</span>
           </p>
-          <h2 class="mt-1 truncate text-2xl font-extrabold tracking-tight">{{ transaction ? 'Editar transação' : form.flow === 'vault' ? 'Nova transferência' : form.kind === 'income' ? 'Nova entrada' : 'Novo gasto' }}</h2>
+          <h2 id="transaction-modal-title" class="mt-1 break-words text-2xl font-extrabold tracking-tight">{{ transaction ? 'Editar transação' : form.flow === 'vault' ? 'Nova transferência' : form.kind === 'income' ? 'Nova entrada' : 'Novo gasto' }}</h2>
           <p class="mt-1 text-sm text-subtle">Adicione uma movimentação em poucos segundos.</p>
         </div>
-        <button type="button" class="pingo-interactive grid size-11 shrink-0 place-items-center rounded-full bg-muted text-subtle" aria-label="Fechar formulário" @click="emit('close')">
+        <button type="button" class="pingo-modal-close" aria-label="Fechar formulário" @click="emit('close')">
           <X :size="21" />
         </button>
       </div>
@@ -261,8 +273,16 @@ function submit() {
             <input v-model="categoryDraft.name" maxlength="40" :placeholder="form.kind === 'income' ? 'Ex.: Comissão' : 'Ex.: Academia'" class="min-h-11 min-w-0 rounded-xl border border-brand/25 bg-surface px-3 outline-none focus:border-brand" @keyup.enter.prevent="createCategory" />
             <input v-model="categoryDraft.color" type="color" class="h-11 w-12 rounded-xl border border-brand/25 bg-surface p-1" aria-label="Cor da categoria" />
           </div>
+          <div>
+            <p class="mb-2 text-xs font-extrabold uppercase tracking-wide text-subtle">Escolha um ícone</p>
+            <div class="grid grid-cols-4 gap-2 sm:grid-cols-6" role="radiogroup" :aria-label="`Ícone da categoria de ${form.kind === 'income' ? 'entrada' : 'gasto'}`">
+              <button v-for="option in categoryIconOptions" :key="option[0]" type="button" class="btn h-auto min-h-14 rounded-xl border p-1" :class="categoryDraft.icon === option[0] ? 'border-brand bg-surface ring-2 ring-brand/20' : 'border-transparent bg-surface/70'" role="radio" :aria-checked="categoryDraft.icon === option[0]" :aria-label="option[1]" @click="categoryDraft.icon = option[0]">
+                <CategoryIcon :category="{ name: option[1], icon: option[0], color: categoryDraft.color }" :kind="form.kind" :size="18" />
+              </button>
+            </div>
+          </div>
           <p v-if="categoryError" class="text-xs font-bold text-rose-600">{{ categoryError }}</p>
-          <button type="button" class="pingo-interactive rounded-xl bg-brand px-3 py-2.5 text-sm font-extrabold text-white" @click="createCategory">Adicionar categoria</button>
+          <button type="button" class="btn min-h-11 rounded-xl border-0 bg-brand px-3 text-sm font-extrabold text-white" @click="createCategory">Adicionar categoria</button>
         </div>
         <label v-if="!transaction && form.flow === 'recurring'" class="flex cursor-pointer items-start gap-3 rounded-2xl border border-brand/25 bg-brand-soft p-4 sm:col-span-2">
           <input v-model="form.reminderEnabled" type="checkbox" class="mt-1 size-4 accent-violet-600" />
@@ -276,11 +296,10 @@ function submit() {
       </div>
       <p v-if="formError" class="mt-4 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-950/35 dark:text-rose-300">{{ formError }}</p>
       <div class="pingo-modal-footer mt-6 grid gap-2" :class="transaction ? 'grid-cols-[auto_1fr]' : ''">
-        <button v-if="transaction" type="button" class="pingo-interactive grid size-14 place-items-center rounded-2xl border border-rose-200 text-rose-600 dark:border-rose-900" :aria-label="`Excluir ${transaction.description}`" @click="emit('delete', transaction)"><Trash2 :size="18" /></button>
-        <button class="pingo-interactive min-h-14 w-full rounded-full bg-brand px-5 font-extrabold text-white shadow-[0_10px_24px_rgba(124,58,237,.18)] hover:bg-hero">
+        <button v-if="transaction" type="button" class="btn btn-square h-14 min-h-14 w-14 rounded-2xl border-rose-200 bg-surface text-rose-600 dark:border-rose-900" :aria-label="`Excluir ${transaction.description}`" @click="emit('delete', transaction)"><Trash2 :size="18" /></button>
+        <button class="btn min-h-14 w-full rounded-full border-0 bg-brand px-5 font-extrabold text-white shadow-[0_10px_24px_rgba(124,58,237,.18)] hover:bg-hero">
           {{ transaction ? 'Salvar alterações' : form.flow === 'recurring' ? 'Ligar Piloto Mensal' : form.flow === 'vault' ? 'Enviar para o Porquinho' : 'Salvar transação' }}
         </button>
       </div>
-    </form>
-  </div>
+  </AppModal>
 </template>

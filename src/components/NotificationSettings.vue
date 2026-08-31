@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Bell, BellOff, Check, X } from 'lucide-vue-next'
+import AppModal from './AppModal.vue'
 import {
   disableMoneyReminders,
   enableMoneyReminders,
@@ -53,14 +54,13 @@ async function test() {
 </script>
 
 <template>
-  <div class="pingo-modal-backdrop fixed inset-0 z-[80] flex items-end bg-slate-950/50 sm:items-center sm:justify-center sm:p-4" @click.self="emit('close')">
-    <section class="pingo-modal-panel w-full rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-md sm:rounded-[2rem] sm:p-6">
+  <AppModal aria-labelledby="notification-settings-title" root-class="z-[80]" panel-class="p-5 sm:max-w-md sm:p-6" @close="emit('close')">
       <div class="flex items-start justify-between gap-3">
         <div class="flex items-start gap-3">
           <div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"><Bell :size="21" /></div>
-          <div><p class="text-sm font-bold text-emerald-600">Alertas do Pingo</p><h2 class="text-xl font-black">Não esqueça de atualizar</h2></div>
+          <div><p class="text-sm font-bold text-emerald-600">Alertas do Pingo</p><h2 id="notification-settings-title" class="break-words text-xl font-black">Não esqueça de atualizar</h2></div>
         </div>
-        <button type="button" class="grid size-10 place-items-center rounded-xl bg-slate-100 dark:bg-slate-800" @click="emit('close')"><X :size="19" /></button>
+        <button type="button" class="pingo-modal-close" aria-label="Fechar" @click="emit('close')"><X :size="19" /></button>
       </div>
 
       <p class="mt-4 text-sm leading-relaxed text-slate-600 dark:text-slate-300">Receba lembretes como “Você mexeu no seu dinheiro?” e abra o Pingo para registrar entradas e despesas.</p>
@@ -81,12 +81,11 @@ async function test() {
       <p v-if="error" class="mt-3 text-sm font-bold text-rose-600">{{ error }}</p>
       <p v-if="success" class="mt-3 text-sm font-bold text-emerald-600">{{ success }}</p>
 
-      <button type="button" class="mt-5 w-full rounded-2xl bg-emerald-400 py-3.5 font-black text-slate-950 disabled:opacity-50" :disabled="saving" @click="enable">{{ saving ? 'Salvando…' : settings.enabled ? 'Atualizar lembretes' : 'Ativar lembretes' }}</button>
+      <button type="button" class="btn mt-5 min-h-12 w-full rounded-2xl border-0 bg-emerald-400 font-black text-slate-950 disabled:opacity-50" :disabled="saving" @click="enable">{{ saving ? 'Salvando…' : settings.enabled ? 'Atualizar lembretes' : 'Ativar lembretes' }}</button>
       <div class="mt-2 grid grid-cols-2 gap-2">
         <button type="button" class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold dark:border-slate-700" @click="test">Testar alerta</button>
         <button type="button" class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold disabled:opacity-40 dark:border-slate-700" :disabled="!settings.enabled || saving" @click="disable">Desativar</button>
       </div>
       <p class="mt-3 text-center text-[11px] text-slate-400">Na Web, o navegador precisa estar aberto. No Android, o sistema agenda o lembrete.</p>
-    </section>
-  </div>
+  </AppModal>
 </template>

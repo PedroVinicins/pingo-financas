@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pingo-shell-v0.14.3'
+const CACHE_NAME = 'pingo-shell-v0.15.0'
 const SHELL = [
   '/',
   '/index.html',

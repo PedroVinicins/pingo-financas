@@ -8,6 +8,14 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
+## Destaques da versão 0.15.0
+
+- todos os modais usam uma base DaisyUI consistente e totalmente responsiva;
+- rolagem interna, safe areas e ações fixas continuam acessíveis com o teclado móvel aberto;
+- abrir, fechar, salvar e cancelar têm foco previsível e alvos adequados para telas sensíveis ao toque;
+- novas categorias oferecem 12 ícones para gastos e 9 para entradas;
+- Android `versionCode` 15000 e cache Web renovado para a nova release.
+
 ## Destaques da versão 0.14.3
 
 - escolha explícita entre os extratos do Banco Inter e Nubank;

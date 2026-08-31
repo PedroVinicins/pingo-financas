@@ -25,4 +25,11 @@ describe('mobile viewport', () => {
       keyboardHeight: 424,
     })
   })
+
+  it('does not make the modal taller than a very small landscape viewport', () => {
+    expect(calculateKeyboardViewport(430, { height: 248, offsetTop: 0 })).toMatchObject({
+      height: 248,
+      offsetTop: 0,
+    })
+  })
 })

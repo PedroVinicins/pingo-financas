@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.15.0 — Modais mobile em qualquer tela
+
+- integra DaisyUI como base visual para modais e botões;
+- padroniza todos os modais com portal para o `body`, foco contido, fechamento por toque ou Escape e restauração de foco;
+- mantém conteúdo e ações alcançáveis em celulares iOS e Android, inclusive com teclado aberto, safe areas e telas pequenas em modo paisagem;
+- corrige especialmente a edição do saldo da conta, sem campos ou botões cortados;
+- adiciona 12 opções de ícones para categorias de gastos e 9 para categorias de entradas;
+- amplia os alvos de toque e protege operações ocupadas contra fechamento acidental;
+- atualiza Web/PWA, backup, Tauri e Android para a versão 0.15.0 (`versionCode` 15000).
+
 ## 0.14.3 — Extratos Nubank e modais estáveis no APK
 
 - adiciona a escolha de Banco Inter ou Nubank antes da importação do extrato;
@@ -209,4 +219,3 @@
 - mobile: compartilhamento via share API antes do backup local
 - refinamentos tipagem TypeScript em financeStore para suporte a títulos de feedback
 - plugin dialog e fs adicionados ao runtime Tauri
-

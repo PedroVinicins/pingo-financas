@@ -13,6 +13,7 @@ import AddDigitalWalletItemModal from '../components/AddDigitalWalletItemModal.v
 import AddWalletEntryMenu from '../components/AddWalletEntryMenu.vue'
 import AddTransactionModal from '../components/AddTransactionModal.vue'
 import MediaLightbox from '../components/MediaLightbox.vue'
+import AppModal from '../components/AppModal.vue'
 import { decimalToCents, useFinanceStore } from '../stores/financeStore'
 import { privateCurrencyCents } from '../services/currency'
 import { quickWalletLink, requestCardHomeShortcut } from '../services/quickLaunch'
@@ -259,13 +260,9 @@ function displayDate(value: string) {
   <AddTransactionModal v-if="editingTransaction" :categories="store.categories" :cards="store.debitCards" :transaction="editingTransaction" @close="editingTransaction = null" @save="saveTransaction" @delete="deletingTransaction = $event" />
   <ConfirmDialog v-if="deletingTransaction" title="Excluir compra?" :message="`“${deletingTransaction.description}” será removida e os saldos serão recalculados.`" confirm-label="Excluir compra" :busy="deletingTransactionBusy" @cancel="deletingTransaction = null" @confirm="confirmTransactionDelete" />
   <MediaLightbox v-if="previewingWalletItem?.fileDataUrl" :src="previewingWalletItem.fileDataUrl" :title="previewingWalletItem.title" :file-name="previewingWalletItem.fileName" @close="previewingWalletItem = null" />
-  <Teleport to="body">
-    <div v-if="manualShortcut" class="pingo-modal-backdrop fixed inset-0 z-[110] grid place-items-end bg-slate-950/55 backdrop-blur-[2px] sm:place-items-center sm:p-4" @click.self="manualShortcut = ''" @keydown.esc="manualShortcut = ''">
-      <section class="pingo-modal-panel w-full rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-md sm:rounded-[2rem] sm:p-6" role="dialog" aria-modal="true" aria-labelledby="shortcut-dialog-title">
-        <div class="flex items-start gap-3"><div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"><Link2 :size="20" /></div><div class="min-w-0 flex-1"><h2 id="shortcut-dialog-title" class="text-xl font-black">Copiar atalho</h2><p class="mt-1 text-sm text-slate-500">A cópia automática foi bloqueada. Selecione o endereço abaixo para copiá-lo manualmente.</p></div><button class="grid size-9 place-items-center rounded-xl text-slate-400" aria-label="Fechar" @click="manualShortcut = ''"><X :size="18" /></button></div>
+  <AppModal v-if="manualShortcut" aria-labelledby="shortcut-dialog-title" root-class="z-[110]" panel-class="p-5 sm:max-w-md sm:p-6" @close="manualShortcut = ''">
+        <div class="flex items-start gap-3"><div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"><Link2 :size="20" /></div><div class="min-w-0 flex-1"><h2 id="shortcut-dialog-title" class="text-xl font-black">Copiar atalho</h2><p class="mt-1 text-sm text-slate-500">A cópia automática foi bloqueada. Selecione o endereço abaixo para copiá-lo manualmente.</p></div><button class="pingo-modal-close" aria-label="Fechar" @click="manualShortcut = ''"><X :size="18" /></button></div>
         <input ref="shortcutInput" :value="manualShortcut" readonly class="mt-5 h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 font-mono text-sm dark:border-slate-700 dark:bg-slate-950" aria-label="Endereço do atalho" @focus="($event.target as HTMLInputElement).select()" />
-        <button class="mt-3 w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white dark:bg-white dark:text-slate-950" @click="manualShortcut = ''">Concluir</button>
-      </section>
-    </div>
-  </Teleport>
+        <button class="btn mt-3 min-h-12 w-full rounded-xl border-0 bg-slate-950 px-4 text-sm font-black text-white dark:bg-white dark:text-slate-950" @click="manualShortcut = ''">Concluir</button>
+  </AppModal>
 </template>

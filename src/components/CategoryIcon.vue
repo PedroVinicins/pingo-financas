@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import {
-  BadgeDollarSign, Banknote, BriefcaseBusiness, Bus, CircleDollarSign, Gamepad, Gamepad2, Gift,
-  GraduationCap, HeartPulse, House, Laptop, ReceiptText, ShoppingBag, Store,
-  Tag, TrendingUp, Utensils, Wifi,
+  BadgeDollarSign, Banknote, BriefcaseBusiness, Bus, Car, CircleDollarSign, Dumbbell, Gamepad, Gamepad2, Gift,
+  GraduationCap, HandCoins, HeartPulse, House, Landmark, Laptop, PawPrint, PiggyBank, Plane,
+  ReceiptText, Shirt, ShoppingBag, ShoppingCart, Smartphone, Store, Tag, TrendingUp, Utensils,
+  WalletCards, Wifi,
 } from 'lucide-vue-next'
 import type { Category, TransactionType } from '../types/finance'
 
@@ -17,11 +18,18 @@ const iconByName = {
   house: House,
   utensils: Utensils,
   bus: Bus,
+  car: Car,
   'gamepad-2': Gamepad2,
   'heart-pulse': HeartPulse,
   'graduation-cap': GraduationCap,
   'receipt-text': ReceiptText,
   'shopping-bag': ShoppingBag,
+  'shopping-cart': ShoppingCart,
+  shirt: Shirt,
+  'paw-print': PawPrint,
+  dumbbell: Dumbbell,
+  plane: Plane,
+  smartphone: Smartphone,
   'badge-dollar-sign': BadgeDollarSign,
   laptop: Laptop,
   'briefcase-business': BriefcaseBusiness,
@@ -30,6 +38,10 @@ const iconByName = {
   'trending-up': TrendingUp,
   'circle-dollar-sign': CircleDollarSign,
   banknote: Banknote,
+  'hand-coins': HandCoins,
+  landmark: Landmark,
+  'wallet-cards': WalletCards,
+  'piggy-bank': PiggyBank,
   gamepad: Gamepad,
   wifi: Wifi,
   tag: Tag,

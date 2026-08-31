@@ -104,4 +104,20 @@ describe('AddTransactionModal', () => {
     expect(wrapper.emitted('save')).toBeUndefined()
     expect(wrapper.emitted('sendToVault')?.[0]?.[0]).toEqual({ vaultId: 'vault-one', amount: '75.50' })
   })
+
+  it('oferece ícones distintos ao criar categorias de gasto e entrada', async () => {
+    const wrapper = mount(AddTransactionModal, {
+      props: { categories: [expenseCategory, incomeCategory], cards: [] },
+      global: { plugins: [createPinia()] },
+    })
+
+    await wrapper.findAll('button').find((button) => button.text().includes('Nova'))?.trigger('click')
+    expect(wrapper.findAll('[role="radio"]')).toHaveLength(12)
+    expect(wrapper.find('[aria-label="Academia"]').exists()).toBe(true)
+
+    await wrapper.findAll('button').find((button) => button.text().trim() === 'Entrada')?.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text().includes('Nova'))?.trigger('click')
+    expect(wrapper.findAll('[role="radio"]')).toHaveLength(9)
+    expect(wrapper.find('[aria-label="Investimento"]').exists()).toBe(true)
+  })
 })

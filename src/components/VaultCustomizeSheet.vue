@@ -4,6 +4,7 @@ import { Paintbrush, Sparkles, X } from 'lucide-vue-next'
 import LocalizedNumberInput from './LocalizedNumberInput.vue'
 import { localizedDecimalToStorage, storageDecimalToLocalized } from '../services/localizedNumber'
 import type { AutomaticReserveMode, AutomaticReserveRule, MonthlyReserveRule, UpdateVaultInput, Vault } from '../types/finance'
+import AppModal from './AppModal.vue'
 
 const props = defineProps<{ vault: Vault; automaticRule: AutomaticReserveRule | null; monthlyRule: MonthlyReserveRule | null }>()
 const emit = defineEmits<{ close: []; save: [vault: UpdateVaultInput, reserve: AutomaticReserveRule, monthly: MonthlyReserveRule] }>()
@@ -67,9 +68,8 @@ function submit() {
 </script>
 
 <template>
-  <div class="pingo-modal-backdrop fixed inset-0 z-[80] flex items-end bg-slate-950/55 sm:items-center sm:justify-center sm:p-4" @click.self="emit('close')">
-    <form class="pingo-modal-panel max-h-[94vh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-[2rem] sm:p-6" @submit.prevent="submit">
-      <div class="flex items-start justify-between"><div class="flex gap-3"><div class="grid size-11 place-items-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-950"><Paintbrush :size="21" /></div><div><p class="text-sm font-bold text-amber-600">Do seu jeito</p><h2 class="text-xl font-black">Personalizar porquinho</h2></div></div><button type="button" class="grid size-10 place-items-center rounded-xl bg-slate-100 dark:bg-slate-800" @click="emit('close')"><X :size="19" /></button></div>
+  <AppModal as="form" aria-labelledby="vault-customize-title" root-class="z-[80]" panel-class="p-5 sm:max-w-lg sm:p-6" @close="emit('close')" @submit="submit">
+      <div class="flex items-start justify-between gap-3"><div class="flex min-w-0 gap-3"><div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-950"><Paintbrush :size="21" /></div><div class="min-w-0"><p class="text-sm font-bold text-amber-600">Do seu jeito</p><h2 id="vault-customize-title" class="break-words text-xl font-black">Personalizar porquinho</h2></div></div><button type="button" class="pingo-modal-close" aria-label="Fechar" @click="emit('close')"><X :size="19" /></button></div>
 
       <div class="mt-5 rounded-[1.75rem] p-5 text-white shadow-lg" :style="{ background: `linear-gradient(135deg, ${form.color}, ${form.color}B8)` }"><div class="flex items-center justify-between"><span class="text-4xl">{{ form.emoji || '🔐' }}</span><Sparkles :size="26" class="opacity-70" /></div><p class="mt-5 text-xs font-bold text-white/70">MEU COFRE</p><p class="mt-1 text-2xl font-black">{{ form.name || 'Meu porquinho' }}</p><p class="mt-1 text-sm font-semibold text-white/70">{{ form.institution || 'Minha instituição' }}</p></div>
 
@@ -79,7 +79,6 @@ function submit() {
       <section class="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/25"><label class="flex cursor-pointer items-start gap-3"><input v-model="form.automaticEnabled" type="checkbox" class="mt-1 size-4 accent-emerald-600" /><span><strong class="block text-sm">Ao receber uma entrada</strong><span class="mt-1 block text-xs text-slate-500">Sempre que dinheiro entrar, o Pingo separa uma parte neste porquinho.</span></span></label><div v-if="form.automaticEnabled" class="mt-4 grid grid-cols-2 gap-2"><select v-model="form.automaticMode" class="rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm font-bold dark:border-emerald-900 dark:bg-slate-900"><option value="percentage">Percentual da entrada</option><option value="fixed">Valor fixo</option></select><LocalizedNumberInput v-model="form.automaticValue" class="rounded-xl border border-emerald-200 bg-white px-3 py-2.5 font-bold dark:border-emerald-900 dark:bg-slate-900" :placeholder="form.automaticMode === 'percentage' ? '10,00%' : '50,00'" /></div></section>
       <section class="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/25"><label class="flex cursor-pointer items-start gap-3"><input v-model="form.monthlyEnabled" type="checkbox" class="mt-1 size-4 accent-amber-600" /><span><strong class="block text-sm">Guardar todo mês</strong><span class="mt-1 block text-xs text-slate-500">No dia escolhido, separa um valor ou porcentagem do saldo disponível. Ativar não transfere nada imediatamente.</span></span></label><div v-if="form.monthlyEnabled" class="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_100px]"><select v-model="form.monthlyMode" class="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-sm font-bold dark:border-amber-900 dark:bg-slate-900"><option value="fixed">Valor fixo</option><option value="percentage">% do saldo</option></select><LocalizedNumberInput v-model="form.monthlyValue" class="rounded-xl border border-amber-200 bg-white px-3 py-2.5 font-bold dark:border-amber-900 dark:bg-slate-900" :placeholder="form.monthlyMode === 'percentage' ? '10,00%' : '50,00'" /><label class="grid gap-1 text-xs font-bold">Dia<input v-model.number="form.monthlyDay" type="number" min="1" max="28" class="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-sm dark:border-amber-900 dark:bg-slate-900" /></label></div></section>
       <p v-if="error" class="mt-3 text-sm font-bold text-rose-600">{{ error }}</p>
-      <button class="mt-5 w-full rounded-2xl bg-amber-400 py-3.5 font-black text-slate-950">Salvar personalização</button>
-    </form>
-  </div>
+      <div class="pingo-modal-footer mt-5"><button class="btn min-h-12 w-full rounded-2xl border-0 bg-amber-400 font-black text-slate-950">Salvar personalização</button></div>
+  </AppModal>
 </template>

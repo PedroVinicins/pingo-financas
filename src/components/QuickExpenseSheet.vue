@@ -8,6 +8,7 @@ import { localDateKey, localDateTimeKey } from '../services/recurringDates'
 import LocalizedNumberInput from './LocalizedNumberInput.vue'
 import CategoryIcon from './CategoryIcon.vue'
 import { useKeyboardAwareModal } from '../services/mobileViewport'
+import AppModal from './AppModal.vue'
 
 const props = defineProps<{
   categories: Category[]
@@ -105,15 +106,14 @@ async function createCategory() {
 </script>
 
 <template>
-  <div class="pingo-modal-backdrop keyboard-aware-modal fixed inset-0 z-[70] flex items-end bg-slate-950/45 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-4" :style="overlayStyle" @click.self="emit('close')" @focusin="keepFocusedFieldVisible">
-    <form class="pingo-modal-panel w-full overflow-y-auto overscroll-contain rounded-t-[2rem] bg-white px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-[2rem] sm:p-5" :style="contentStyle" @submit.prevent="submit">
+  <AppModal as="form" aria-labelledby="quick-expense-title" root-class="keyboard-aware-modal z-[70]" panel-class="px-4 pt-4 sm:max-w-lg sm:p-5" :root-style="overlayStyle" :panel-style="contentStyle" @close="emit('close')" @submit="submit" @focusin="keepFocusedFieldVisible">
       <div class="mx-auto mb-3 h-1.5 w-12 rounded-full bg-slate-200 dark:bg-slate-700 sm:hidden"></div>
       <div class="flex items-center justify-between gap-3">
         <div>
           <div class="flex items-center gap-2 text-emerald-600"><Zap :size="16" fill="currentColor" /><span class="text-xs font-black uppercase tracking-[0.16em]">Gasto rápido</span></div>
-          <h2 class="mt-1 text-xl font-black">Quanto você gastou?</h2>
+          <h2 id="quick-expense-title" class="mt-1 text-xl font-black">Quanto você gastou?</h2>
         </div>
-        <button type="button" class="grid size-10 place-items-center rounded-2xl bg-slate-100 dark:bg-slate-800" @click="emit('close')"><X :size="19" /></button>
+        <button type="button" class="pingo-modal-close" aria-label="Fechar" @click="emit('close')"><X :size="19" /></button>
       </div>
 
       <div class="mt-5 rounded-[1.5rem] bg-slate-100 p-4 dark:bg-slate-950">
@@ -156,9 +156,8 @@ async function createCategory() {
 
       <p v-if="formError" class="mt-3 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-950/35 dark:text-rose-300" role="alert">{{ formError }}</p>
 
-      <button class="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-brand px-4 py-4 text-base font-black text-white active:scale-[0.99]">
+      <div class="pingo-modal-footer mt-4"><button class="btn min-h-14 w-full rounded-full border-0 bg-brand px-4 text-base font-black text-white">
         <Check :size="20" stroke-width="3" /> Registrar gasto
-      </button>
-    </form>
-  </div>
+      </button></div>
+  </AppModal>
 </template>

@@ -13,6 +13,7 @@ import ProfileCard from './ProfileCard.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsRow from './SettingsRow.vue'
 import BankStatementImport from './BankStatementImport.vue'
+import AppModal from './AppModal.vue'
 import { useFinanceStore } from '../stores/financeStore'
 import { exportBackup, exportTransactionsCsv, parseBackupFile, type PingoBackup } from '../services/backup'
 import { isTauriRuntime } from '../services/financeRepository'
@@ -268,18 +269,16 @@ onBeforeUnmount(() => window.removeEventListener(APP_LOCK_CHANGED_EVENT, appLock
 
         <aside class="grid gap-5 xl:sticky xl:top-8">
           <ProfileCard :name="displayName" @edit="profileDraft = store.preferences.displayName; editingProfile = true" />
-          <article class="pingo-card p-5"><div class="flex items-center gap-3"><span class="grid size-11 place-items-center rounded-2xl bg-brand-soft text-brand"><HardDrive :size="20" /></span><div><h2 class="font-extrabold">{{ isTauriRuntime() ? 'SQLite local' : 'Dados neste navegador' }}</h2><p class="text-xs text-subtle">Seus dados permanecem no aparelho.</p></div></div><div class="mt-5 grid gap-3 text-sm"><p class="flex items-center gap-2"><ShieldCheck :size="17" class="text-brand" /> Importações processadas localmente</p><p class="flex items-center gap-2"><Database :size="17" class="text-brand" /> Sem conexão bancária automática</p><p class="flex items-center gap-2"><Smartphone :size="17" class="text-brand" /> Pingo 0.14.3</p></div></article>
+          <article class="pingo-card p-5"><div class="flex items-center gap-3"><span class="grid size-11 place-items-center rounded-2xl bg-brand-soft text-brand"><HardDrive :size="20" /></span><div><h2 class="font-extrabold">{{ isTauriRuntime() ? 'SQLite local' : 'Dados neste navegador' }}</h2><p class="text-xs text-subtle">Seus dados permanecem no aparelho.</p></div></div><div class="mt-5 grid gap-3 text-sm"><p class="flex items-center gap-2"><ShieldCheck :size="17" class="text-brand" /> Importações processadas localmente</p><p class="flex items-center gap-2"><Database :size="17" class="text-brand" /> Sem conexão bancária automática</p><p class="flex items-center gap-2"><Smartphone :size="17" class="text-brand" /> Pingo 0.15.0</p></div></article>
           <article class="rounded-pingo-lg bg-hero p-5 text-white"><Eye :size="20" class="text-violet-300" /><h2 class="mt-4 font-extrabold">Privacidade primeiro</h2><p class="mt-1 text-sm leading-relaxed text-white/55">Backup e extratos contêm informações financeiras. Guarde os arquivos em um local protegido.</p></article>
         </aside>
       </div>
     </main>
   </div>
 
-  <Teleport to="body">
-    <div v-if="editingProfile" class="pingo-modal-backdrop fixed inset-0 z-[110] grid place-items-end bg-black/50 sm:place-items-center sm:p-4" @click.self="editingProfile = false">
-      <form class="pingo-modal-panel w-full rounded-t-[2rem] bg-surface p-5 shadow-float sm:max-w-md sm:rounded-[2rem]" @submit.prevent="saveProfile"><div class="flex items-center justify-between"><div><p class="text-sm font-semibold text-brand">Perfil</p><h2 class="text-2xl font-extrabold">Como chamar você?</h2></div><button type="button" class="grid size-11 place-items-center rounded-full bg-muted" aria-label="Fechar" @click="editingProfile = false"><X :size="18" /></button></div><label class="mt-6 grid gap-2 text-sm font-semibold">Nome<input v-model="profileDraft" maxlength="60" autocomplete="name" class="h-12 rounded-xl border border-line bg-canvas px-4" placeholder="Seu nome" /></label><button class="mt-5 min-h-12 w-full rounded-full bg-brand font-bold text-white">Salvar perfil</button></form>
-    </div>
-  </Teleport>
+  <AppModal v-if="editingProfile" as="form" aria-labelledby="edit-profile-title" root-class="z-[110]" panel-class="p-5 sm:max-w-md" @close="editingProfile = false" @submit="saveProfile">
+    <div class="flex items-center justify-between gap-3"><div class="min-w-0"><p class="text-sm font-semibold text-brand">Perfil</p><h2 id="edit-profile-title" class="break-words text-2xl font-extrabold">Como chamar você?</h2></div><button type="button" class="pingo-modal-close" aria-label="Fechar" @click="editingProfile = false"><X :size="18" /></button></div><label class="mt-6 grid gap-2 text-sm font-semibold">Nome<input v-model="profileDraft" maxlength="60" autocomplete="name" class="h-12 rounded-xl border border-line bg-canvas px-4" placeholder="Seu nome" /></label><div class="pingo-modal-footer mt-5"><button class="pingo-modal-primary rounded-full">Salvar perfil</button></div>
+  </AppModal>
   <FactoryResetDialog v-if="confirmingReset" :busy="resetting" @cancel="confirmingReset = false" @confirm="factoryReset" />
   <AppLockSettingsModal v-if="showAppLock" @close="showAppLock = false" @changed="appLockConfig = $event" />
   <BankStatementImport v-if="showStatementImport" :categories="store.categories" :cards="store.debitCards" :transactions="store.transactions" :busy="importingStatement" @close="showStatementImport = false" @import="importStatement" />

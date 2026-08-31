@@ -4,6 +4,7 @@ import { ShieldCheck, X, Sparkles, CreditCard } from 'lucide-vue-next'
 import type { CardBackground, CardNetwork, CardPattern, NewDebitCardInput } from '../types/finance'
 import { localizedDecimalToStorage } from '../services/localizedNumber'
 import LocalizedNumberInput from './LocalizedNumberInput.vue'
+import AppModal from './AppModal.vue'
 
 const props = withDefaults(defineProps<{
   existingCardsCount: number
@@ -105,15 +106,13 @@ function submit() {
 </script>
 
 <template>
-  <Teleport to="body">
-  <div class="pingo-modal-backdrop fixed inset-0 grid place-items-end bg-slate-950/50 sm:place-items-center sm:p-4" :class="elevated ? 'z-[120]' : 'z-50'" @click.self="!busy && emit('close')">
-    <form class="pingo-modal-panel max-h-[94vh] w-full overflow-y-auto rounded-t-[2rem] bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-xl sm:rounded-[2rem] sm:p-6" @submit.prevent="submit">
+  <AppModal as="form" aria-labelledby="add-card-title" :root-class="elevated ? 'z-[120]' : 'z-50'" panel-class="p-5 sm:max-w-xl sm:p-6" :closeable="!busy" @close="emit('close')" @submit="submit">
       <div class="flex items-start justify-between gap-4">
         <div>
           <p class="text-sm font-bold text-emerald-600">Carteira</p>
-          <h2 class="text-2xl font-black tracking-tight">Adicionar cartão</h2>
+          <h2 id="add-card-title" class="text-2xl font-black tracking-tight">Adicionar cartão</h2>
         </div>
-        <button type="button" :disabled="busy" class="grid size-10 place-items-center rounded-xl transition hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800" @click="emit('close')">
+        <button type="button" :disabled="busy" class="pingo-modal-close" aria-label="Fechar" @click="emit('close')">
           <X :size="20" />
         </button>
       </div>
@@ -287,11 +286,9 @@ function submit() {
       </p>
 
       <!-- Botão de Ação -->
-      <button :disabled="busy" class="mt-6 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 font-bold text-white transition hover:bg-emerald-700 active:scale-[0.99] disabled:cursor-wait disabled:opacity-60">
+      <button type="submit" :disabled="busy" class="pingo-modal-footer btn mt-6 h-14 min-h-14 w-full rounded-2xl border-0 bg-emerald-600 font-bold text-white hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-60">
         <Sparkles :size="18" :class="busy ? 'animate-pulse' : ''" />
         {{ busy ? 'Guardando…' : 'Adicionar à carteira' }}
       </button>
-    </form>
-  </div>
-  </Teleport>
+  </AppModal>
 </template>
