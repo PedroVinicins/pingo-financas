@@ -211,6 +211,19 @@ export const useFinanceStore = defineStore('finance', () => {
   const reportingExpenseCents = computed(() => reportingTransactions.value.reduce((total, transaction) =>
     transaction.kind === 'expense' ? total + decimalToCents(transaction.amount) : total, 0n))
   const reportingBalanceCents = computed(() => reportingIncomeCents.value - reportingExpenseCents.value)
+  const reportingPeriodKey = computed(() => `${reportingYear.value}-${String(reportingMonth.value).padStart(2, '0')}`)
+  const currentPeriodKey = computed(() => `${clock.value.getFullYear()}-${String(clock.value.getMonth() + 1).padStart(2, '0')}`)
+  const reportingPeriodIsCurrent = computed(() => reportingPeriodKey.value === currentPeriodKey.value)
+  const reportingPeriodIsPast = computed(() => reportingPeriodKey.value < currentPeriodKey.value)
+  const reportingClosingBalanceCents = computed(() => {
+    const recorded = preferences.value.statementClosingBalances[reportingPeriodKey.value]
+    if (recorded !== undefined) return signedDecimalToCents(recorded)
+    const cumulative = transactions.value.reduce((total, transaction) =>
+      transaction.date.slice(0, 7) <= reportingPeriodKey.value
+        ? total + transactionEffect(transaction)
+        : total, 0n)
+    return cumulative + signedDecimalToCents(accountSettings.value.openingBalanceAdjustment) - vaultTotalCents.value
+  })
   const filteredTransactions = computed(() => {
     const result = transactions.value.filter((transaction) => {
       const date = new Date(`${transaction.date}T12:00:00`)
@@ -483,13 +496,28 @@ export const useFinanceStore = defineStore('finance', () => {
     return transaction
   }
   async function importBankStatement(input: BankStatementImportInput) {
-    const imported = await repository.importBankStatement(input)
+    const repositoryInput = input.preserveCurrentBalance
+      ? { ...input, closingBalance: centsToDecimal(availableBalanceCents.value) }
+      : input
+    const imported = await repository.importBankStatement(repositoryInput)
     setTransactions(await repository.listTransactions())
     const settings = await repository.loadAccountSettings()
     if (settings) accountSettings.value = settings
-    pingoMessage.value = imported.length === 1
-      ? 'Extrato conferido: 1 lançamento novo entrou no histórico. 📄'
-      : `Extrato conferido: ${imported.length} lançamentos novos entraram no histórico. 📄`
+    if (input.statementPeriod && /^\d{4}-(?:0[1-9]|1[0-2])$/.test(input.statementPeriod)
+      && input.statementClosingBalance !== null && input.statementClosingBalance !== undefined) {
+      signedDecimalToCents(input.statementClosingBalance)
+      preferences.value = savePingoPreferences({
+        ...preferences.value,
+        statementClosingBalances: {
+          ...preferences.value.statementClosingBalances,
+          [input.statementPeriod]: input.statementClosingBalance,
+        },
+      })
+    }
+    const importedLabel = imported.length === 1 ? '1 lançamento novo entrou' : `${imported.length} lançamentos novos entraram`
+    pingoMessage.value = input.preserveCurrentBalance
+      ? `Extrato conferido: ${importedLabel} no histórico e o saldo atual foi mantido. 📄`
+      : `Extrato conferido: ${importedLabel} no histórico. 📄`
     return imported.length
   }
   function updatePreferences(next: Partial<PingoPreferences>) {
@@ -824,6 +852,7 @@ export const useFinanceStore = defineStore('finance', () => {
     averageMonthlyExpenseCents, projectedMonthExpenseCents, dailySpendingAverageCents, todayExpenseCents, dailyBudgetCents,
     emergencyFundMonths, financialHealthScore, filteredTransactions, recentTransactions, recentExpenses,
     sortedTransactions, reportingTransactions, reportingIncomeCents, reportingExpenseCents, reportingBalanceCents,
+    reportingPeriodKey, reportingPeriodIsCurrent, reportingPeriodIsPast, reportingClosingBalanceCents,
     hasActiveFilters,
     recentExpenseCategoryIds, expensesByCategory, currentMonthExpensesByCategory, expensePercentages,
     currentMonthExpensePercentages, topExpenseCategory, expensesByDebitCard, currentMonthExpensesByDebitCard,

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
-  BatteryCharging, Bell, Database, Download, Eye, FileDown, Gauge, HardDrive, LockKeyhole,
-  Move3d, Palette, RefreshCw, RotateCcw, ShieldCheck, Smartphone, Upload, X,
+  BatteryCharging, Bell, Database, Download, Eye, FileDown, FileUp, Gauge, HardDrive, LockKeyhole,
+  Move3d, RefreshCw, RotateCcw, ShieldCheck, Smartphone, Upload, X,
 } from 'lucide-vue-next'
 import AppSwitch from './AppSwitch.vue'
 import AppLockSettingsModal from './AppLockSettingsModal.vue'
@@ -12,6 +12,7 @@ import FactoryResetDialog from './FactoryResetDialog.vue'
 import ProfileCard from './ProfileCard.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsRow from './SettingsRow.vue'
+import BankStatementImport from './BankStatementImport.vue'
 import { useFinanceStore } from '../stores/financeStore'
 import { exportBackup, exportTransactionsCsv, parseBackupFile, type PingoBackup } from '../services/backup'
 import { isTauriRuntime } from '../services/financeRepository'
@@ -24,7 +25,7 @@ import {
   disableAnalysisNotifications, disableMoneyReminders, enableAnalysisNotifications,
   enableMoneyReminders, loadReminderSettings, sendAnalysisNotificationTest, type ReminderFrequencyDays,
 } from '../services/notifications'
-import type { CurrencyCode, DashboardWidgetId, FeedbackDurationMs, PingoPreferences, ShakeSensitivity, ThemeMode } from '../types/finance'
+import type { BankStatementImportInput, CurrencyCode, DashboardWidgetId, FeedbackDurationMs, PingoPreferences, ShakeSensitivity, ThemeMode } from '../types/finance'
 import { APP_LOCK_CHANGED_EVENT, getAppLockConfig, type AppLockConfig } from '../services/appLock'
 
 const props = withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
@@ -42,6 +43,8 @@ const reminderBusy = ref(false)
 const analysisNotificationBusy = ref(false)
 const editingProfile = ref(false)
 const showAppLock = ref(false)
+const showStatementImport = ref(false)
+const importingStatement = ref(false)
 const appLockConfig = ref<AppLockConfig>({ enabled: false, biometricEnabled: false })
 const profileDraft = ref(store.preferences.displayName)
 const budgetDraft = ref(store.preferences.monthlyBudget ? storageDecimalToLocalized(store.preferences.monthlyBudget) : '')
@@ -149,6 +152,22 @@ async function downloadCsv() {
   catch (cause) { store.reportError(cause, 'Não foi possível exportar o CSV.') }
   finally { exportingCsv.value = false }
 }
+async function importStatement(input: BankStatementImportInput) {
+  importingStatement.value = true
+  try {
+    const count = await store.importBankStatement(input)
+    if (count === 0) throw new Error('Nenhum lançamento novo foi importado. Revise a seleção e tente novamente.')
+    showStatementImport.value = false
+    const balanceResult = input.preserveCurrentBalance
+      ? ' Seu saldo atual foi mantido.'
+      : input.closingBalance !== null ? ' Seu saldo atual foi atualizado.' : ''
+    store.showFeedback(
+      `${count} lançamento${count === 1 ? '' : 's'} importado${count === 1 ? '' : 's'}.${balanceResult}`,
+      'success', undefined, 'Extrato importado',
+    )
+  } catch (cause) { store.reportError(cause, 'Não foi possível importar o extrato.') }
+  finally { importingStatement.value = false }
+}
 async function chooseBackup(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -237,6 +256,7 @@ onBeforeUnmount(() => window.removeEventListener(APP_LOCK_CHANGED_EVENT, appLock
           </SettingsGroup>
 
           <SettingsGroup title="Dados e segurança">
+            <SettingsRow label="Importar extrato bancário" description="Banco Inter e Nubank Beta. O arquivo é processado neste dispositivo." clickable @activate="showStatementImport = true"><template #icon><FileUp :size="18" class="text-brand" /></template></SettingsRow>
             <SettingsRow label="Backup local" :value="exporting ? 'Preparando…' : ''" clickable @activate="downloadBackup"><template #icon><Download :size="18" class="text-brand" /></template></SettingsRow>
             <SettingsRow label="Exportar CSV" :value="exportingCsv ? 'Preparando…' : ''" clickable @activate="downloadCsv"><template #icon><FileDown :size="18" class="text-brand" /></template></SettingsRow>
             <SettingsRow label="Restaurar backup" description="Substitui os dados atuais após sua confirmação." clickable @activate="backupInput?.click()"><template #icon><Upload :size="18" class="text-brand" /></template></SettingsRow>
@@ -262,5 +282,6 @@ onBeforeUnmount(() => window.removeEventListener(APP_LOCK_CHANGED_EVENT, appLock
   </Teleport>
   <FactoryResetDialog v-if="confirmingReset" :busy="resetting" @cancel="confirmingReset = false" @confirm="factoryReset" />
   <AppLockSettingsModal v-if="showAppLock" @close="showAppLock = false" @changed="appLockConfig = $event" />
+  <BankStatementImport v-if="showStatementImport" :categories="store.categories" :cards="store.debitCards" :transactions="store.transactions" :busy="importingStatement" @close="showStatementImport = false" @import="importStatement" />
   <ConfirmDialog v-if="pendingBackup" title="Restaurar este backup?" message="Os dados atuais deste dispositivo serão substituídos pelo conteúdo do arquivo. Faça um backup atual antes de continuar." confirm-label="Restaurar dados" :busy="restoringBackup" @cancel="pendingBackup = null" @confirm="confirmRestoreBackup" />
 </template>

@@ -25,6 +25,43 @@ describe('bank statement import', () => {
     expect(statement.closingBalance).toBe('1.53')
   })
 
+  it('reads newer Inter columns and infers debit or credit when the value has no sign', () => {
+    const statement = parseDelimitedStatement(`Data Entrada;Tipo Transação;Tipo Operação;Título;Descrição;Valor;Saldo
+2026-08-29;PIX;D;Pix enviado;Mercado Central;12,34;87,66
+2026-08-30;PIX;C;Pix recebido;Cliente Silva;100,00;187,66`, 'inter-atual.csv')
+
+    expect(statement.transactions).toHaveLength(2)
+    expect(statement.transactions[0]).toMatchObject({
+      kind: 'expense', amount: '12.34', description: 'Mercado Central', movementType: 'pix_sent',
+    })
+    expect(statement.transactions[1]).toMatchObject({
+      kind: 'income', amount: '100.00', description: 'Cliente Silva', movementType: 'pix_received',
+    })
+    expect(statement.closingBalance).toBe('187.66')
+  })
+
+  it('reads an Inter CSV saved as UTF-16 by spreadsheet applications', async () => {
+    const contents = `Data Lançamento\tHistórico\tDescrição\tValor\tSaldo
+30/08/2026\tPix enviado\tPadaria Central\t-15,90\t84,10`
+    const bytes = new Uint8Array(2 + contents.length * 2)
+    bytes[0] = 0xff
+    bytes[1] = 0xfe
+    for (let index = 0; index < contents.length; index += 1) {
+      const code = contents.charCodeAt(index)
+      bytes[2 + index * 2] = code & 0xff
+      bytes[3 + index * 2] = code >> 8
+    }
+    const file = {
+      name: 'extrato-inter.csv', type: 'text/csv', size: bytes.length,
+      arrayBuffer: async () => bytes.buffer,
+    } as File
+
+    const statement = await parseBankStatementFile(file, 'inter')
+    expect(statement.transactions[0]).toMatchObject({
+      date: '2026-08-30', kind: 'expense', amount: '15.90', description: 'Padaria Central',
+    })
+  })
+
   it('reads the Nubank account CSV and classifies Pix, debit, invoice and Caixinhas', () => {
     const statement = parseDelimitedStatement(`Data,Descrição da Transação,Valor (R$),Saldo Disponível (R$)
 25/08/2026,Transferência recebida (Pix) - João Silva,+200.00,200.00
@@ -40,6 +77,18 @@ describe('bank statement import', () => {
     expect(statement.transactions[2]).toMatchObject({ paymentMethod: 'credit', suggestedCardLink: true })
     expect(statement.transactions.slice(3).every((item) => item.isInternalTransfer)).toBe(true)
     expect(statement.closingBalance).toBe('24.50')
+  })
+
+  it('keeps the Nubank file importer explicitly in beta', async () => {
+    const contents = `Data,Descrição da Transação,Valor (R$)
+30/08/2026,Transferência recebida (Pix) - Cliente,+20.00`
+    const file = {
+      name: 'nubank.csv', type: 'text/csv', size: contents.length,
+      arrayBuffer: async () => new TextEncoder().encode(contents).buffer,
+    } as File
+
+    const statement = await parseBankStatementFile(file, 'nubank')
+    expect(statement.warnings).toContain('Importação do Nubank em beta: confira a prévia antes de confirmar.')
   })
 
   it('reads OFX transactions and ledger balance', () => {
@@ -225,6 +274,17 @@ Pix enviado: "Cp :60746948-Nivea Maria Vale da Silva"
       date: '2026-07-08', amount: '175.00', balance: '18.77',
       description: 'Nivea Maria Vale da Silva', movementType: 'pix_sent',
     })
+  })
+
+  it('understands abbreviated month names in Inter PDF date blocks', () => {
+    const statement = parseStatementTextLines([
+      '30 de ago. de 2026 Saldo do dia: R$ 84,10',
+      'Pix enviado: "Padaria Central" -R$ 15,90 R$ 84,10',
+    ])
+    expect(statement.transactions[0]).toMatchObject({
+      date: '2026-08-30', kind: 'expense', amount: '15.90', description: 'Padaria Central',
+    })
+    expect(statement.closingBalance).toBe('84.10')
   })
 
   it('marks only occurrences already present in the history as duplicates', () => {

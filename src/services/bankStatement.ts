@@ -12,9 +12,14 @@ import type {
 const MAX_STATEMENT_BYTES = 12 * 1024 * 1024
 const MAX_IMPORT_ROWS = 2_000
 
-export const SUPPORTED_STATEMENT_BANKS: Array<{ id: SupportedStatementBank; label: string; hint: string }> = [
-  { id: 'inter', label: 'Banco Inter', hint: 'CSV, OFX/QFX ou PDF textual do Inter' },
-  { id: 'nubank', label: 'Nubank', hint: 'CSV do extrato da conta Nubank' },
+export const SUPPORTED_STATEMENT_BANKS: Array<{
+  id: SupportedStatementBank
+  label: string
+  hint: string
+  beta: boolean
+}> = [
+  { id: 'inter', label: 'Banco Inter', hint: 'CSV, OFX/QFX ou PDF textual do Inter', beta: false },
+  { id: 'nubank', label: 'Nubank', hint: 'CSV do extrato da conta Nubank', beta: true },
 ]
 
 function normalizedHeader(value: string) {
@@ -23,6 +28,18 @@ function normalizedHeader(value: string) {
 }
 
 function decodeStatement(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer)
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return new TextDecoder('utf-16le').decode(buffer).replace(/^\uFEFF/, '')
+  }
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+    return new TextDecoder('utf-16be').decode(buffer).replace(/^\uFEFF/, '')
+  }
+  const sample = bytes.slice(0, Math.min(bytes.length, 512))
+  const evenZeros = sample.filter((value, index) => index % 2 === 0 && value === 0).length
+  const oddZeros = sample.filter((value, index) => index % 2 === 1 && value === 0).length
+  if (oddZeros > sample.length / 4) return new TextDecoder('utf-16le').decode(buffer).replace(/^\uFEFF/, '')
+  if (evenZeros > sample.length / 4) return new TextDecoder('utf-16be').decode(buffer).replace(/^\uFEFF/, '')
   try { return new TextDecoder('utf-8', { fatal: true }).decode(buffer).replace(/^\uFEFF/, '') }
   catch { return new TextDecoder('windows-1252').decode(buffer).replace(/^\uFEFF/, '') }
 }
@@ -281,21 +298,64 @@ function closingBalanceFrom(transactions: ParsedBankStatementTransaction[]) {
 
 function delimitedColumnIndexes(headers: string[]) {
   return {
-    date: headerIndex(headers, ['data lancamento', 'data movimento', 'data transacao', 'data', 'date']),
+    date: headerIndex(headers, [
+      'data lancamento', 'data do lancamento', 'data movimento', 'data do movimento',
+      'data transacao', 'data da transacao', 'data inclusao', 'data entrada', 'data operacao', 'data', 'date',
+    ]),
     time: headerIndex(headers, ['hora lancamento', 'horario', 'hora', 'time']),
-    amount: headerIndex(headers, ['valor lancamento', 'valor transacao', 'valor', 'amount']),
+    amount: headerIndex(headers, [
+      'valor lancamento', 'valor do lancamento', 'valor transacao', 'valor da transacao',
+      'valor movimentacao', 'valor da movimentacao', 'valor operacao', 'valor', 'amount',
+    ]),
     debit: headerIndex(headers, ['valor debito', 'debitos', 'debito', 'saidas', 'saida', 'withdrawal']),
     credit: headerIndex(headers, ['valor credito', 'creditos', 'credito', 'entradas', 'entrada', 'deposit']),
-    balance: headerIndex(headers, ['saldo apos lancamento', 'saldo disponivel', 'saldo', 'balance']),
-    history: headerIndex(headers, ['historico', 'lancamento', 'tipo', 'transaction type']),
-    description: headerIndex(headers, ['descricao', 'detalhes', 'memo', 'favorecido', 'estabelecimento', 'nome']),
-    externalId: headerIndex(headers, ['identificador', 'id transacao', 'fitid']),
+    balance: headerIndex(headers, [
+      'saldo apos lancamento', 'saldo apos movimento', 'saldo disponivel', 'saldo atual',
+      'saldo resultante', 'saldo da conta', 'saldo', 'balance',
+    ]),
+    history: headerIndex(headers, ['historico', 'lancamento', 'tipo transacao', 'tipo de transacao', 'transaction type', 'tipo']),
+    title: headerIndex(headers, ['titulo', 'nome da transacao']),
+    description: headerIndex(headers, [
+      'descricao transacao', 'descricao da transacao', 'descricao complementar',
+      'descricao', 'detalhes', 'memo', 'favorecido', 'estabelecimento', 'nome',
+    ]),
+    operation: headerIndex(headers, [
+      'tipo operacao', 'tipo de operacao', 'natureza operacao', 'natureza',
+      'credito debito', 'debito credito', 'operacao',
+    ]),
+    externalId: headerIndex(headers, [
+      'identificador', 'id transacao', 'id da transacao', 'codigo transacao',
+      'numero documento', 'txid', 'end to end', 'fitid',
+    ]),
   }
+}
+
+function amountHasExplicitSign(value: string) {
+  const normalized = value.replace(/(?:R\$|BRL)/gi, '').replace(/\s/g, '')
+  return normalized.startsWith('+') || normalized.startsWith('-')
+    || normalized.endsWith('-') || (normalized.startsWith('(') && normalized.endsWith(')'))
+}
+
+function delimitedDirection(row: string[], indexes: ReturnType<typeof delimitedColumnIndexes>) {
+  const operation = normalizedHeader(indexes.operation >= 0 ? row[indexes.operation] ?? '' : '')
+  if (/^(?:d|debito|debit|saida|outgoing)$/.test(operation)) return -1
+  if (/^(?:c|credito|credit|entrada|incoming)$/.test(operation)) return 1
+
+  const context = normalizedHeader([
+    indexes.history >= 0 ? row[indexes.history] : '',
+    indexes.title >= 0 ? row[indexes.title] : '',
+  ].filter(Boolean).join(' '))
+  if (/\b(?:salario|pix recebido|transferencia recebida|credito recebido|resgate|estorno|reembolso|devolucao)\b/.test(context)) return 1
+  if (/\b(?:pix enviado|transferencia enviada|debito efetuado|compra|pagamento|aplicacao|tarifa|taxa|saque)\b/.test(context)) return -1
+  return 0
 }
 
 function delimitedAmount(row: string[], indexes: ReturnType<typeof delimitedColumnIndexes>) {
   const amount = indexes.amount >= 0 ? row[indexes.amount]?.trim() : ''
-  if (amount) return amount
+  if (amount) {
+    if (amountHasExplicitSign(amount) || parseBankAmount(amount) === null) return amount
+    return delimitedDirection(row, indexes) < 0 ? `-${amount}` : amount
+  }
   const debit = indexes.debit >= 0 ? row[indexes.debit]?.trim() : ''
   if (debit && parseBankAmount(debit) !== null) return debit.startsWith('-') ? debit : `-${debit}`
   const credit = indexes.credit >= 0 ? row[indexes.credit]?.trim() : ''
@@ -324,7 +384,7 @@ export function parseDelimitedStatement(content: string, fileName = 'extrato.csv
   const dataRows = rows.slice(headerRowIndex + 1)
   const transactions = dataRows.map((row) => transactionFromValues(
     row[indexes.date] ?? '', delimitedAmount(row, indexes),
-    [row[indexes.history], row[indexes.description]].filter(Boolean).join(' · '),
+    [row[indexes.history], row[indexes.title], row[indexes.description]].filter(Boolean).join(' · '),
     indexes.balance >= 0 ? row[indexes.balance] : null,
     indexes.externalId >= 0 ? row[indexes.externalId] : null,
     indexes.time >= 0 ? row[indexes.time] : '',
@@ -365,22 +425,34 @@ const TEXT_MONEY_PATTERN = /[-+]?(?:R\$\s*)?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{2}
 
 const PORTUGUESE_MONTHS: Record<string, number> = {
   janeiro: 1,
+  jan: 1,
   fevereiro: 2,
+  fev: 2,
   marco: 3,
+  mar: 3,
   abril: 4,
+  abr: 4,
   maio: 5,
+  mai: 5,
   junho: 6,
+  jun: 6,
   julho: 7,
+  jul: 7,
   agosto: 8,
+  ago: 8,
   setembro: 9,
+  set: 9,
   outubro: 10,
+  out: 10,
   novembro: 11,
+  nov: 11,
   dezembro: 12,
+  dez: 12,
 }
 
 function textDateHeader(line: string) {
   const normalized = normalizedHeader(line)
-  const writtenDate = /\b(\d{1,2})\s+de\s+(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\s+de\s+(\d{4})\b/.exec(normalized)
+  const writtenDate = /\b(\d{1,2})\s+de\s+(janeiro|jan|fevereiro|fev|marco|mar|abril|abr|maio|mai|junho|jun|julho|jul|agosto|ago|setembro|set|outubro|out|novembro|nov|dezembro|dez)\s+de\s+(\d{4})\b/.exec(normalized)
   const numericDate = /\b(\d{2}[/-]\d{2}[/-]\d{4}|\d{4}-\d{2}-\d{2})\b/.exec(line)
   const isDailyHeader = Boolean(writtenDate) || (/\bsaldo\s+do\s+dia\b/.test(normalized) && Boolean(numericDate))
   if (!isDailyHeader) return null
@@ -499,15 +571,19 @@ export async function parseBankStatementFile(file: File, bank: SupportedStatemen
   const extension = file.name.split('.').pop()?.toLowerCase()
   const buffer = await file.arrayBuffer()
   const signature = new TextDecoder('ascii').decode(buffer.slice(0, 8))
+  let statement: ParsedBankStatement
   if (extension === 'pdf' || file.type === 'application/pdf' || signature.startsWith('%PDF-')) {
-    return parseStatementTextLines(await extractPdfLines(buffer), file.name)
+    statement = parseStatementTextLines(await extractPdfLines(buffer), file.name)
+  } else {
+    const content = decodeStatement(buffer)
+    statement = extension === 'ofx' || extension === 'qfx' || /<OFX[>\s]/i.test(content)
+      ? parseOfxStatement(content, file.name)
+      : parseDelimitedStatement(content, file.name)
   }
-  const content = decodeStatement(buffer)
-  if (extension === 'ofx' || extension === 'qfx' || /<OFX[>\s]/i.test(content)) return parseOfxStatement(content, file.name)
-  // Inter e Nubank usam CSVs com cabeçalhos diferentes; o leitor por colunas
-  // reconhece ambos e mantém a escolha explícita para futuras regras do banco.
-  void bank
-  return parseDelimitedStatement(content, file.name)
+  if (bank === 'nubank') {
+    statement.warnings.unshift('Importação do Nubank em beta: confira a prévia antes de confirmar.')
+  }
+  return statement
 }
 
 export function statementTransactionSignature(

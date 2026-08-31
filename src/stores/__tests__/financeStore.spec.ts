@@ -476,6 +476,33 @@ describe('financeStore', () => {
     expect(store.availableBalanceCents).toBe(153n)
   })
 
+  it('importa um mês antigo sem alterar o saldo atual e guarda o fechamento daquele mês', async () => {
+    const store = useFinanceStore()
+    const expenseCategory = category({ id: 'shopping', name: 'Compras' })
+    localStorage.setItem('cashew-clone:categories', JSON.stringify([expenseCategory]))
+    store.setCategories([expenseCategory])
+    await store.setAvailableBalance('300.00')
+    const currentBalance = store.availableBalanceCents
+
+    const imported = await store.importBankStatement({
+      transactions: [
+        { kind: 'expense', amount: '50.00', date: '2026-07-15', categoryId: 'shopping', debitCardId: null, description: 'Mercado antigo', recurrence: 'variable' },
+      ],
+      closingBalance: null,
+      preserveCurrentBalance: true,
+      statementPeriod: '2026-07',
+      statementClosingBalance: '125.50',
+    })
+
+    expect(imported).toBe(1)
+    expect(store.availableBalanceCents).toBe(currentBalance)
+    expect(store.preferences.statementClosingBalances['2026-07']).toBe('125.50')
+
+    store.setReportingPeriod(2026, 7)
+    expect(store.reportingPeriodIsCurrent).toBe(false)
+    expect(store.reportingClosingBalanceCents).toBe(12550n)
+  })
+
   it('reserva parte de uma entrada de forma automática', async () => {
     const store = useFinanceStore()
     const incomeCategory = category({ id: 'salary', kind: 'income', name: 'Salário' })
