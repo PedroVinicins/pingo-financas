@@ -65,6 +65,8 @@ let backgroundedAt: number | null = null
 let retryTimer: number | undefined
 let analysisNotificationTimer: number | undefined
 let pageSwipeTimer: number | undefined
+let pageSwipeFrame: number | undefined
+let pendingPageSwipeOffset = 0
 let biometricPromptOpen = false
 
 const navigationOrder: PrimaryView[] = ['accounts', 'home', 'analytics', 'settings']
@@ -76,9 +78,9 @@ const pageSwipeStyle = computed(() => {
   if (!pageSwipeAnimating.value && pageSwipeOffset.value === 0) return {}
   return {
     transform: `translate3d(${pageSwipeOffset.value}px, 0, 0)`,
-    opacity: String(1 - Math.min(Math.abs(pageSwipeOffset.value) / 140, 1) * 0.12),
+    backfaceVisibility: 'hidden' as const,
     transition: pageSwipeAnimating.value
-      ? 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease-out'
+      ? 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)'
       : 'none',
   }
 })
@@ -87,10 +89,11 @@ function applyTheme() {
   document.documentElement.classList.toggle('dark', isDark.value)
   document.documentElement.style.colorScheme = isDark.value ? 'dark' : 'light'
 }
-function navigate(view: PrimaryView) {
+function navigate(view: PrimaryView, smooth = true) {
   if (view !== 'accounts') walletFocusCardId.value = undefined
   activeView.value = view
-  window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  window.scrollTo({ top: 0, behavior: smooth && !reduceMotion ? 'smooth' : 'auto' })
 }
 function openComposer(kind: TransactionType = 'expense', flow: 'transaction' | 'recurring' | 'vault' = 'transaction') {
   composerKind.value = kind
@@ -99,6 +102,18 @@ function openComposer(kind: TransactionType = 'expense', flow: 'transaction' | '
 }
 function openQuickExpense(cardId?: string) { quickCardId.value = cardId; showQuickExpense.value = true }
 function closeQuickExpense() { showQuickExpense.value = false; quickCardId.value = undefined }
+function updateSwipeOffset(value: number) {
+  pendingPageSwipeOffset = value
+  if (pageSwipeFrame !== undefined) return
+  pageSwipeFrame = window.requestAnimationFrame(() => {
+    pageSwipeFrame = undefined
+    pageSwipeOffset.value = pendingPageSwipeOffset
+  })
+}
+function cancelSwipeFrame() {
+  if (pageSwipeFrame !== undefined) window.cancelAnimationFrame(pageSwipeFrame)
+  pageSwipeFrame = undefined
+}
 function handleTouchStart(event: TouchEvent) {
   const point = event.touches[0]
   const element = event.target instanceof Element ? event.target : null
@@ -107,6 +122,7 @@ function handleTouchStart(event: TouchEvent) {
     return
   }
   if (pageSwipeTimer !== undefined) window.clearTimeout(pageSwipeTimer)
+  cancelSwipeFrame()
   pageSwipeAnimating.value = false
   pageSwipeOffset.value = 0
   touchStart = { x: point.clientX, y: point.clientY, target: event.target }
@@ -120,10 +136,11 @@ function handleTouchMove(event: TouchEvent) {
   const index = navigationOrder.indexOf(activeView.value)
   const nextIndex = deltaX < 0 ? index + 1 : index - 1
   const hasDestination = nextIndex >= 0 && nextIndex < navigationOrder.length
-  const resistance = hasDestination ? 0.38 : 0.1
-  pageSwipeOffset.value = Math.max(-110, Math.min(110, deltaX * resistance))
+  const resistance = hasDestination ? 0.3 : 0.08
+  updateSwipeOffset(Math.max(-84, Math.min(84, deltaX * resistance)))
 }
 function handleTouchEnd(event: TouchEvent) {
+  cancelSwipeFrame()
   if (!touchStart || event.changedTouches.length === 0) {
     pageSwipeAnimating.value = true
     pageSwipeOffset.value = 0
@@ -135,7 +152,7 @@ function handleTouchEnd(event: TouchEvent) {
   const deltaX = point.clientX - origin.x
   const deltaY = point.clientY - origin.y
   pageSwipeAnimating.value = true
-  if (Math.abs(deltaX) < 70 || Math.abs(deltaX) < Math.abs(deltaY) * 1.35) {
+  if (Math.abs(deltaX) < 56 || Math.abs(deltaX) < Math.abs(deltaY) * 1.4) {
     pageSwipeOffset.value = 0
     return
   }
@@ -145,19 +162,26 @@ function handleTouchEnd(event: TouchEvent) {
     pageSwipeOffset.value = 0
     return
   }
-  pageSwipeOffset.value = deltaX < 0 ? -110 : 110
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    pageSwipeAnimating.value = false
+    pageSwipeOffset.value = 0
+    navigate(navigationOrder[nextIndex], false)
+    return
+  }
+  pageSwipeOffset.value = deltaX < 0 ? -84 : 84
   pageSwipeTimer = window.setTimeout(() => {
     pageSwipeTimer = undefined
-    navigate(navigationOrder[nextIndex])
+    navigate(navigationOrder[nextIndex], false)
     pageSwipeAnimating.value = false
-    pageSwipeOffset.value = deltaX < 0 ? 42 : -42
+    pageSwipeOffset.value = deltaX < 0 ? 26 : -26
     requestAnimationFrame(() => {
       pageSwipeAnimating.value = true
       pageSwipeOffset.value = 0
     })
-  }, 120)
+  }, 90)
 }
 function handleTouchCancel() {
+  cancelSwipeFrame()
   touchStart = null
   pageSwipeAnimating.value = true
   pageSwipeOffset.value = 0
@@ -353,6 +377,7 @@ onBeforeUnmount(() => {
   if (pingoMessageTimer !== undefined) window.clearTimeout(pingoMessageTimer)
   if (analysisNotificationTimer !== undefined) window.clearTimeout(analysisNotificationTimer)
   if (pageSwipeTimer !== undefined) window.clearTimeout(pageSwipeTimer)
+  cancelSwipeFrame()
   clearRetryTimer()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   window.removeEventListener(APP_LOCK_CHANGED_EVENT, handleAppLockChange)
@@ -387,7 +412,7 @@ onBeforeUnmount(() => {
     <div
       v-else-if="store.initialized"
       id="main-content"
-      class="min-w-0 lg:ml-[248px]"
+      class="min-w-0 touch-pan-y lg:ml-[248px]"
       :class="pageSwipeOffset !== 0 || pageSwipeAnimating ? 'will-change-transform' : ''"
       :style="pageSwipeStyle"
       @touchstart.passive="handleTouchStart"

@@ -10,6 +10,7 @@ import {
 } from '../services/bankStatement'
 import { useFinanceStore } from '../stores/financeStore'
 import { formatCurrencyValue } from '../services/currency'
+import { useKeyboardAwareModal } from '../services/mobileViewport'
 import AddDebitCardModal from './AddDebitCardModal.vue'
 
 const props = defineProps<{ categories: Category[]; cards: DebitCard[]; transactions: Transaction[]; busy?: boolean }>()
@@ -28,6 +29,7 @@ const showCardCreator = ref(false)
 const cardSaving = ref(false)
 const cardSaveError = ref('')
 const selectedBank = ref<SupportedStatementBank>('inter')
+const { overlayStyle, contentStyle, keepFocusedFieldVisible } = useKeyboardAwareModal()
 
 const expenseCategories = computed(() => props.categories.filter((item) => item.kind === 'expense'))
 const incomeCategories = computed(() => props.categories.filter((item) => item.kind === 'income'))
@@ -196,8 +198,8 @@ async function createCard(input: NewDebitCardInput) {
 
 <template>
   <Teleport to="body">
-    <div class="pingo-modal-backdrop fixed inset-0 z-[100] flex items-end bg-slate-950/65 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-4" @click.self="!busy && emit('close')">
-      <form class="pingo-modal-panel pingo-modal-frame flex w-full flex-col rounded-t-[2rem] bg-white p-0 shadow-2xl dark:bg-slate-900 sm:max-w-3xl sm:rounded-[2rem]" role="dialog" aria-modal="true" aria-labelledby="bank-import-title" @submit.prevent="submit">
+    <div class="pingo-modal-backdrop keyboard-aware-modal fixed inset-0 z-[100] flex items-end bg-slate-950/65 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-4" :style="overlayStyle" data-no-page-swipe @click.self="!busy && emit('close')" @focusin="keepFocusedFieldVisible">
+      <form class="pingo-modal-panel pingo-modal-frame flex min-h-0 w-full max-w-full flex-col rounded-t-[2rem] bg-white p-0 shadow-2xl dark:bg-slate-900 sm:max-w-3xl sm:rounded-[2rem]" :style="contentStyle" role="dialog" aria-modal="true" aria-labelledby="bank-import-title" @submit.prevent="submit">
         <header class="flex shrink-0 items-start gap-3 border-b border-slate-100 px-4 pb-4 pt-5 dark:border-slate-800 sm:px-6 sm:pt-6"><div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-sky-100 text-sky-700 dark:bg-sky-950"><FileSpreadsheet :size="22" /></div><div class="min-w-0 flex-1"><p class="text-sm font-bold text-sky-600">Conferência bancária</p><h2 id="bank-import-title" class="text-xl font-black">Importar extrato</h2><p class="mt-1 text-xs leading-relaxed text-slate-500">CSV, OFX/QFX, TXT e PDF textual. Tudo é lido neste dispositivo.</p></div><button type="button" :disabled="busy" class="grid size-10 shrink-0 place-items-center rounded-xl bg-slate-100 disabled:opacity-40 dark:bg-slate-800" aria-label="Fechar" @click="emit('close')"><X :size="18" /></button></header>
 
         <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-5 sm:px-6">
@@ -206,7 +208,7 @@ async function createCard(input: NewDebitCardInput) {
         <p v-if="selectedBank === 'nubank'" class="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-bold leading-relaxed text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">Nubank está em beta. Confira valores e tipos na prévia antes de importar.</p>
         <label class="mt-4 grid min-h-24 cursor-pointer place-items-center rounded-2xl border-2 border-dashed border-sky-200 bg-sky-50/60 p-4 text-center dark:border-sky-900 dark:bg-sky-950/20 sm:min-h-28 sm:p-5"><span><FileUp class="mx-auto text-sky-600" :size="28" /><strong class="mt-2 block">{{ parsing ? 'Lendo extrato…' : statement ? 'Escolher outro arquivo' : 'Escolher extrato do banco' }}</strong><span class="mt-1 block text-xs text-slate-500">{{ selectedBank === 'inter' ? 'CSV, TSV, TXT, OFX, QFX ou PDF' : 'CSV do extrato da conta' }} · até 12 MB</span><span v-if="statement" class="mt-1 block truncate text-[11px] font-bold text-sky-700">{{ statement.fileName }}</span></span><input type="file" class="sr-only" :disabled="parsing || busy" @change="loadFile" /></label>
 
-        <p v-if="error" class="mt-4 flex gap-2 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"><AlertCircle :size="18" class="shrink-0" /> {{ error }}</p>
+        <p v-if="error" class="mt-4 flex gap-2 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300" role="alert"><AlertCircle :size="18" class="shrink-0" /> {{ error }}</p>
 
         <template v-if="statement">
           <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4"><div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><p class="text-[10px] font-black uppercase text-slate-400">Formato</p><p class="mt-1 text-sm font-black">{{ statementFormatLabel(statement.format) }}</p></div><div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><p class="text-[10px] font-black uppercase text-slate-400">Para importar</p><p class="mt-1 text-sm font-black text-emerald-600">{{ selectedCount }}</p></div><div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><p class="text-[10px] font-black uppercase text-slate-400">Internas</p><p class="mt-1 text-sm font-black text-violet-600">{{ internalCount }}</p></div><div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><p class="text-[10px] font-black uppercase text-slate-400">Já existem</p><p class="mt-1 text-sm font-black">{{ duplicateCount }}</p></div></div>
