@@ -17,6 +17,7 @@ export const DEFAULT_PINGO_PREFERENCES: PingoPreferences = {
   greetingEnabled: true,
   economyMode: false,
   feedbackDurationMs: 4_000,
+  statementClosingBalances: {},
 }
 
 function normalize(raw: Partial<PingoPreferences> | null): PingoPreferences {
@@ -39,6 +40,10 @@ function normalize(raw: Partial<PingoPreferences> | null): PingoPreferences {
   const currency: CurrencyCode = ['BRL', 'USD', 'EUR'].includes(raw?.currency ?? '')
     ? raw!.currency!
     : DEFAULT_PINGO_PREFERENCES.currency
+  const statementClosingBalances = Object.fromEntries(Object.entries(raw?.statementClosingBalances ?? {})
+    .filter(([period, amount]) => /^\d{4}-(?:0[1-9]|1[0-2])$/.test(period)
+      && typeof amount === 'string' && /^-?\d+(?:\.\d{1,2})?$/.test(amount))
+    .slice(-240))
   return {
     ...DEFAULT_PINGO_PREFERENCES,
     displayName: typeof raw?.displayName === 'string' ? raw.displayName.trim().slice(0, 60) : '',
@@ -55,6 +60,7 @@ function normalize(raw: Partial<PingoPreferences> | null): PingoPreferences {
     currency,
     feedbackDurationMs: duration,
     spendingAlertPercent: Number.isFinite(percent) ? Math.min(100, Math.max(50, Math.round(percent))) : 80,
+    statementClosingBalances,
   }
 }
 

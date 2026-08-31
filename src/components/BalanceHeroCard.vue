@@ -7,10 +7,11 @@ const props = withDefaults(defineProps<{
   month: string
   income: string
   expense: string
+  balanceLabel?: string
   netWorth?: string
   hidden?: boolean
   budgetProgress?: number | null
-}>(), { netWorth: '', hidden: false, budgetProgress: null })
+}>(), { balanceLabel: 'Saldo disponível', netWorth: '', hidden: false, budgetProgress: null })
 const emit = defineEmits<{ details: []; togglePrivacy: [] }>()
 
 const balanceSize = computed(() => {
@@ -25,7 +26,7 @@ const balanceSize = computed(() => {
 <template>
   <article class="hero-shadow relative min-h-[310px] overflow-visible rounded-[30px] bg-hero p-6 text-white sm:p-8 lg:min-h-[330px]">
     <div class="relative flex items-center justify-between gap-3 text-sm">
-      <p class="font-medium text-white/65">Saldo disponível</p>
+      <p class="font-medium text-white/65">{{ balanceLabel }}</p>
       <p class="text-xs font-bold uppercase tracking-[.12em] text-white/45">{{ month }}</p>
     </div>
     <div class="relative mt-8 flex min-w-0 items-center gap-2">

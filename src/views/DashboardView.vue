@@ -53,6 +53,12 @@ const displayName = computed(() => store.preferences.displayName || 'Você')
 const greeting = computed(() => store.preferences.greetingEnabled ? greetingForHour(new Date().getHours()) : 'Seu resumo')
 const monthLabel = computed(() => new Intl.DateTimeFormat('pt-BR', { month: 'short', year: 'numeric' })
   .format(new Date(store.reportingYear, store.reportingMonth - 1, 1)).replace('.', ''))
+const heroBalance = computed(() => store.reportingPeriodIsPast
+  ? store.reportingClosingBalanceCents
+  : store.availableBalanceCents)
+const heroBalanceLabel = computed(() => store.reportingPeriodIsPast
+  ? 'Você terminou esse mês com esse saldo'
+  : 'Saldo disponível')
 const visibleOptionalWidgets = computed(() => store.dashboardLayout.widgets.filter((item) =>
   item.visible && !['available_balance', 'net_worth', 'history'].includes(item.id)))
 const hiddenWidgets = computed(() => store.dashboardLayout.widgets.filter((item) => !item.visible))
@@ -122,8 +128,11 @@ async function importStatement(input: BankStatementImportInput) {
       store.setReportingPeriod(year, month)
     }
     showStatementImport.value = false
+    const balanceResult = input.preserveCurrentBalance
+      ? ' Seu saldo atual foi mantido.'
+      : input.closingBalance !== null ? ' Seu saldo atual foi atualizado.' : ''
     store.showFeedback(
-      `${count} lançamento${count === 1 ? '' : 's'} entrou${count === 1 ? '' : 'ram'} no histórico e o mês importado foi aberto.`,
+      `${count} lançamento${count === 1 ? '' : 's'} entrou${count === 1 ? '' : 'ram'} no histórico e o mês importado foi aberto.${balanceResult}`,
       'success', undefined, 'Extrato importado',
     )
   } catch (cause) { store.reportError(cause, 'Não foi possível importar o extrato.') }
@@ -247,7 +256,7 @@ onBeforeUnmount(stopPointerTracking)
     <section class="grid grid-cols-1 gap-5 xl:grid-cols-12">
       <div v-if="widgetVisible('available_balance') || widgetVisible('net_worth')" class="min-w-0 xl:col-span-8">
         <div v-if="customizing" class="mb-2 flex items-center gap-2 rounded-2xl border border-line bg-surface p-2"><span class="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand"><GripVertical :size="18" /></span><strong class="min-w-0 flex-1 truncate text-xs">Saldo e patrimônio</strong><button class="grid size-10 place-items-center rounded-xl text-subtle hover:bg-muted" aria-label="Ocultar saldo" @click="setVisibility('available_balance', false); setVisibility('net_worth', false)"><EyeOff :size="16" /></button></div>
-        <BalanceHeroCard :balance="privateMoney(store.availableBalanceCents)" :month="monthLabel" :income="privateMoney(store.reportingIncomeCents)" :expense="privateMoney(store.reportingExpenseCents)" :net-worth="widgetVisible('net_worth') ? privateMoney(store.balanceCents) : ''" :hidden="store.balanceHidden" :budget-progress="budgetProgress" @toggle-privacy="store.toggleBalanceVisibility" @details="emit('navigate', 'analytics')" />
+        <BalanceHeroCard :balance="privateMoney(heroBalance)" :balance-label="heroBalanceLabel" :month="monthLabel" :income="privateMoney(store.reportingIncomeCents)" :expense="privateMoney(store.reportingExpenseCents)" :net-worth="widgetVisible('net_worth') && store.reportingPeriodIsCurrent ? privateMoney(store.balanceCents) : ''" :hidden="store.balanceHidden" :budget-progress="budgetProgress" @toggle-privacy="store.toggleBalanceVisibility" @details="emit('navigate', 'analytics')" />
       </div>
 
       <aside class="soft-shadow min-w-0 rounded-[var(--radius)] border border-line bg-surface p-6 xl:col-span-4">
@@ -265,7 +274,7 @@ onBeforeUnmount(stopPointerTracking)
         </div>
         <div class="mt-4 grid grid-cols-2 gap-2">
           <button class="pingo-interactive inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-line px-3 text-xs font-bold hover:bg-muted" @click="showStatementImport = true"><FileUp :size="16" class="text-brand" /> Importar</button>
-          <button class="pingo-interactive inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-line px-3 text-xs font-bold hover:bg-muted" @click="showBalanceEditor = true"><Pencil :size="16" class="text-brand" /> Corrigir saldo</button>
+          <button class="pingo-interactive inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-line px-3 text-xs font-bold hover:bg-muted" @click="showBalanceEditor = true"><Pencil :size="16" class="text-brand" /> Corrigir saldo atual</button>
         </div>
       </aside>
     </section>

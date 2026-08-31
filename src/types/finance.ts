@@ -55,6 +55,7 @@ export interface PingoPreferences {
   greetingEnabled: boolean
   economyMode: boolean
   feedbackDurationMs: FeedbackDurationMs
+  statementClosingBalances: Record<string, string>
 }
 
 export interface Category {
@@ -270,6 +271,9 @@ export interface ParsedBankStatement {
 export interface BankStatementImportInput {
   transactions: NewTransactionInput[]
   closingBalance: string | null
+  preserveCurrentBalance?: boolean
+  statementPeriod?: string | null
+  statementClosingBalance?: string | null
 }
 
 export interface AccountSettings {

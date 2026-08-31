@@ -1,8 +1,8 @@
 import { createPinia } from 'pinia'
 import { flushPromises, mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import BankStatementImport from '../BankStatementImport.vue'
-import type { Category } from '../../types/finance'
+import type { Category, Transaction } from '../../types/finance'
 
 const categories: Category[] = [
   { id: 'shopping', kind: 'expense', name: 'Compras', icon: 'shopping-bag', color: '#ef4444', createdAt: '2026-08-27T00:00:00Z' },
@@ -10,6 +10,25 @@ const categories: Category[] = [
 ]
 
 describe('BankStatementImport', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 7, 30, 12, 0, 0))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('marks Nubank as beta and keeps Banco Inter as the stable default', async () => {
+    const wrapper = mount(BankStatementImport, {
+      props: { categories, cards: [], transactions: [] },
+      global: { plugins: [createPinia()], stubs: { Teleport: true } },
+    })
+
+    expect((wrapper.get('input[value="inter"]').element as HTMLInputElement).checked).toBe(true)
+    expect(wrapper.text()).toContain('Beta')
+    await wrapper.get('input[value="nubank"]').setValue(true)
+    expect(wrapper.text()).toContain('Nubank está em beta')
+    expect(wrapper.text()).toContain('CSV do extrato da conta · até 12 MB')
+  })
+
   it('allows the mobile picker to show every file and keeps the action outside the scroll area', async () => {
     const wrapper = mount(BankStatementImport, {
       props: { categories, cards: [], transactions: [] },
@@ -37,10 +56,47 @@ Data;Descrição;Débito;Crédito;Saldo
     await wrapper.get('form').trigger('submit')
     expect(wrapper.emitted('import')?.[0]?.[0]).toMatchObject({
       closingBalance: '174.10',
+      preserveCurrentBalance: false,
+      statementPeriod: '2026-08',
+      statementClosingBalance: '174.10',
       transactions: [
         { kind: 'expense', amount: '25.90', categoryId: 'shopping' },
         { kind: 'income', amount: '100.00', categoryId: 'income' },
       ],
+    })
+  })
+
+  it('mantém o saldo atual por padrão ao importar um mês antigo', async () => {
+    const newerTransaction: Transaction = {
+      id: 'september-entry', kind: 'income', amount: '50.00', date: '2026-09-02', occurredAt: null,
+      categoryId: 'income', debitCardId: null, description: 'Entrada de setembro', recurrence: 'variable',
+      createdAt: '2026-09-02T12:00:00Z',
+    }
+    const wrapper = mount(BankStatementImport, {
+      props: { categories, cards: [], transactions: [newerTransaction] },
+      global: { plugins: [createPinia()], stubs: { Teleport: true } },
+    })
+    const contents = `Data;Descrição;Débito;Crédito;Saldo
+27/08/26;Mercado;25,90;;74,10`
+    const file = {
+      name: 'agosto.csv', type: 'application/vnd.ms-excel', size: contents.length,
+      arrayBuffer: async () => new TextEncoder().encode(contents).buffer,
+    } as File
+    const input = wrapper.get('input[type="file"]')
+    Object.defineProperty(input.element, 'files', { configurable: true, value: [file] })
+    await input.trigger('change')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Como tratar o saldo deste mês antigo?')
+    expect(wrapper.text()).toContain('Manter meu saldo atual')
+    expect((wrapper.get('input[value="preserve"]').element as HTMLInputElement).checked).toBe(true)
+
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('import')?.[0]?.[0]).toMatchObject({
+      closingBalance: null,
+      preserveCurrentBalance: true,
+      statementPeriod: '2026-08',
+      statementClosingBalance: '74.10',
     })
   })
 

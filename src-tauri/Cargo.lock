@@ -2920,7 +2920,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pingo-financas"
-version = "0.14.4"
+version = "0.14.6"
 dependencies = [
  "argon2",
  "chrono",
