@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle2, CreditCard, FileSpreadsheet, FileUp, Landmar
 import type {
   BankMovementType, BankStatementImportInput, Category, DebitCard, NewDebitCardInput,
   ParsedBankStatement, ParsedBankStatementTransaction, SupportedStatementBank, Transaction,
+  TransactionType,
 } from '../types/finance'
 import {
   duplicateStatementRows, parseBankStatementFile, statementFormatLabel, SUPPORTED_STATEMENT_BANKS,
@@ -20,6 +21,8 @@ const store = useFinanceStore()
 const statement = ref<ParsedBankStatement | null>(null)
 const duplicates = ref<boolean[]>([])
 const selected = ref<boolean[]>([])
+const refundLinks = ref<Record<number, string>>({})
+const directionOverrides = ref<Record<number, TransactionType>>({})
 const expenseCategoryId = ref('')
 const incomeCategoryId = ref('')
 const suggestedCardId = ref('')
@@ -37,25 +40,36 @@ const incomeCategories = computed(() => props.categories.filter((item) => item.k
 const selectedCount = computed(() => selected.value.filter(Boolean).length)
 const duplicateCount = computed(() => duplicates.value.filter(Boolean).length)
 const internalCount = computed(() => statement.value?.transactions.filter((item) => item.isInternalTransfer).length ?? 0)
+const reviewCount = computed(() => statement.value?.transactions.filter((item) => item.requiresReview).length ?? 0)
+const reviewRows = computed(() => statement.value?.transactions
+  .map((item, index) => ({ item, index }))
+  .filter(({ item }) => item.requiresReview) ?? [])
 const statementDate = computed(() => statement.value?.transactions.reduce(
   (latest, item) => item.date > latest ? item.date : latest, '',
 ) ?? '')
 const hasNewerTransactions = computed(() => props.transactions.some((item) => item.date > statementDate.value))
 const statementPeriod = computed(() => statementDate.value.slice(0, 7))
+const closingBalanceDate = computed(() => statement.value?.closingBalanceDate || statementDate.value)
 const currentPeriod = computed(() => {
   const today = new Date()
   return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
 })
-const isHistoricalStatement = computed(() => Boolean(statementPeriod.value)
-  && (statementPeriod.value < currentPeriod.value || hasNewerTransactions.value))
-const hasExpenses = computed(() => statement.value?.transactions.some((item, index) => selected.value[index] && item.kind === 'expense') ?? false)
-const hasIncomes = computed(() => statement.value?.transactions.some((item, index) => selected.value[index] && item.kind === 'income') ?? false)
+const isHistoricalStatement = computed(() => Boolean(closingBalanceDate.value)
+  && (closingBalanceDate.value.slice(0, 7) < currentPeriod.value || hasNewerTransactions.value))
+const hasExpenses = computed(() => statement.value?.transactions.some(
+  (item, index) => selected.value[index] && effectiveKind(item, index) === 'expense',
+) ?? false)
+const hasIncomes = computed(() => statement.value?.transactions.some(
+  (item, index) => selected.value[index] && effectiveKind(item, index) === 'income',
+) ?? false)
 const hasCardSuggestions = computed(() => statement.value?.transactions.some(
   (item, index) => selected.value[index] && item.kind === 'expense' && item.suggestedCardLink,
 ) ?? false)
 const hasUsableClosingBalance = computed(() => statement.value?.closingBalance !== null
   && Number(statement.value?.closingBalance) >= 0)
 const canImport = computed(() => selectedCount.value > 0
+  && !statement.value?.transactions.some((item, index) =>
+    selected.value[index] && item.requiresReview && !directionOverrides.value[index])
   && (!hasExpenses.value || Boolean(expenseCategoryId.value))
   && (!hasIncomes.value || Boolean(incomeCategoryId.value)))
 
@@ -103,8 +117,18 @@ function categoryWithName(kind: 'income' | 'expense', names: string[]) {
   return props.categories.find((category) => category.kind === kind
     && names.includes(normalizedName(category.name)))?.id
 }
-function categoryIdFor(item: ParsedBankStatementTransaction) {
-  if (item.kind === 'income') {
+function effectiveKind(item: ParsedBankStatementTransaction, index: number): TransactionType {
+  return item.requiresReview ? directionOverrides.value[index] ?? item.kind : item.kind
+}
+function classificationFor(item: ParsedBankStatementTransaction, index: number) {
+  return item.requiresReview ? directionOverrides.value[index] ?? null : item.classification
+}
+function categoryIdFor(item: ParsedBankStatementTransaction, index: number) {
+  const kind = effectiveKind(item, index)
+  if (kind === 'income') {
+    if (item.classification === 'refund') {
+      return categoryWithName('income', ['reembolsos', 'estornos']) || incomeCategoryId.value
+    }
     if (item.movementType === 'salary') {
       return categoryWithName('income', ['salario']) || incomeCategoryId.value
     }
@@ -118,8 +142,11 @@ function categoryIdFor(item: ParsedBankStatementTransaction) {
   }
   return expenseCategoryId.value
 }
-function categoryNameFor(item: ParsedBankStatementTransaction) {
-  return props.categories.find((category) => category.id === categoryIdFor(item))?.name ?? 'Sem categoria'
+function categoryNameFor(
+  item: ParsedBankStatementTransaction,
+  index = statement.value?.transactions.indexOf(item) ?? -1,
+) {
+  return props.categories.find((category) => category.id === categoryIdFor(item, index))?.name ?? 'Sem categoria'
 }
 function chooseDefaults() {
   expenseCategoryId.value = categoryWithName('expense', ['compras'])
@@ -132,6 +159,8 @@ function clearStatement() {
   statement.value = null
   duplicates.value = []
   selected.value = []
+  refundLinks.value = {}
+  directionOverrides.value = {}
   error.value = ''
 }
 async function loadFile(event: Event) {
@@ -145,7 +174,10 @@ async function loadFile(event: Event) {
     const parsed = await parseBankStatementFile(file, selectedBank.value)
     statement.value = parsed
     duplicates.value = duplicateStatementRows(parsed.transactions, props.transactions)
-    selected.value = duplicates.value.map((duplicate, index) => !duplicate && !parsed.transactions[index].isInternalTransfer)
+    selected.value = duplicates.value.map((duplicate, index) =>
+      !duplicate && !parsed.transactions[index].isInternalTransfer && !parsed.transactions[index].requiresReview)
+    refundLinks.value = {}
+    directionOverrides.value = {}
     balanceMode.value = isHistoricalStatement.value || !hasUsableClosingBalance.value ? 'preserve' : 'reconcile'
     chooseDefaults()
   } catch (cause) {
@@ -159,28 +191,43 @@ function submit() {
   if (!statement.value || !canImport.value) return
   emit('import', {
     transactions: statement.value.transactions.flatMap((item, index) => selected.value[index] ? [{
-      kind: item.kind,
+      kind: effectiveKind(item, index),
+      classification: classificationFor(item, index) ?? effectiveKind(item, index),
       amount: item.amount,
       date: item.date,
       occurredAt: item.occurredAt,
-      categoryId: categoryIdFor(item),
+      categoryId: categoryIdFor(item, index),
       debitCardId: item.kind === 'expense' && item.suggestedCardLink ? suggestedCardId.value || null : null,
       description: item.description,
+      relatedTransactionId: classificationFor(item, index) === 'refund' ? refundLinks.value[index] || null : null,
+      sourceBank: item.sourceBank ?? selectedBank.value,
+      externalId: item.externalId,
       recurrence: 'variable' as const,
     }] : []),
     closingBalance: balanceMode.value === 'reconcile' && hasUsableClosingBalance.value
       ? statement.value.closingBalance
       : null,
     preserveCurrentBalance: balanceMode.value === 'preserve',
-    statementPeriod: statementPeriod.value || null,
+    statementPeriod: closingBalanceDate.value.slice(0, 7) || statementPeriod.value || null,
     statementClosingBalance: statement.value.closingBalance,
   })
 }
 function selectNewRows() {
   if (!statement.value) return
   selected.value = duplicates.value.map(
-    (duplicate, index) => !duplicate && !statement.value!.transactions[index].isInternalTransfer,
+    (duplicate, index) => !duplicate
+      && !statement.value!.transactions[index].isInternalTransfer
+      && !statement.value!.transactions[index].requiresReview,
   )
+}
+function refundCandidates(item: ParsedBankStatementTransaction) {
+  const amount = item.amount.replace(',', '.')
+  return props.transactions.filter((transaction) =>
+    (transaction.classification ?? transaction.kind) === 'expense'
+    && transaction.amount.replace(',', '.') === amount)
+}
+function transactionLabel(transaction: Transaction) {
+  return `${date(transaction.date)} · ${transaction.description}`
 }
 async function createCard(input: NewDebitCardInput) {
   if (cardSaving.value) return
@@ -213,6 +260,8 @@ async function createCard(input: NewDebitCardInput) {
           <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4"><div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><p class="text-[10px] font-black uppercase text-slate-400">Formato</p><p class="mt-1 text-sm font-black">{{ statementFormatLabel(statement.format) }}</p></div><div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><p class="text-[10px] font-black uppercase text-slate-400">Para importar</p><p class="mt-1 text-sm font-black text-emerald-600">{{ selectedCount }}</p></div><div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><p class="text-[10px] font-black uppercase text-slate-400">Internas</p><p class="mt-1 text-sm font-black text-violet-600">{{ internalCount }}</p></div><div class="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950"><p class="text-[10px] font-black uppercase text-slate-400">Já existem</p><p class="mt-1 text-sm font-black">{{ duplicateCount }}</p></div></div>
 
           <p v-for="warning in statement.warnings" :key="warning" class="mt-3 text-xs font-bold text-amber-600">{{ warning }}</p>
+          <p v-if="reviewCount" class="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">{{ reviewCount }} lançamento(s) sem direção confiável ficaram desmarcados. Confira e selecione manualmente os que deseja importar.</p>
+          <p v-if="statement.skippedRows" class="mt-2 text-xs text-slate-500">{{ statement.skippedRows }} linha(s) ignoradas por não corresponderem a um lançamento válido.</p>
 
           <section class="mt-4 rounded-2xl border border-slate-200 p-4 dark:border-slate-800"><h3 class="text-sm font-black">Classificação inteligente</h3><p class="mt-1 text-xs leading-relaxed text-slate-500">Salário, compras, tarifas e outras entradas recebem a categoria adequada. Use as opções abaixo como padrão para Pix, transferências e casos não identificados.</p><p class="mt-3 rounded-xl bg-sky-50 p-3 text-xs font-bold leading-relaxed text-sky-800 dark:bg-sky-950/30 dark:text-sky-200">Modo seguro recomendado: PAYMENT e OTHER ficam sem cartão. O Pingo só sugere cartão quando o extrato diz explicitamente cartão, débito ou crédito.</p><div class="mt-3 grid gap-3 sm:grid-cols-2"><label v-if="statement.transactions.some((item) => item.kind === 'expense' && !item.isInternalTransfer)" class="grid gap-1 text-xs font-bold">Padrão para outras saídas<select v-model="expenseCategoryId" class="h-11 rounded-xl border border-slate-200 bg-transparent px-3 text-sm dark:border-slate-700"><option v-for="category in expenseCategories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label><label v-if="statement.transactions.some((item) => item.kind === 'income' && !item.isInternalTransfer)" class="grid gap-1 text-xs font-bold">Padrão para outras entradas<select v-model="incomeCategoryId" class="h-11 rounded-xl border border-slate-200 bg-transparent px-3 text-sm dark:border-slate-700"><option v-for="category in incomeCategories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label></div></section>
 
@@ -231,13 +280,25 @@ async function createCard(input: NewDebitCardInput) {
             <div class="flex items-start gap-3"><Landmark :size="19" class="mt-0.5 shrink-0" /><div><h3 class="text-sm font-black">{{ isHistoricalStatement ? 'Como tratar o saldo deste mês antigo?' : 'Deseja atualizar o saldo atual?' }}</h3><p class="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">{{ isHistoricalStatement ? 'O Pingo registra as entradas e saídas neste mês. Escolha se o saldo de hoje deve continuar igual ou receber o valor final do extrato.' : 'Você pode usar o saldo final informado pelo banco ou manter o saldo atual do Pingo.' }}</p></div></div>
             <div class="mt-3 grid gap-2">
               <label class="flex cursor-pointer items-start gap-3 rounded-xl border p-3" :class="balanceMode === 'preserve' ? 'border-emerald-500 bg-white dark:bg-slate-900' : 'border-emerald-200 dark:border-emerald-900'"><input v-model="balanceMode" type="radio" value="preserve" class="mt-1 accent-emerald-600" /><span><strong class="block text-xs">Manter meu saldo atual</strong><span class="mt-1 block text-[11px] text-slate-500">Importa somente o mês do extrato e não mexe no dinheiro disponível hoje.</span></span></label>
-              <label v-if="statement.closingBalance !== null" class="flex cursor-pointer items-start gap-3 rounded-xl border p-3" :class="balanceMode === 'reconcile' ? 'border-emerald-500 bg-white dark:bg-slate-900' : 'border-emerald-200 dark:border-emerald-900'"><input v-model="balanceMode" type="radio" value="reconcile" class="mt-1 accent-emerald-600" :disabled="!hasUsableClosingBalance" /><span><strong class="block text-xs">Atualizar saldo atual para {{ money(statement.closingBalance) }}</strong><span class="mt-1 block text-[11px] text-slate-500">{{ hasUsableClosingBalance ? `Usa o saldo informado pelo banco em ${date(statementDate)}.` : 'O saldo do extrato está negativo e não pode atualizar o saldo atual.' }}</span></span></label>
+              <label v-if="statement.closingBalance !== null" class="flex cursor-pointer items-start gap-3 rounded-xl border p-3" :class="balanceMode === 'reconcile' ? 'border-emerald-500 bg-white dark:bg-slate-900' : 'border-emerald-200 dark:border-emerald-900'"><input v-model="balanceMode" type="radio" value="reconcile" class="mt-1 accent-emerald-600" :disabled="!hasUsableClosingBalance" /><span><strong class="block text-xs">Atualizar saldo atual para {{ money(statement.closingBalance) }}</strong><span class="mt-1 block text-[11px] text-slate-500">{{ hasUsableClosingBalance ? `Usa o saldo informado pelo banco em ${date(closingBalanceDate)}.` : 'O saldo do extrato está negativo e não pode atualizar o saldo atual.' }}</span></span></label>
             </div>
           </section>
 
-          <section class="mt-4 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800"><div class="flex items-center justify-between gap-3 bg-slate-50 px-3 py-3 dark:bg-slate-950 sm:px-4"><div><h3 class="text-sm font-black">Prévia dos lançamentos</h3><p class="text-[11px] text-slate-500">Toque para incluir ou retirar</p></div><button type="button" class="shrink-0 text-xs font-black text-sky-600" @click="selectNewRows">Selecionar novos</button></div><div class="max-h-[22rem] divide-y divide-slate-100 overflow-y-auto overscroll-contain dark:divide-slate-800"><label v-for="(item, index) in statement.transactions" :key="`${item.date}-${index}`" class="flex min-w-0 items-center gap-2.5 px-3 py-3 sm:gap-3 sm:px-4" :class="duplicates[index] || item.isInternalTransfer ? 'opacity-55' : ''"><input v-model="selected[index]" type="checkbox" class="size-4 shrink-0 accent-emerald-600" :disabled="duplicates[index] || item.isInternalTransfer" /><span class="min-w-0 flex-1"><strong class="block truncate text-sm">{{ item.description }}</strong><span class="mt-0.5 block truncate text-[11px] text-slate-500 sm:text-xs">{{ moment(item.date, item.occurredAt) }} · {{ movementLabel(item.movementType) }}<template v-if="!item.isInternalTransfer"> · {{ categoryNameFor(item) }}</template><template v-if="item.isInternalTransfer"> · Transferência interna</template><template v-if="duplicates[index]"> · Já está no Pingo</template></span><span v-if="!item.isInternalTransfer && !duplicates[index]" class="mt-1 block truncate text-[10px] font-black text-sky-700 dark:text-sky-300">{{ importRecommendation(item) }}</span></span><strong class="max-w-[38%] shrink-0 truncate text-right text-xs tabular-nums sm:text-sm" :title="money(item.amount)" :class="item.isInternalTransfer ? 'text-violet-600' : item.kind === 'income' ? 'text-emerald-600' : 'text-rose-600'">{{ item.kind === 'income' ? '+' : '-' }}{{ money(item.amount) }}</strong></label></div></section>
+          <section class="mt-4 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800"><div class="flex items-center justify-between gap-3 bg-slate-50 px-3 py-3 dark:bg-slate-950 sm:px-4"><div><h3 class="text-sm font-black">Prévia dos lançamentos</h3><p class="text-[11px] text-slate-500">Toque para incluir ou retirar</p></div><button type="button" class="shrink-0 text-xs font-black text-sky-600" @click="selectNewRows">Selecionar novos</button></div><div class="max-h-[22rem] divide-y divide-slate-100 overflow-y-auto overscroll-contain dark:divide-slate-800"><div v-for="(item, index) in statement.transactions" :key="`${item.date}-${index}`" class="px-3 py-3 sm:px-4" :class="duplicates[index] || item.isInternalTransfer ? 'opacity-55' : ''"><label class="flex min-w-0 items-center gap-2.5 sm:gap-3"><input v-model="selected[index]" type="checkbox" class="size-4 shrink-0 accent-emerald-600" :disabled="duplicates[index] || item.isInternalTransfer" /><span class="min-w-0 flex-1"><strong class="block truncate text-sm">{{ item.description }}</strong><span class="mt-0.5 block truncate text-[11px] text-slate-500 sm:text-xs">{{ moment(item.date, item.occurredAt) }} · {{ movementLabel(item.movementType) }}<template v-if="!item.isInternalTransfer"> · {{ categoryNameFor(item) }}</template><template v-if="item.isInternalTransfer"> · Transferência interna</template><template v-if="duplicates[index]"> · Já está no Pingo</template><template v-if="item.requiresReview"> · Direção precisa de revisão</template><template v-if="item.classification === 'transfer'"> · fora dos indicadores de renda/gastos</template></span><span v-if="!item.isInternalTransfer && !duplicates[index]" class="mt-1 block truncate text-[10px] font-black text-sky-700 dark:text-sky-300">{{ importRecommendation(item) }}</span></span><strong class="max-w-[38%] shrink-0 truncate text-right text-xs tabular-nums sm:text-sm" :title="money(item.amount)" :class="item.isInternalTransfer ? 'text-violet-600' : item.kind === 'income' ? 'text-emerald-600' : 'text-rose-600'">{{ item.kind === 'income' ? '+' : '-' }}{{ money(item.amount) }}</strong></label><label v-if="item.classification === 'refund' && refundCandidates(item).length" class="ml-7 mt-2 grid gap-1 text-[11px] font-bold text-slate-600 dark:text-slate-300">Vincular à compra original (opcional)<select v-model="refundLinks[index]" class="h-10 rounded-xl border border-slate-200 bg-white px-2 text-xs dark:border-slate-700 dark:bg-slate-900"><option value="">Manter reembolso separado</option><option v-for="candidate in refundCandidates(item)" :key="candidate.id" :value="candidate.id">{{ transactionLabel(candidate) }}</option></select></label></div></div></section>
 
-          <div v-if="duplicateCount" class="mt-3 flex gap-2 text-xs text-slate-500"><CheckCircle2 :size="16" class="shrink-0 text-emerald-600" /><p>Duplicatas são comparadas por data, tipo, valor e descrição e ficam fora da importação.</p></div>
+          <section v-if="reviewRows.length" class="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/25">
+            <h3 class="text-sm font-black text-amber-800 dark:text-amber-200">Defina a direção antes de importar</h3>
+            <p class="mt-1 text-xs text-amber-800/80 dark:text-amber-200/80">O arquivo não informa se cada valor é entrada ou saída. Nenhum desses lançamentos será importado sem sua escolha.</p>
+            <label v-for="row in reviewRows" :key="row.index" class="mt-3 grid gap-1 text-xs font-bold">
+              {{ moment(row.item.date, row.item.occurredAt) }} · {{ row.item.description }} · {{ money(row.item.amount) }}
+              <select v-model="directionOverrides[row.index]" class="h-10 rounded-xl border border-amber-200 bg-white px-3 text-sm dark:border-amber-800 dark:bg-slate-900" @change="selected[row.index] = true">
+                <option value="">Escolha entrada ou saída</option>
+                <option value="income">Entrada</option>
+                <option value="expense">Saída</option>
+              </select>
+            </label>
+          </section>
+          <div v-if="duplicateCount" class="mt-3 flex gap-2 text-xs text-slate-500"><CheckCircle2 :size="16" class="shrink-0 text-emerald-600" /><p>Quando disponível, o Pingo compara o identificador do banco; sem ele, usa data, tipo, valor e descrição.</p></div>
         </template>
         </div>
         <footer v-if="statement" class="pingo-modal-footer shrink-0 border-t border-slate-100 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6 sm:pb-5"><button :disabled="busy || !canImport" class="btn min-h-12 w-full rounded-2xl border-0 bg-sky-600 font-black text-white shadow-lg shadow-sky-600/15 disabled:opacity-40">{{ busy ? 'Importando…' : `Importar ${selectedCount} lançamento${selectedCount === 1 ? '' : 's'}` }}</button></footer>

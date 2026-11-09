@@ -8,6 +8,10 @@
 
 A proposta é unir a velocidade de um app de carteira no celular com ferramentas mais completas de organização no desktop.
 
+## Documentação
+
+Consulte a [documentação completa](./docs/Pingo.md), com guias para [começar o projeto](./docs/start-projeto.md), [funcionalidades](./docs/funcionalidades.md), [mobile](./docs/funcionalidades-mobile.md), [arquitetura](./docs/arquitetura.md), [dados e persistência](./docs/dados-e-persistencia.md), [importação e backup](./docs/importacao-e-backup.md) e [desenvolvimento e validação](./docs/desenvolvimento-e-validacao.md).
+
 ## Destaques da versão 0.15.1
 
 - campos de todos os modais permanecem dentro da tela em celulares estreitos;
@@ -348,6 +352,7 @@ O SQLite é inicializado no diretório de dados da aplicação. As migrations at
 0007_persisted_app_state.sql
 0008_personal_dashboard_wallet.sql
 0009_transaction_time.sql
+0010_app_lock.sql
 ```
 
 Valores monetários são persistidos como texto e tratados com `rust_decimal` no core Rust. No frontend, cálculos reativos usam centavos em `bigint`.

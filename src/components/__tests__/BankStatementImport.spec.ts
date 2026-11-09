@@ -122,4 +122,34 @@ Data;Descrição;Débito;Crédito;Saldo
     expect(row?.text()).toContain('Recomendado: PIX · sem cartão')
     expect(row?.text()).toContain('-R$ 4,60')
   })
+
+  it('requires an explicit direction choice before importing an ambiguous amount', async () => {
+    const wrapper = mount(BankStatementImport, {
+      props: { categories, cards: [], transactions: [] },
+      global: { plugins: [createPinia()], stubs: { Teleport: true } },
+    })
+    const contents = `Data;Descrição;Valor
+28/08/2026;Movimentação sem tipo;12,34`
+    const file = {
+      name: 'ambiguo.csv', type: 'text/csv', size: contents.length,
+      arrayBuffer: async () => new TextEncoder().encode(contents).buffer,
+    } as File
+    const input = wrapper.get('input[type="file"]')
+    Object.defineProperty(input.element, 'files', { configurable: true, value: [file] })
+    await input.trigger('change')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Defina a direção antes de importar')
+    const importButton = wrapper.get('footer button')
+    expect((importButton.element as HTMLButtonElement).disabled).toBe(true)
+
+    const direction = wrapper.findAll('select').find((select) => select.text().includes('Escolha entrada ou saída'))
+    expect(direction).toBeDefined()
+    await direction!.setValue('expense')
+    await wrapper.get('form').trigger('submit')
+
+    expect(wrapper.emitted('import')?.[0]?.[0]).toMatchObject({
+      transactions: [{ kind: 'expense', classification: 'expense', amount: '12.34', categoryId: 'shopping' }],
+    })
+  })
 })

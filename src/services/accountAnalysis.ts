@@ -34,8 +34,12 @@ export interface AccountAnalysis {
   transactionCount: number
   incomeCount: number
   expenseCount: number
+  refundCount: number
+  transferCount: number
   incomeCents: bigint
   expenseCents: bigint
+  refundCents: bigint
+  netExpenseCents: bigint
   netCents: bigint
   savingsRate: number | null
   averageExpenseCents: bigint
@@ -88,11 +92,16 @@ function severityRank(severity: AnalysisSeverity) {
 export function analyzeAccount(input: AccountAnalysisInput): AccountAnalysis {
   const periodKey = `${input.year}-${String(input.month).padStart(2, '0')}`
   const transactions = input.transactions.filter((transaction) => transaction.date.startsWith(periodKey))
-  const incomes = transactions.filter((transaction) => transaction.kind === 'income')
-  const expenses = transactions.filter((transaction) => transaction.kind === 'expense')
+  const classificationOf = (transaction: Transaction) => transaction.classification ?? transaction.kind
+  const incomes = transactions.filter((transaction) => classificationOf(transaction) === 'income')
+  const expenses = transactions.filter((transaction) => classificationOf(transaction) === 'expense')
+  const refunds = transactions.filter((transaction) => classificationOf(transaction) === 'refund')
+  const transfers = transactions.filter((transaction) => classificationOf(transaction) === 'transfer')
   const incomeCents = incomes.reduce((total, item) => total + amountToCents(item.amount), 0n)
   const expenseCents = expenses.reduce((total, item) => total + amountToCents(item.amount), 0n)
-  const netCents = incomeCents - expenseCents
+  const refundCents = refunds.reduce((total, item) => total + amountToCents(item.amount), 0n)
+  const netExpenseCents = expenseCents - refundCents
+  const netCents = incomeCents - netExpenseCents
   const expenseAmounts = expenses.map((item) => amountToCents(item.amount)).sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
   const middle = Math.floor(expenseAmounts.length / 2)
   const medianExpenseCents = expenseAmounts.length === 0
@@ -109,7 +118,7 @@ export function analyzeAccount(input: AccountAnalysisInput): AccountAnalysis {
     item.recurrence === 'fixed' ? total + amountToCents(item.amount) : total, 0n)
 
   const categoryTotals = new Map<string, { categoryId: string | null; kind: TransactionType; amount: bigint; count: number }>()
-  for (const transaction of transactions) {
+  for (const transaction of [...incomes, ...expenses]) {
     const key = transaction.categoryId ?? `uncategorized:${transaction.kind}`
     const current = categoryTotals.get(key) ?? {
       categoryId: transaction.categoryId,
@@ -121,9 +130,29 @@ export function analyzeAccount(input: AccountAnalysisInput): AccountAnalysis {
     current.count += 1
     categoryTotals.set(key, current)
   }
+  for (const refund of refunds) {
+    if (!refund.relatedTransactionId) continue
+    const original = input.transactions.find((item) =>
+      item.id === refund.relatedTransactionId && classificationOf(item) === 'expense')
+    if (!original) continue
+    const key = original.categoryId ?? `uncategorized:${original.kind}`
+    const current = categoryTotals.get(key) ?? {
+      categoryId: original.categoryId,
+      kind: 'expense' as const,
+      amount: 0n,
+      count: 0,
+    }
+    current.amount -= amountToCents(refund.amount)
+    current.count += 1
+    categoryTotals.set(key, current)
+  }
+  const categorizedIncome = [...categoryTotals.values()]
+    .filter((item) => item.kind === 'income').reduce((sum, item) => sum + item.amount, 0n)
+  const categorizedExpense = [...categoryTotals.values()]
+    .filter((item) => item.kind === 'expense').reduce((sum, item) => sum + item.amount, 0n)
   const categoryFlows = [...categoryTotals.entries()].map(([id, total]) => {
     const category = input.categories.find((item) => item.id === total.categoryId)
-    const kindTotal = total.kind === 'income' ? incomeCents : expenseCents
+    const kindTotal = total.kind === 'income' ? categorizedIncome : categorizedExpense
     return {
       id,
       categoryId: total.categoryId,
@@ -132,7 +161,7 @@ export function analyzeAccount(input: AccountAnalysisInput): AccountAnalysis {
       color: category?.color ?? (total.kind === 'income' ? '#10B981' : '#F43F5E'),
       amountCents: total.amount,
       transactionCount: total.count,
-      percentage: percentage(total.amount, kindTotal),
+      percentage: total.amount > 0n ? percentage(total.amount, kindTotal) : 0,
     }
   }).sort((a, b) => a.kind === b.kind
     ? (a.amountCents > b.amountCents ? -1 : a.amountCents < b.amountCents ? 1 : 0)
@@ -167,6 +196,16 @@ export function analyzeAccount(input: AccountAnalysisInput): AccountAnalysis {
       id: 'empty-period', severity: 'info', title: 'Período sem dados',
       message: 'Registre entradas e saídas para comparar categorias, valores e horários.',
     })
+  } else if (expenses.length === 0 && refunds.length > 0) {
+    alerts.push({
+      id: 'refunds-without-expenses', severity: 'info', title: 'Reembolsos sem compras no período',
+      message: `Entraram ${input.formatMoney(refundCents)} em reembolsos. Eles aumentam o saldo, mas não são tratados como renda.`,
+    })
+  } else if (expenses.length === 0 && transfers.length > 0) {
+    alerts.push({
+      id: 'only-transfers', severity: 'info', title: 'Movimentações classificadas como transferências',
+      message: `${transfers.length} transferência(s) não entram nos totais de renda ou gastos.`,
+    })
   } else if (expenses.length === 0) {
     alerts.push({
       id: 'no-expenses', severity: 'positive', title: 'Nenhuma saída registrada',
@@ -178,7 +217,7 @@ export function analyzeAccount(input: AccountAnalysisInput): AccountAnalysis {
         id: 'expenses-without-income', severity: 'warning', title: 'Saídas sem entradas registradas',
         message: `Existem ${input.formatMoney(expenseCents)} em despesas, mas nenhuma receita no período. Confira se as entradas estão atualizadas.`,
       })
-    } else if (expenseCents > incomeCents) {
+    } else if (netExpenseCents > incomeCents) {
       alerts.push({
         id: 'period-deficit', severity: 'critical', title: 'As saídas passaram das entradas',
         message: `O período está negativo em ${input.formatMoney(-netCents)}. Revise primeiro as maiores despesas e compromissos fixos.`,
@@ -233,7 +272,7 @@ export function analyzeAccount(input: AccountAnalysisInput): AccountAnalysis {
 
     if (!alerts.some((alert) => alert.severity === 'critical' || alert.severity === 'warning')) alerts.push({
       id: 'balanced-period', severity: 'positive', title: 'Fluxo do período está equilibrado',
-      message: `Entraram ${input.formatMoney(incomeCents)} e saíram ${input.formatMoney(expenseCents)}. Nenhum sinal importante foi detectado.`,
+      message: `Entraram ${input.formatMoney(incomeCents)} e os gastos líquidos foram ${input.formatMoney(netExpenseCents)}. Nenhum sinal importante foi detectado.`,
     })
   }
 
@@ -241,15 +280,19 @@ export function analyzeAccount(input: AccountAnalysisInput): AccountAnalysis {
   const topAlert = alerts[0]
   const savingsRate = incomeCents > 0n ? Number((netCents * 10_000n) / incomeCents) / 100 : null
   const headline = topAlert?.message
-    ?? `Entraram ${input.formatMoney(incomeCents)} e saíram ${input.formatMoney(expenseCents)} neste período.`
+    ?? `Entraram ${input.formatMoney(incomeCents)} e os gastos líquidos foram ${input.formatMoney(netExpenseCents)} neste período.`
 
   return {
     periodKey,
     transactionCount: transactions.length,
     incomeCount: incomes.length,
     expenseCount: expenses.length,
+    refundCount: refunds.length,
+    transferCount: transfers.length,
     incomeCents,
     expenseCents,
+    refundCents,
+    netExpenseCents,
     netCents,
     savingsRate,
     averageExpenseCents: expenses.length ? expenseCents / BigInt(expenses.length) : 0n,

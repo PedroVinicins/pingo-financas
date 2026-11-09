@@ -27,6 +27,7 @@ import type {
 import { DEFAULT_DASHBOARD_LAYOUT, normalizeDashboardLayout } from './dashboardLayout'
 import { firstRecurringDueDate, followingRecurringDueDate, localDateKey } from './recurringDates'
 import { validateBackupData, type PingoBackup } from './backup'
+import { statementTransactionSignature } from './statementSignatures'
 
 // Mantidos para preservar dados de quem já usou as versões 0.1/0.2 no navegador.
 const TRANSACTIONS_KEY = 'cashew-clone:transactions'
@@ -193,7 +194,13 @@ export async function addTransaction(input: NewTransactionInput): Promise<Transa
   if (isTauriRuntime()) return tauriInvoke<Transaction>('add_transaction', { input })
 
   const amount = moneyToCents(input.amount)
+  const classification = input.classification ?? input.kind
   if (amount <= 0n) throw new Error('O valor deve ser maior que zero')
+  if ((classification === 'income' || classification === 'refund') && input.kind !== 'income'
+    || classification === 'expense' && input.kind !== 'expense'
+    || input.relatedTransactionId && classification !== 'refund') {
+    throw new Error('A classificação não corresponde à direção da transação')
+  }
   if (input.kind === 'income' && input.debitCardId) {
     throw new Error('Um cartão de débito só pode ser associado a uma despesa')
   }
@@ -204,6 +211,12 @@ export async function addTransaction(input: NewTransactionInput): Promise<Transa
   }
 
   const transactions = await listTransactions()
+  if (input.relatedTransactionId) {
+    const original = transactions.find((item) => item.id === input.relatedTransactionId)
+    if (!original || (original.classification ?? original.kind) !== 'expense') {
+      throw new Error('A compra vinculada ao reembolso não foi encontrada')
+    }
+  }
   if (input.kind === 'expense' && amount > localAvailableBalanceCents(transactions)) {
     throw new Error('Saldo insuficiente. O Pingo não deixa sua conta ficar negativa.')
   }
@@ -227,6 +240,7 @@ export async function addTransaction(input: NewTransactionInput): Promise<Transa
 
   const transaction: Transaction = {
     ...input,
+    classification,
     occurredAt: input.occurredAt ?? null,
     debitCardId: input.kind === 'income' ? null : input.debitCardId,
     id: crypto.randomUUID(),
@@ -234,7 +248,7 @@ export async function addTransaction(input: NewTransactionInput): Promise<Transa
   }
   transactions.push(transaction)
   writeLocal(TRANSACTIONS_KEY, transactions)
-  if (transaction.kind === 'income') applyLocalAutomaticReserves(moneyToCents(transaction.amount))
+  if (transaction.classification === 'income') applyLocalAutomaticReserves(moneyToCents(transaction.amount))
   return transaction
 }
 
@@ -243,6 +257,29 @@ export async function importBankStatement(input: BankStatementImportInput): Prom
   if (input.transactions.length > 2_000) throw new Error('Importe no máximo 2.000 lançamentos por arquivo')
   if (input.closingBalance !== null && signedMoneyToCents(input.closingBalance) < 0n) {
     throw new Error('O Pingo ainda não reconcilia extratos com saldo negativo')
+  }
+  const existingTransactions = await listTransactions()
+  const existingCounts = new Map<string, number>()
+  for (const transaction of existingTransactions) {
+    const signature = statementTransactionSignature(transaction)
+    existingCounts.set(signature, (existingCounts.get(signature) ?? 0) + 1)
+  }
+  const seenCounts = new Map<string, number>()
+  const seenExternalIds = new Set<string>()
+  for (const transaction of input.transactions) {
+    const signature = statementTransactionSignature(transaction)
+    if (transaction.externalId) {
+      if (existingCounts.has(signature) || seenExternalIds.has(signature)) {
+        throw new Error('O extrato contém um identificador bancário que já foi importado')
+      }
+      seenExternalIds.add(signature)
+    } else {
+      const occurrence = (seenCounts.get(signature) ?? 0) + 1
+      if (occurrence <= (existingCounts.get(signature) ?? 0)) {
+        throw new Error('O extrato contém lançamentos que já foram importados')
+      }
+      seenCounts.set(signature, occurrence)
+    }
   }
   if (isTauriRuntime()) {
     return tauriInvoke<Transaction[]>('import_transactions', {
@@ -255,6 +292,12 @@ export async function importBankStatement(input: BankStatementImportInput): Prom
   const now = new Date().toISOString()
   const imported = input.transactions.map((item, index) => {
     const amount = moneyToCents(item.amount)
+    const classification = item.classification ?? item.kind
+    if ((classification === 'income' || classification === 'refund') && item.kind !== 'income'
+      || classification === 'expense' && item.kind !== 'expense'
+      || item.relatedTransactionId && classification !== 'refund') {
+      throw new Error('A classificação não corresponde à direção do lançamento')
+    }
     if (amount <= 0n) throw new Error('O extrato contém um valor inválido')
     if (!item.description.trim() || item.description.trim().length > 160) {
       throw new Error('O extrato contém uma descrição inválida')
@@ -263,12 +306,19 @@ export async function importBankStatement(input: BankStatementImportInput): Prom
     if (!category || category.kind !== item.kind) {
       throw new Error('Escolha categorias compatíveis com as entradas e saídas')
     }
+    if (item.relatedTransactionId) {
+      const original = existingTransactions.find((transaction) => transaction.id === item.relatedTransactionId)
+      if (!original || (original.classification ?? original.kind) !== 'expense') {
+        throw new Error('A compra vinculada ao reembolso não foi encontrada')
+      }
+    }
     if (item.kind === 'expense' && item.debitCardId
       && !cards.some((candidate) => candidate.id === item.debitCardId)) {
       throw new Error('O extrato referencia um cartão que não existe mais')
     }
     return {
       ...item,
+      classification,
       occurredAt: item.occurredAt ?? null,
       debitCardId: item.kind === 'expense' ? item.debitCardId : null,
       id: crypto.randomUUID(),
@@ -278,7 +328,7 @@ export async function importBankStatement(input: BankStatementImportInput): Prom
   })
   const previousTransactions = localStorage.getItem(TRANSACTIONS_KEY)
   const previousSettings = localStorage.getItem(ACCOUNT_SETTINGS_KEY)
-  const transactions = [...await listTransactions(), ...imported]
+  const transactions = [...existingTransactions, ...imported]
   try {
     writeLocal(TRANSACTIONS_KEY, transactions)
     const projectedBalance = localAvailableBalanceCents(transactions)
@@ -355,6 +405,15 @@ export async function updateTransaction(input: UpdateTransactionInput): Promise<
     categoryId: input.categoryId,
     debitCardId: input.kind === 'income' ? null : input.debitCardId,
   }
+  updated.classification = input.classification
+    ?? (transactions[index].kind === input.kind
+      ? transactions[index].classification ?? input.kind
+      : input.kind)
+  updated.relatedTransactionId = updated.classification === 'refund'
+    ? input.relatedTransactionId ?? transactions[index].relatedTransactionId ?? null
+    : null
+  updated.sourceBank = transactions[index].sourceBank
+  updated.externalId = transactions[index].externalId
   transactions[index] = updated
   writeLocal(TRANSACTIONS_KEY, transactions)
   return updated
@@ -371,7 +430,8 @@ export async function deleteTransaction(id: string): Promise<void> {
   if (localAvailableBalanceCents(transactions) - transactionEffectCents(transaction) < 0n) {
     throw new Error('Excluir essa entrada deixaria a conta negativa.')
   }
-  writeLocal(TRANSACTIONS_KEY, transactions.filter((item) => item.id !== id))
+  writeLocal(TRANSACTIONS_KEY, transactions.filter((item) => item.id !== id)
+    .map((item) => item.relatedTransactionId === id ? { ...item, relatedTransactionId: null } : item))
 }
 
 export async function listCategories(fallback: Category[]): Promise<Category[]> {

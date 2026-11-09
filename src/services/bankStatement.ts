@@ -8,6 +8,9 @@ import type {
   SupportedStatementBank,
   Transaction,
 } from '../types/finance'
+import { statementTransactionSignature } from './statementSignatures'
+
+export { statementTransactionSignature } from './statementSignatures'
 
 const MAX_STATEMENT_BYTES = 12 * 1024 * 1024
 const MAX_IMPORT_ROWS = 2_000
@@ -225,6 +228,7 @@ function transactionFromValues(
   externalId?: string | null,
   timeValue = '',
   amountParser: (value: string) => bigint | null = parseBankAmount,
+  requiresReview = false,
 ): ParsedBankStatementTransaction | null {
   const moment = parseBankMoment(dateValue, timeValue)
   const signedAmount = amountParser(amountValue)
@@ -233,18 +237,27 @@ function transactionFromValues(
   const movementType = detectBankMovementType(description, signedAmount)
   const paymentMethod = detectBankPaymentMethod(description)
   const isInternalTransfer = movementType === 'vault_deposit' || movementType === 'vault_withdrawal'
+  const isTransfer = isInternalTransfer
+    || movementType === 'transfer_sent'
+    || movementType === 'transfer_received'
+    || /\b(?:ted|doc|transferencia|transfer)\b/.test(normalizedHeader(description))
   return {
     kind: signedAmount < 0n ? 'expense' : 'income',
+    classification: movementType === 'refund'
+      ? 'refund'
+      : isTransfer ? 'transfer' : signedAmount < 0n ? 'expense' : 'income',
     amount: centsToStorage(signedAmount < 0n ? -signedAmount : signedAmount),
     date: moment.date,
     occurredAt: moment.occurredAt,
     description: cleanBankDescription(description),
     balance: balance === null ? null : centsToStorage(balance),
     externalId: externalId?.trim() || null,
+    sourceBank: 'inter',
     paymentMethod,
     movementType,
     isInternalTransfer,
     suggestedCardLink: movementType === 'debit_purchase' || movementType === 'credit_purchase' || movementType === 'card_purchase',
+    requiresReview,
   }
 }
 
@@ -285,15 +298,37 @@ function headerIndex(headers: string[], aliases: string[]) {
 }
 
 function closingBalanceFrom(transactions: ParsedBankStatementTransaction[]) {
-  let newestDate = ''
-  let balance: string | null = null
+  let latestMoment = ''
+  let closingBalance: string | null = null
+  let closingBalanceDate: string | null = null
+  let latestDateBalanceCount = 0
+  let latestDateHasMissingTime = false
+  let latestHasTime = false
   for (const transaction of transactions) {
-    if (transaction.balance !== null && transaction.date > newestDate) {
-      newestDate = transaction.date
-      balance = transaction.balance
+    if (transaction.balance === null) continue
+    const moment = transaction.occurredAt ?? `${transaction.date}T00:00:00`
+    if (transaction.date > (closingBalanceDate ?? '')) {
+      latestMoment = moment
+      closingBalanceDate = transaction.date
+      closingBalance = transaction.balance
+      latestDateBalanceCount = 1
+      latestDateHasMissingTime = !transaction.occurredAt
+      latestHasTime = Boolean(transaction.occurredAt)
+    } else if (transaction.date === closingBalanceDate) {
+      latestDateBalanceCount += 1
+      if (!transaction.occurredAt) latestDateHasMissingTime = true
+      if (transaction.occurredAt && (!latestHasTime || moment >= latestMoment)) {
+        latestMoment = moment
+        closingBalance = transaction.balance
+        latestHasTime = true
+      }
     }
   }
-  return balance
+  return {
+    closingBalance,
+    closingBalanceDate,
+    ambiguousOrder: latestDateBalanceCount > 1 && latestDateHasMissingTime,
+  }
 }
 
 function delimitedColumnIndexes(headers: string[]) {
@@ -325,7 +360,7 @@ function delimitedColumnIndexes(headers: string[]) {
     ]),
     externalId: headerIndex(headers, [
       'identificador', 'id transacao', 'id da transacao', 'codigo transacao',
-      'numero documento', 'txid', 'end to end', 'fitid',
+      'txid', 'end to end', 'fitid',
     ]),
   }
 }
@@ -353,13 +388,21 @@ function delimitedDirection(row: string[], indexes: ReturnType<typeof delimitedC
 function delimitedAmount(row: string[], indexes: ReturnType<typeof delimitedColumnIndexes>) {
   const amount = indexes.amount >= 0 ? row[indexes.amount]?.trim() : ''
   if (amount) {
-    if (amountHasExplicitSign(amount) || parseBankAmount(amount) === null) return amount
-    return delimitedDirection(row, indexes) < 0 ? `-${amount}` : amount
+    if (amountHasExplicitSign(amount) || parseBankAmount(amount) === null) {
+      return { value: amount, requiresReview: false }
+    }
+    const direction = delimitedDirection(row, indexes)
+    return {
+      value: direction < 0 ? `-${amount}` : amount,
+      requiresReview: direction === 0,
+    }
   }
   const debit = indexes.debit >= 0 ? row[indexes.debit]?.trim() : ''
-  if (debit && parseBankAmount(debit) !== null) return debit.startsWith('-') ? debit : `-${debit}`
+  if (debit && parseBankAmount(debit) !== null) {
+    return { value: debit.startsWith('-') ? debit : `-${debit}`, requiresReview: false }
+  }
   const credit = indexes.credit >= 0 ? row[indexes.credit]?.trim() : ''
-  return credit ?? ''
+  return { value: credit ?? '', requiresReview: false }
 }
 
 export function parseDelimitedStatement(content: string, fileName = 'extrato.csv'): ParsedBankStatement {
@@ -382,18 +425,33 @@ export function parseDelimitedStatement(content: string, fileName = 'extrato.csv
   }
   const indexes = delimitedColumnIndexes(rows[headerRowIndex].map(normalizedHeader))
   const dataRows = rows.slice(headerRowIndex + 1)
-  const transactions = dataRows.map((row) => transactionFromValues(
-    row[indexes.date] ?? '', delimitedAmount(row, indexes),
+  const parsedRows = dataRows.map((row) => {
+    const amount = delimitedAmount(row, indexes)
+    return transactionFromValues(
+    row[indexes.date] ?? '', amount.value,
     [row[indexes.history], row[indexes.title], row[indexes.description]].filter(Boolean).join(' · '),
     indexes.balance >= 0 ? row[indexes.balance] : null,
     indexes.externalId >= 0 ? row[indexes.externalId] : null,
     indexes.time >= 0 ? row[indexes.time] : '',
-  )).filter((item): item is ParsedBankStatementTransaction => item !== null).slice(0, MAX_IMPORT_ROWS)
+    parseBankAmount,
+    amount.requiresReview,
+  )
+  })
+  const transactions = parsedRows.filter((item): item is ParsedBankStatementTransaction => item !== null)
+    .slice(0, MAX_IMPORT_ROWS)
   if (!transactions.length) throw new Error('Nenhum lançamento válido foi encontrado no arquivo.')
+  const closing = closingBalanceFrom(transactions)
+  const warnings = []
+  const skippedRows = Math.max(0, dataRows.length - transactions.length)
+  if (skippedRows > 0) warnings.push(`${skippedRows} linha(s) não foram reconhecidas como lançamento e ficaram fora da importação.`)
+  if (dataRows.length > MAX_IMPORT_ROWS) warnings.push(`Somente os primeiros ${MAX_IMPORT_ROWS} lançamentos foram carregados.`)
+  if (closing.ambiguousOrder) warnings.push('O saldo final vem de lançamentos no mesmo dia sem horário; confira a conciliação.')
   return {
     format: 'csv', fileName, transactions,
-    closingBalance: closingBalanceFrom(transactions),
-    warnings: dataRows.length > MAX_IMPORT_ROWS ? [`Somente os primeiros ${MAX_IMPORT_ROWS} lançamentos foram carregados.`] : [],
+    closingBalance: closing.closingBalance,
+    closingBalanceDate: closing.closingBalanceDate,
+    skippedRows,
+    warnings,
   }
 }
 
@@ -414,10 +472,17 @@ export function parseOfxStatement(content: string, fileName = 'extrato.ofx'): Pa
   }
   if (!transactions.length) throw new Error('Nenhum lançamento válido foi encontrado no OFX.')
   const ledgerBalance = parseOfxAmount(ofxValue(content, 'BALAMT'))
+  const ledgerDate = parseBankMoment(ofxValue(content, 'DTASOF') || ofxValue(content, 'DTEND'))?.date ?? null
+  const skippedRows = Math.max(0, blocks.length - transactions.length)
+  const warnings = []
+  if (skippedRows > 0) warnings.push(`${skippedRows} lançamento(s) OFX inválido(s) foram ignorados.`)
+  if (blocks.length > MAX_IMPORT_ROWS) warnings.push(`Somente os primeiros ${MAX_IMPORT_ROWS} lançamentos foram carregados.`)
   return {
     format: 'ofx', fileName, transactions,
     closingBalance: ledgerBalance === null ? null : centsToStorage(ledgerBalance),
-    warnings: blocks.length > MAX_IMPORT_ROWS ? [`Somente os primeiros ${MAX_IMPORT_ROWS} lançamentos foram carregados.`] : [],
+    closingBalanceDate: ledgerDate,
+    skippedRows,
+    warnings,
   }
 }
 
@@ -479,8 +544,21 @@ function transactionFromText(dateValue: string, rest: string) {
   const amountMatch = moneyMatches.length >= 2 ? moneyMatches[moneyMatches.length - 2] : moneyMatches[0]
   const balanceMatch = moneyMatches.length >= 2 ? moneyMatches[moneyMatches.length - 1] : null
   const description = rest.slice(timeMatch?.[0].length ?? 0, amountMatch.index).replace(/[|\t]+/g, ' ')
+  const parsedAmount = parseBankAmount(amountMatch[0])
+  if (parsedAmount === null) return null
+  const movementType = detectBankMovementType(description, parsedAmount)
+  let amountValue = amountMatch[0]
+  let requiresReview = false
+  if (!amountHasExplicitSign(amountValue)) {
+    if (['vault_deposit', 'debit_purchase', 'credit_purchase', 'card_purchase', 'pix_sent', 'transfer_sent', 'fee'].includes(movementType)) {
+      amountValue = `-${amountValue}`
+    } else if (!['salary', 'vault_withdrawal', 'refund', 'pix_received', 'transfer_received'].includes(movementType)) {
+      requiresReview = true
+    }
+  }
   return transactionFromValues(
-    dateValue, amountMatch[0], description, balanceMatch?.[0] ?? null, null, timeMatch?.[1] ?? '',
+    dateValue, amountValue, description, balanceMatch?.[0] ?? null, null, timeMatch?.[1] ?? '',
+    parseBankAmount, requiresReview,
   )
 }
 
@@ -531,12 +609,19 @@ export function parseStatementTextLines(lines: string[], fileName = 'extrato.pdf
   if (!transactions.length) {
     throw new Error('Não encontrei lançamentos no PDF. Use um extrato com texto selecionável; PDFs escaneados precisam de OCR.')
   }
+  const latestTransactionDate = transactions.reduce(
+    (latest, transaction) => transaction.date > latest ? transaction.date : latest, '',
+  )
+  const transactionClosing = closingBalanceFrom(transactions)
+  const hasRecentDailyBalance = headerBalanceDate >= latestTransactionDate
   return {
     format: 'pdf', fileName, transactions,
-    closingBalance: headerBalanceDate >= transactions.reduce(
-      (latest, transaction) => transaction.date > latest ? transaction.date : latest, '',
-    ) ? headerBalance : closingBalanceFrom(transactions),
-    warnings: [],
+    closingBalance: hasRecentDailyBalance ? headerBalance : transactionClosing.closingBalance,
+    closingBalanceDate: hasRecentDailyBalance ? headerBalanceDate : transactionClosing.closingBalanceDate,
+    skippedRows: 0,
+    warnings: transactionClosing.ambiguousOrder
+      ? ['O saldo final vem de lançamentos no mesmo dia sem horário; confira a conciliação.']
+      : [],
   }
 }
 
@@ -583,13 +668,8 @@ export async function parseBankStatementFile(file: File, bank: SupportedStatemen
   if (bank === 'nubank') {
     statement.warnings.unshift('Importação do Nubank em beta: confira a prévia antes de confirmar.')
   }
+  statement.transactions = statement.transactions.map((transaction) => ({ ...transaction, sourceBank: bank }))
   return statement
-}
-
-export function statementTransactionSignature(
-  transaction: Pick<Transaction | ParsedBankStatementTransaction, 'date' | 'occurredAt' | 'kind' | 'amount' | 'description'>,
-) {
-  return [transaction.occurredAt ?? transaction.date, transaction.kind, transaction.amount.replace(',', '.'), normalizedHeader(transaction.description)].join('|')
 }
 
 export function duplicateStatementRows(
@@ -597,12 +677,23 @@ export function duplicateStatementRows(
   existing: Transaction[],
 ) {
   const existingCounts = new Map<string, number>()
+  const existingExternalIds = new Set<string>()
   existing.forEach((transaction) => {
+    if (transaction.sourceBank && transaction.externalId) {
+      existingExternalIds.add(`${transaction.sourceBank}|${transaction.externalId.trim().toLocaleLowerCase('en-US')}`)
+    }
     const signature = statementTransactionSignature(transaction)
     existingCounts.set(signature, (existingCounts.get(signature) ?? 0) + 1)
   })
   const seen = new Map<string, number>()
+  const seenExternalIds = new Set<string>()
   return rows.map((row) => {
+    if (row.sourceBank && row.externalId) {
+      const externalKey = `${row.sourceBank}|${row.externalId.trim().toLocaleLowerCase('en-US')}`
+      const duplicate = existingExternalIds.has(externalKey) || seenExternalIds.has(externalKey)
+      seenExternalIds.add(externalKey)
+      if (duplicate) return true
+    }
     const signature = statementTransactionSignature(row)
     const occurrence = (seen.get(signature) ?? 0) + 1
     seen.set(signature, occurrence)

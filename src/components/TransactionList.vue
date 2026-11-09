@@ -35,6 +35,12 @@ function cardName(cardId: string | null) {
   return card ? `${card.name} •••• ${card.lastFour}` : 'Cartão removido'
 }
 
+function classificationLabel(transaction: Transaction) {
+  if (transaction.classification === 'refund') return 'Reembolso'
+  if (transaction.classification === 'transfer') return 'Transferência'
+  return null
+}
+
 function shortDate(value: string, occurredAt: string | null) {
   if (occurredAt) {
     return new Intl.DateTimeFormat('pt-BR', {
@@ -67,6 +73,7 @@ function shortDate(value: string, occurredAt: string | null) {
         </div>
         <p class="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
           {{ categoryName(transaction.categoryId) }} · {{ shortDate(transaction.date, transaction.occurredAt) }}
+          <template v-if="classificationLabel(transaction)"> · {{ classificationLabel(transaction) }}</template>
           <template v-if="cardName(transaction.debitCardId)"> · {{ cardName(transaction.debitCardId) }}</template>
         </p>
       </div>

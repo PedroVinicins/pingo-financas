@@ -145,6 +145,16 @@ pub async fn add_transaction(
         return Err("a categoria não corresponde ao tipo da transação".into());
     }
 
+    if let Some(related_id) = input.related_transaction_id {
+        let original = repository
+            .get_transaction(related_id)
+            .await
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "compra vinculada ao reembolso não encontrada".to_string())?;
+        if original.classification != Some(crate::models::TransactionClassification::Expense) {
+            return Err("um reembolso só pode ser vinculado a uma despesa".into());
+        }
+    }
     let transaction = Transaction::new(input).map_err(|error| error.to_string())?;
     if transaction.kind == TransactionType::Expense
         && transaction.amount
@@ -203,6 +213,16 @@ pub async fn import_transactions(
             .ok_or_else(|| "categoria não encontrada".to_string())?;
         if category_kind != input.kind {
             return Err("a categoria não corresponde ao tipo do lançamento".into());
+        }
+        if let Some(related_id) = input.related_transaction_id {
+            let original = repository
+                .get_transaction(related_id)
+                .await
+                .map_err(|error| error.to_string())?
+                .ok_or_else(|| "compra vinculada ao reembolso não encontrada".to_string())?;
+            if original.classification != Some(crate::models::TransactionClassification::Expense) {
+                return Err("um reembolso só pode ser vinculado a uma despesa".into());
+            }
         }
         if let Some(card_id) = input.debit_card_id {
             if repository
@@ -269,9 +289,35 @@ pub async fn update_transaction(
         .await
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "transação não encontrada".to_string())?;
+    let input_classification = input.classification;
+    let input_related_id = input.related_transaction_id;
+    let input_source_bank = input.source_bank.clone();
+    let input_external_id = input.external_id.clone();
     let mut transaction = Transaction::new(input).map_err(|error| error.to_string())?;
     transaction.id = id;
     transaction.created_at = current.created_at;
+    if input_classification.is_some() {
+        transaction.classification = input_classification;
+    } else if current.kind == transaction.kind {
+        transaction.classification = current.classification;
+    }
+    if transaction.classification == Some(crate::models::TransactionClassification::Refund) {
+        transaction.related_transaction_id = input_related_id.or(current.related_transaction_id);
+    } else {
+        transaction.related_transaction_id = None;
+    }
+    transaction.source_bank = input_source_bank.or(current.source_bank.clone());
+    transaction.external_id = input_external_id.or(current.external_id.clone());
+    if let Some(related_id) = transaction.related_transaction_id {
+        let original = repository
+            .get_transaction(related_id)
+            .await
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "compra vinculada ao reembolso não encontrada".to_string())?;
+        if original.classification != Some(crate::models::TransactionClassification::Expense) {
+            return Err("um reembolso só pode ser vinculado a uma despesa".into());
+        }
+    }
     let projected = repository
         .available_balance()
         .await
@@ -786,6 +832,10 @@ pub async fn settle_recurring_rule(
         } else {
             None
         },
+        classification: None,
+        related_transaction_id: None,
+        source_bank: None,
+        external_id: None,
         description: rule.description.clone(),
         recurrence: RecurrenceType::Fixed,
     })

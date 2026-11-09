@@ -57,7 +57,9 @@ const heroBalance = computed(() => store.reportingPeriodIsPast
   ? store.reportingClosingBalanceCents
   : store.availableBalanceCents)
 const heroBalanceLabel = computed(() => store.reportingPeriodIsPast
-  ? 'Você terminou esse mês com esse saldo'
+  ? store.reportingClosingBalanceConfirmed
+    ? 'Saldo informado pelo extrato no fim do mês'
+    : 'Estimativa histórica dos lançamentos'
   : 'Saldo disponível')
 const visibleOptionalWidgets = computed(() => store.dashboardLayout.widgets.filter((item) =>
   item.visible && !['available_balance', 'net_worth', 'history'].includes(item.id)))
@@ -66,11 +68,18 @@ const historyTransactions = computed(() => showAllHistory.value ? store.sortedTr
 const categoryRows = computed(() => {
   const totals = new Map<string, bigint>()
   for (const transaction of store.reportingTransactions) {
-    if (transaction.kind !== 'expense' || !transaction.categoryId) continue
+    if ((transaction.classification ?? transaction.kind) !== 'expense' || !transaction.categoryId) continue
     totals.set(transaction.categoryId, (totals.get(transaction.categoryId) ?? 0n) + decimalToCents(transaction.amount))
   }
-  const total = [...totals.values()].reduce((sum, value) => sum + value, 0n)
-  return [...totals.entries()].sort((a, b) => Number(b[1] - a[1])).slice(0, 3).map(([id, amount]) => ({
+  for (const refund of store.reportingTransactions.filter((item) =>
+    item.classification === 'refund' && item.relatedTransactionId)) {
+    const original = store.transactions.find((item) => item.id === refund.relatedTransactionId)
+    if (!original?.categoryId) continue
+    totals.set(original.categoryId, (totals.get(original.categoryId) ?? 0n) - decimalToCents(refund.amount))
+  }
+  const positiveTotals = [...totals.entries()].filter(([, amount]) => amount > 0n)
+  const total = positiveTotals.reduce((sum, [, value]) => sum + value, 0n)
+  return positiveTotals.sort((a, b) => Number(b[1] - a[1])).slice(0, 3).map(([id, amount]) => ({
     id, amount, category: store.categories.find((item) => item.id === id),
     percentage: total > 0n ? Number((amount * 10_000n) / total) / 100 : 0,
   }))

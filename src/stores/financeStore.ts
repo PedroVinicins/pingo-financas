@@ -131,7 +131,10 @@ export const useFinanceStore = defineStore('finance', () => {
     }, 0n)
   })
   const currentMonthIncomeCents = computed(() => currentMonthTotal('income'))
-  const currentMonthExpenseCents = computed(() => currentMonthTotal('expense'))
+  const currentMonthGrossExpenseCents = computed(() => currentMonthTotal('expense'))
+  const currentMonthRefundCents = computed(() => currentMonthTotal('refund'))
+  const currentMonthExpenseCents = computed(() =>
+    currentMonthGrossExpenseCents.value - currentMonthRefundCents.value)
   const currentMonthSavingsCents = computed(() => currentMonthIncomeCents.value - currentMonthExpenseCents.value)
   const savingsRate = computed(() => currentMonthIncomeCents.value === 0n
     ? 0
@@ -139,7 +142,8 @@ export const useFinanceStore = defineStore('finance', () => {
   const currentMonthFixedExpenseCents = computed(() => {
     const now = clock.value
     return transactions.value.reduce((total, transaction) => {
-      if (transaction.kind !== 'expense' || transaction.recurrence !== 'fixed') return total
+      if ((transaction.classification ?? transaction.kind) !== 'expense'
+        || transaction.recurrence !== 'fixed') return total
       const date = new Date(`${transaction.date}T12:00:00`)
       if (date.getFullYear() !== now.getFullYear() || date.getMonth() !== now.getMonth()) return total
       return total + decimalToCents(transaction.amount)
@@ -155,11 +159,12 @@ export const useFinanceStore = defineStore('finance', () => {
     for (let offset = 0; offset < 3; offset += 1) {
       const target = new Date(now.getFullYear(), now.getMonth() - offset, 1)
       total += transactions.value.reduce((monthTotal, transaction) => {
-        if (transaction.kind !== 'expense') return monthTotal
+        const classification = transaction.classification ?? transaction.kind
+        if (classification !== 'expense' && classification !== 'refund') return monthTotal
         const date = new Date(`${transaction.date}T12:00:00`)
-        return date.getFullYear() === target.getFullYear() && date.getMonth() === target.getMonth()
-          ? monthTotal + decimalToCents(transaction.amount)
-          : monthTotal
+        if (date.getFullYear() !== target.getFullYear() || date.getMonth() !== target.getMonth()) return monthTotal
+        const amount = decimalToCents(transaction.amount)
+        return monthTotal + (classification === 'refund' ? -amount : amount)
       }, 0n)
     }
     return total / 3n
@@ -175,7 +180,7 @@ export const useFinanceStore = defineStore('finance', () => {
   const todayExpenseCents = computed(() => {
     const today = localDateKey(clock.value)
     return transactions.value.reduce((total, transaction) =>
-      transaction.kind === 'expense' && transaction.date === today
+      (transaction.classification ?? transaction.kind) === 'expense' && transaction.date === today
         ? total + decimalToCents(transaction.amount)
         : total, 0n)
   })
@@ -207,9 +212,14 @@ export const useFinanceStore = defineStore('finance', () => {
     return date.getFullYear() === reportingYear.value && date.getMonth() + 1 === reportingMonth.value
   }))
   const reportingIncomeCents = computed(() => reportingTransactions.value.reduce((total, transaction) =>
-    transaction.kind === 'income' ? total + decimalToCents(transaction.amount) : total, 0n))
-  const reportingExpenseCents = computed(() => reportingTransactions.value.reduce((total, transaction) =>
-    transaction.kind === 'expense' ? total + decimalToCents(transaction.amount) : total, 0n))
+    (transaction.classification ?? transaction.kind) === 'income'
+      ? total + decimalToCents(transaction.amount) : total, 0n))
+  const reportingGrossExpenseCents = computed(() => reportingTransactions.value.reduce((total, transaction) =>
+    (transaction.classification ?? transaction.kind) === 'expense'
+      ? total + decimalToCents(transaction.amount) : total, 0n))
+  const reportingRefundCents = computed(() => reportingTransactions.value.reduce((total, transaction) =>
+    transaction.classification === 'refund' ? total + decimalToCents(transaction.amount) : total, 0n))
+  const reportingExpenseCents = computed(() => reportingGrossExpenseCents.value - reportingRefundCents.value)
   const reportingBalanceCents = computed(() => reportingIncomeCents.value - reportingExpenseCents.value)
   const reportingPeriodKey = computed(() => `${reportingYear.value}-${String(reportingMonth.value).padStart(2, '0')}`)
   const currentPeriodKey = computed(() => `${clock.value.getFullYear()}-${String(clock.value.getMonth() + 1).padStart(2, '0')}`)
@@ -222,7 +232,22 @@ export const useFinanceStore = defineStore('finance', () => {
       transaction.date.slice(0, 7) <= reportingPeriodKey.value
         ? total + transactionEffect(transaction)
         : total, 0n)
-    return cumulative + signedDecimalToCents(accountSettings.value.openingBalanceAdjustment) - vaultTotalCents.value
+    const laterVaultMovements = vaultMovements.value.reduce((total, movement) => {
+      if (movement.occurredAt.slice(0, 7) <= reportingPeriodKey.value) return total
+      const amount = decimalToCents(movement.amount)
+      return total + (movement.kind === 'deposit' ? amount : -amount)
+    }, 0n)
+    const historicalVaultBalance = vaultTotalCents.value - laterVaultMovements
+    return cumulative + signedDecimalToCents(accountSettings.value.openingBalanceAdjustment) - historicalVaultBalance
+  })
+  const reportingClosingBalanceConfirmed = computed(() =>
+    preferences.value.statementClosingBalances[reportingPeriodKey.value] !== undefined)
+  const reportingDailySpendingAverageCents = computed(() => {
+    const daysInMonth = new Date(reportingYear.value, reportingMonth.value, 0).getDate()
+    const elapsedDays = reportingPeriodIsCurrent.value
+      ? Math.min(daysInMonth, clock.value.getDate())
+      : reportingPeriodIsPast.value ? daysInMonth : 0
+    return elapsedDays > 0 ? reportingExpenseCents.value / BigInt(elapsedDays) : 0n
   })
   const filteredTransactions = computed(() => {
     const result = transactions.value.filter((transaction) => {
@@ -246,7 +271,8 @@ export const useFinanceStore = defineStore('finance', () => {
       || b.createdAt.localeCompare(a.createdAt))
   })
   const recentTransactions = computed(() => filteredTransactions.value.slice(0, 8))
-  const recentExpenses = computed(() => sortedTransactions.value.filter((item) => item.kind === 'expense').slice(0, 5))
+  const recentExpenses = computed(() => sortedTransactions.value
+    .filter((item) => (item.classification ?? item.kind) === 'expense').slice(0, 5))
   const hasActiveFilters = computed(() => Object.values(filters.value)
     .some((value) => value !== undefined && value !== ''))
   const recentExpenseCategoryIds = computed(() => {
@@ -276,8 +302,13 @@ export const useFinanceStore = defineStore('finance', () => {
   const expensesByDebitCard = computed(() => {
     const totals = new Map<string, bigint>()
     for (const transaction of transactions.value) {
-      if (transaction.kind !== 'expense' || !transaction.debitCardId) continue
+      if ((transaction.classification ?? transaction.kind) !== 'expense' || !transaction.debitCardId) continue
       totals.set(transaction.debitCardId, (totals.get(transaction.debitCardId) ?? 0n) + decimalToCents(transaction.amount))
+    }
+    for (const refund of transactions.value.filter((item) => item.classification === 'refund' && item.relatedTransactionId)) {
+      const original = transactions.value.find((item) => item.id === refund.relatedTransactionId)
+      if (!original?.debitCardId) continue
+      totals.set(original.debitCardId, (totals.get(original.debitCardId) ?? 0n) - decimalToCents(refund.amount))
     }
     return totals
   })
@@ -285,17 +316,27 @@ export const useFinanceStore = defineStore('finance', () => {
     const now = clock.value
     const totals = new Map<string, bigint>()
     for (const transaction of transactions.value) {
-      if (transaction.kind !== 'expense' || !transaction.debitCardId) continue
+      if ((transaction.classification ?? transaction.kind) !== 'expense' || !transaction.debitCardId) continue
       const date = new Date(`${transaction.date}T12:00:00`)
       if (date.getFullYear() !== now.getFullYear() || date.getMonth() !== now.getMonth()) continue
       totals.set(transaction.debitCardId, (totals.get(transaction.debitCardId) ?? 0n) + decimalToCents(transaction.amount))
     }
+    for (const refund of transactions.value.filter((item) => item.classification === 'refund'
+      && item.relatedTransactionId && item.date.slice(0, 7) === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)) {
+      const original = transactions.value.find((item) => item.id === refund.relatedTransactionId)
+      if (!original?.debitCardId) continue
+      totals.set(original.debitCardId, (totals.get(original.debitCardId) ?? 0n) - decimalToCents(refund.amount))
+    }
     return totals
   })
   const unassignedExpenseCents = computed(() => transactions.value.reduce((total, transaction) => {
-    if (transaction.kind !== 'expense' || transaction.debitCardId) return total
+    if ((transaction.classification ?? transaction.kind) !== 'expense' || transaction.debitCardId) return total
     return total + decimalToCents(transaction.amount)
-  }, 0n))
+  }, 0n) - transactions.value.filter((item) => item.classification === 'refund' && item.relatedTransactionId)
+    .reduce((total, refund) => {
+      const original = transactions.value.find((item) => item.id === refund.relatedTransactionId)
+      return original && !original.debitCardId ? total + decimalToCents(refund.amount) : total
+    }, 0n))
   const defaultDebitCard = computed(() => debitCards.value.find((card) => card.isDefault) ?? null)
 
   const fixedMonthlyCommitmentCents = computed(() => recurringRules.value.reduce((total, rule) =>
@@ -312,12 +353,22 @@ export const useFinanceStore = defineStore('finance', () => {
     const now = clock.value
     const totals = new Map<string, bigint>()
     for (const transaction of transactions.value) {
-      if (transaction.kind !== 'expense' || !transaction.categoryId) continue
+      if ((transaction.classification ?? transaction.kind) !== 'expense' || !transaction.categoryId) continue
       if (currentMonthOnly) {
         const date = new Date(`${transaction.date}T12:00:00`)
         if (date.getFullYear() !== now.getFullYear() || date.getMonth() !== now.getMonth()) continue
       }
       totals.set(transaction.categoryId, (totals.get(transaction.categoryId) ?? 0n) + decimalToCents(transaction.amount))
+    }
+    for (const refund of transactions.value.filter((item) => item.classification === 'refund'
+      && item.relatedTransactionId)) {
+      if (currentMonthOnly) {
+        const date = new Date(`${refund.date}T12:00:00`)
+        if (date.getFullYear() !== now.getFullYear() || date.getMonth() !== now.getMonth()) continue
+      }
+      const original = transactions.value.find((item) => item.id === refund.relatedTransactionId)
+      if (!original?.categoryId) continue
+      totals.set(original.categoryId, (totals.get(original.categoryId) ?? 0n) - decimalToCents(refund.amount))
     }
     return totals
   }
@@ -329,10 +380,10 @@ export const useFinanceStore = defineStore('finance', () => {
     }
     return percentages
   }
-  function currentMonthTotal(kind: 'income' | 'expense') {
+  function currentMonthTotal(kind: 'income' | 'expense' | 'refund') {
     const now = clock.value
     return transactions.value.reduce((total, transaction) => {
-      if (transaction.kind !== kind) return total
+      if ((transaction.classification ?? transaction.kind) !== kind) return total
       const date = new Date(`${transaction.date}T12:00:00`)
       if (date.getFullYear() !== now.getFullYear() || date.getMonth() !== now.getMonth()) return total
       return total + decimalToCents(transaction.amount)
@@ -340,7 +391,8 @@ export const useFinanceStore = defineStore('finance', () => {
   }
   function getTransactionsForCard(cardId: string) {
     return transactions.value
-      .filter((transaction) => transaction.kind === 'expense' && transaction.debitCardId === cardId)
+      .filter((transaction) => (transaction.classification ?? transaction.kind) === 'expense'
+        && transaction.debitCardId === cardId)
       .sort((a, b) => transactionMoment(b).localeCompare(transactionMoment(a))
         || b.createdAt.localeCompare(a.createdAt))
   }
@@ -445,11 +497,23 @@ export const useFinanceStore = defineStore('finance', () => {
   }
 
   function validateTransactionInput(input: NewTransactionInput) {
+    const classification = input.classification ?? input.kind
+    if ((classification === 'income' || classification === 'refund') && input.kind !== 'income'
+      || classification === 'expense' && input.kind !== 'expense'
+      || input.relatedTransactionId && classification !== 'refund') {
+      throw new Error('A classificação não corresponde à direção da transação')
+    }
     const category = categories.value.find((item) => item.id === input.categoryId)
     if (!category || category.kind !== input.kind) {
       throw new Error('Selecione uma categoria válida para esta transação')
     }
     const amount = decimalToCents(input.amount)
+    if (input.relatedTransactionId) {
+      const original = transactions.value.find((item) => item.id === input.relatedTransactionId)
+      if (!original || (original.classification ?? original.kind) !== 'expense') {
+        throw new Error('A compra vinculada ao reembolso não foi encontrada')
+      }
+    }
     if (input.kind === 'expense' && amount > availableBalanceCents.value) {
       throw new Error('Saldo insuficiente. O Pingo não deixa sua conta ficar negativa.')
     }
@@ -478,7 +542,7 @@ export const useFinanceStore = defineStore('finance', () => {
     const dailyLimitBefore = availableBalanceCents.value / daysRemaining
     const transaction = await repository.addTransaction(input)
     addTransaction(transaction)
-    const reachedDailyAlert = transaction.kind === 'expense'
+    const reachedDailyAlert = (transaction.classification ?? transaction.kind) === 'expense'
       && transaction.date === localDateKey(clock.value)
       && preferences.value.dailySpendingAlertsEnabled
       && dailyLimitBefore > 0n
@@ -486,7 +550,7 @@ export const useFinanceStore = defineStore('finance', () => {
     pingoMessage.value = reachedDailyAlert
       ? `Radar diário: você já usou ${preferences.value.spendingAlertPercent}% ou mais do valor seguro para hoje. ⚠️`
       : pingoMessageForTransaction(transaction, availableBalanceCents.value)
-    if (transaction.kind === 'income') {
+    if (transaction.classification === 'income') {
       const [storedVaults, storedMovements] = await Promise.all([
         repository.listVaults(), repository.listVaultMovements(),
       ])
@@ -851,8 +915,10 @@ export const useFinanceStore = defineStore('finance', () => {
     currentMonthSavingsCents, currentMonthFixedExpenseCents, savingsRate, fixedCostRatio,
     averageMonthlyExpenseCents, projectedMonthExpenseCents, dailySpendingAverageCents, todayExpenseCents, dailyBudgetCents,
     emergencyFundMonths, financialHealthScore, filteredTransactions, recentTransactions, recentExpenses,
-    sortedTransactions, reportingTransactions, reportingIncomeCents, reportingExpenseCents, reportingBalanceCents,
+    sortedTransactions, reportingTransactions, reportingIncomeCents, reportingGrossExpenseCents,
+    reportingRefundCents, reportingExpenseCents, reportingBalanceCents, reportingDailySpendingAverageCents,
     reportingPeriodKey, reportingPeriodIsCurrent, reportingPeriodIsPast, reportingClosingBalanceCents,
+    reportingClosingBalanceConfirmed,
     hasActiveFilters,
     recentExpenseCategoryIds, expensesByCategory, currentMonthExpensesByCategory, expensePercentages,
     currentMonthExpensePercentages, topExpenseCategory, expensesByDebitCard, currentMonthExpensesByDebitCard,

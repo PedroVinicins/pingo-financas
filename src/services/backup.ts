@@ -88,14 +88,37 @@ export function validateBackupData(data: unknown): asserts data is PingoBackup['
     || vaults.size !== (candidate.vaults as Vault[]).length) throw new Error('O backup contém identificadores duplicados.')
   let available = amountToCents((candidate.accountSettings as AccountSettings).openingBalanceAdjustment)
   const transactionIds = new Set<string>()
+  const transactionMap = new Map((candidate.transactions as Transaction[]).map((item) => [item.id, item]))
+  const externalIds = new Set<string>()
   for (const transaction of candidate.transactions as Transaction[]) {
     const amount = amountToCents(transaction.amount)
+    const classification = transaction.classification ?? transaction.kind
+    const invalidClassification = (classification === 'income' || classification === 'refund')
+      ? transaction.kind !== 'income'
+      : classification === 'expense' ? transaction.kind !== 'expense'
+        : classification !== 'transfer'
+    const externalKey = transaction.sourceBank && transaction.externalId
+      ? `${transaction.sourceBank}|${transaction.externalId.toLocaleLowerCase('en-US')}`
+      : null
     if (!transactionIds.add(transaction.id) || amount <= 0n || categories.get(transaction.categoryId ?? '') !== transaction.kind
       || (transaction.debitCardId !== null && !cards.has(transaction.debitCardId))
-      || (transaction.kind === 'income' && transaction.debitCardId !== null)) {
+      || (transaction.kind === 'income' && transaction.debitCardId !== null)
+      || invalidClassification
+      || (transaction.relatedTransactionId && classification !== 'refund')
+      || (transaction.sourceBank !== undefined && transaction.sourceBank !== null
+        && !['inter', 'nubank'].includes(transaction.sourceBank))
+      || (externalKey !== null && externalIds.has(externalKey))) {
       throw new Error('O backup contém uma transação ou categoria inválida.')
     }
+    if (externalKey) externalIds.add(externalKey)
     available += transaction.kind === 'income' ? amount : -amount
+  }
+  for (const transaction of candidate.transactions as Transaction[]) {
+    if (!transaction.relatedTransactionId) continue
+    const original = transactionMap.get(transaction.relatedTransactionId)
+    if (!original || (original.classification ?? original.kind) !== 'expense') {
+      throw new Error('O backup contém um vínculo de reembolso inválido.')
+    }
   }
   for (const vault of candidate.vaults as Vault[]) {
     const balance = amountToCents(vault.balance)
@@ -149,7 +172,9 @@ export async function exportTransactionsCsv(transactions: Transaction[], categor
   const rows = transactions.map((transaction) => [
     transaction.date,
     transaction.occurredAt?.slice(11, 16) ?? '',
-    transaction.kind === 'income' ? 'Entrada' : 'Saída',
+    transaction.classification === 'refund' ? 'Reembolso'
+      : transaction.classification === 'transfer' ? 'Transferência'
+        : transaction.kind === 'income' ? 'Entrada' : 'Saída',
     transaction.description,
     categories.find((item) => item.id === transaction.categoryId)?.name ?? 'Sem categoria',
     cards.find((item) => item.id === transaction.debitCardId)?.name ?? '',
