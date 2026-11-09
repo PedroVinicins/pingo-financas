@@ -1,4 +1,5 @@
 export type TransactionType = 'income' | 'expense'
+export type TransactionClassification = 'income' | 'expense' | 'refund' | 'transfer'
 export type RecurrenceType = 'fixed' | 'variable'
 export type CardNetwork = 'visa' | 'mastercard' | 'elo' | 'other'
 export type CardPattern = 'soft' | 'waves' | 'dots' | 'grid' | 'aurora'
@@ -218,11 +219,15 @@ export interface NewDigitalWalletItemInput {
 export interface Transaction {
   id: string
   kind: TransactionType
+  classification?: TransactionClassification | null
   amount: string
   date: string
   occurredAt: string | null
   categoryId: string | null
   debitCardId: string | null
+  relatedTransactionId?: string | null
+  sourceBank?: SupportedStatementBank | null
+  externalId?: string | null
   description: string
   recurrence: RecurrenceType
   createdAt: string
@@ -230,11 +235,15 @@ export interface Transaction {
 
 export interface NewTransactionInput {
   kind: TransactionType
+  classification?: TransactionClassification
   amount: string
   date: string
   occurredAt?: string | null
   categoryId: string | null
   debitCardId: string | null
+  relatedTransactionId?: string | null
+  sourceBank?: SupportedStatementBank | null
+  externalId?: string | null
   description: string
   recurrence: RecurrenceType
 }
@@ -248,16 +257,19 @@ export type SupportedStatementBank = 'inter' | 'nubank'
 
 export interface ParsedBankStatementTransaction {
   kind: TransactionType
+  classification: TransactionClassification
   amount: string
   date: string
   occurredAt: string | null
   description: string
   balance: string | null
   externalId: string | null
+  sourceBank?: SupportedStatementBank
   paymentMethod: BankPaymentMethod
   movementType: BankMovementType
   isInternalTransfer: boolean
   suggestedCardLink: boolean
+  requiresReview: boolean
 }
 
 export interface ParsedBankStatement {
@@ -265,6 +277,8 @@ export interface ParsedBankStatement {
   fileName: string
   transactions: ParsedBankStatementTransaction[]
   closingBalance: string | null
+  closingBalanceDate: string | null
+  skippedRows: number
   warnings: string[]
 }
 

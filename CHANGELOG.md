@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.2 — Importação com classificação e conciliação
+
+- classifica lançamentos como entrada, despesa, estorno/reembolso ou transferência, preservando esses dados no banco e nos backups;
+- identifica lançamentos repetidos na importação de extratos e exige revisão quando o sentido de um valor não está explícito;
+- permite relacionar estornos às despesas originais e concilia extratos históricos pelo saldo final;
+- atualiza os cálculos da conta e das análises para tratar transferências e reembolsos sem distorcer receitas e despesas;
+- documenta o funcionamento, a arquitetura, a privacidade e os procedimentos de desenvolvimento do projeto;
+- atualiza Web/PWA, backup, Tauri e Android para a versão 0.15.2 (`versionCode` 15002).
+
 ## 0.15.1 — Campos contidos no mobile
 
 - corrige a regra responsiva dos modais DaisyUI para atuar sobre o painel real;

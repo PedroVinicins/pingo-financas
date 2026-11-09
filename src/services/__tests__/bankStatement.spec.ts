@@ -40,6 +40,25 @@ describe('bank statement import', () => {
     expect(statement.closingBalance).toBe('187.66')
   })
 
+  it('leaves unsigned rows with no reliable direction marked for review', () => {
+    const statement = parseDelimitedStatement(`Data;Descrição;Valor
+28/08/2026;Movimentação sem tipo;12,34`, 'ambiguo.csv')
+
+    expect(statement.transactions[0]).toMatchObject({
+      kind: 'income', amount: '12.34', requiresReview: true,
+    })
+  })
+
+  it('classifies refunds and explicit bank transfers separately from income and expenses', () => {
+    const statement = parseDelimitedStatement(`Data;Histórico;Descrição;Valor
+28/08/2026;Estorno;Loja Central;25,00
+29/08/2026;Transferência enviada;Conta poupança;-50,00`, 'classificacoes.csv')
+
+    expect(statement.transactions.map((item) => [item.kind, item.classification])).toEqual([
+      ['income', 'refund'], ['expense', 'transfer'],
+    ])
+  })
+
   it('reads an Inter CSV saved as UTF-16 by spreadsheet applications', async () => {
     const contents = `Data Lançamento\tHistórico\tDescrição\tValor\tSaldo
 30/08/2026\tPix enviado\tPadaria Central\t-15,90\t84,10`
@@ -296,5 +315,19 @@ Pix enviado: "Cp :60746948-Nivea Maria Vale da Silva"
       recurrence: 'variable', createdAt: '2026-08-08T00:00:00Z',
     }]
     expect(duplicateStatementRows(rows, existing)).toEqual([true, false])
+  })
+
+  it('deduplicates bank transaction identifiers before falling back to row signatures', () => {
+    const rows = parseOfxStatement(`<OFX><BANKTRANLIST>
+      <STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260827120000<TRNAMT>-10.00<FITID>bank-id<NAME>Loja</STMTTRN>
+      <STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260827120000<TRNAMT>-10.00<FITID>bank-id<NAME>Loja</STMTTRN>
+      </BANKTRANLIST></OFX>`).transactions
+
+    expect(duplicateStatementRows(rows, [])).toEqual([false, true])
+    const existing: Transaction[] = [{
+      ...rows[0], id: 'existing-id', categoryId: null, debitCardId: null,
+      recurrence: 'variable', createdAt: '2026-08-27T12:00:00Z',
+    }]
+    expect(duplicateStatementRows(rows, existing)).toEqual([true, true])
   })
 })

@@ -20,6 +20,8 @@ const incomeMessages = [
 ]
 
 export function pingoMessageForTransaction(transaction: Transaction, availableBalanceCents: bigint) {
+  if (transaction.classification === 'refund') return 'Reembolso registrado à parte; seu saldo aumentou sem contar como renda. 💸'
+  if (transaction.classification === 'transfer') return 'Transferência registrada fora dos indicadores de renda e gastos. 🔁'
   const messages = transaction.kind === 'income' ? incomeMessages : expenseMessages
   const seed = [...transaction.id].reduce((total, character) => total + character.charCodeAt(0), 0)
   if (transaction.kind === 'expense' && availableBalanceCents === 0n) {

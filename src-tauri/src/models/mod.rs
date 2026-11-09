@@ -21,7 +21,8 @@ pub use personalization::{
 };
 pub use recurring::{NewRecurringRule, RecurringRule, RecurringRuleError, RecurringSettlement};
 pub use transaction::{
-    NewTransaction, RecurrenceType, Transaction, TransactionError, TransactionType,
+    NewTransaction, RecurrenceType, Transaction, TransactionClassification, TransactionError,
+    TransactionType,
 };
 pub use vault::{
     MoveVaultMoney, NewVault, UpdateVault, Vault, VaultError, VaultMovementType, VaultType,

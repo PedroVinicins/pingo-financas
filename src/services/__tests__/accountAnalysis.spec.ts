@@ -71,4 +71,32 @@ describe('analyzeAccount', () => {
     expect(analysis.alerts[0]).toMatchObject({ id: 'period-deficit', severity: 'critical' })
     expect(analysis.notificationKey).toContain('period-deficit')
   })
+
+  it('excludes transfers from indicators and applies linked refunds to the original category', () => {
+    const analysis = analyzeAccount({
+      transactions: [
+        transaction({ id: 'income', kind: 'income', amount: '1000.00', categoryId: 'salary' }),
+        transaction({ id: 'purchase', amount: '100.00', categoryId: 'food' }),
+        transaction({
+          id: 'refund', kind: 'income', classification: 'refund', amount: '25.00',
+          categoryId: 'salary', relatedTransactionId: 'purchase',
+        }),
+        transaction({
+          id: 'transfer', kind: 'income', classification: 'transfer', amount: '500.00',
+          categoryId: 'salary',
+        }),
+      ],
+      categories, year: 2026, month: 8, formatMoney,
+    })
+
+    expect(analysis.incomeCents).toBe(100_000n)
+    expect(analysis.expenseCents).toBe(10_000n)
+    expect(analysis.refundCents).toBe(2_500n)
+    expect(analysis.netExpenseCents).toBe(7_500n)
+    expect(analysis.netCents).toBe(92_500n)
+    expect(analysis.refundCount).toBe(1)
+    expect(analysis.transferCount).toBe(1)
+    expect(analysis.categoryFlows.find((item) => item.categoryId === 'food')?.amountCents).toBe(7_500n)
+    expect(analysis.categoryFlows.some((item) => item.amountCents === 50_000n)).toBe(false)
+  })
 })

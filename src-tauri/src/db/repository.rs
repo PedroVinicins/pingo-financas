@@ -12,8 +12,9 @@ use uuid::Uuid;
 use crate::models::{
     AccountSettings, AutomaticReserveMode, AutomaticReserveRule, BackupData, CardBackground,
     CardNetwork, CardPattern, Category, DebitCard, DigitalWalletItem, DigitalWalletItemKind,
-    LegacyAppData, MonthlyReserveRule, RecurrenceType, RecurringRule, Transaction, TransactionType,
-    UpdateDebitCardStyle, Vault, VaultMovement, VaultMovementSource, VaultMovementType, VaultType,
+    LegacyAppData, MonthlyReserveRule, RecurrenceType, RecurringRule, Transaction,
+    TransactionClassification, TransactionType, UpdateDebitCardStyle, Vault, VaultMovement,
+    VaultMovementSource, VaultMovementType, VaultType,
 };
 
 #[derive(Debug, Error)]
@@ -146,7 +147,7 @@ impl<'a> FinanceRepository<'a> {
     pub async fn insert_transaction(&self, transaction: &Transaction) -> Result<(), DbError> {
         let mut database_transaction = self.pool.begin().await?;
         insert_transaction_record(&mut database_transaction, transaction).await?;
-        if transaction.kind == TransactionType::Income {
+        if transaction.classification == Some(TransactionClassification::Income) {
             apply_automatic_reserves(&mut database_transaction, transaction.amount).await?;
         }
         database_transaction.commit().await?;
@@ -215,7 +216,8 @@ impl<'a> FinanceRepository<'a> {
 
     pub async fn list_transactions(&self) -> Result<Vec<Transaction>, DbError> {
         let rows = sqlx::query(
-            r#"SELECT id, kind, amount, date, occurred_at, category_id, debit_card_id, description, recurrence, created_at
+            r#"SELECT id, kind, classification, amount, date, occurred_at, category_id, debit_card_id,
+                      related_transaction_id, source_bank, external_id, description, recurrence, created_at
                FROM transactions
                ORDER BY date DESC, occurred_at DESC, created_at DESC"#,
         )
@@ -227,7 +229,8 @@ impl<'a> FinanceRepository<'a> {
 
     pub async fn get_transaction(&self, id: Uuid) -> Result<Option<Transaction>, DbError> {
         let row = sqlx::query(
-            r#"SELECT id, kind, amount, date, occurred_at, category_id, debit_card_id, description, recurrence, created_at
+            r#"SELECT id, kind, classification, amount, date, occurred_at, category_id, debit_card_id,
+                      related_transaction_id, source_bank, external_id, description, recurrence, created_at
                FROM transactions WHERE id = ?"#,
         )
         .bind(id.to_string())
@@ -238,15 +241,27 @@ impl<'a> FinanceRepository<'a> {
 
     pub async fn update_transaction(&self, transaction: &Transaction) -> Result<(), DbError> {
         let result = sqlx::query(
-            r#"UPDATE transactions SET kind = ?, amount = ?, date = ?, occurred_at = ?, category_id = ?, debit_card_id = ?,
+            r#"UPDATE transactions SET kind = ?, classification = ?, amount = ?, date = ?, occurred_at = ?,
+               category_id = ?, debit_card_id = ?, related_transaction_id = ?, source_bank = ?, external_id = ?,
                description = ?, recurrence = ? WHERE id = ?"#,
         )
         .bind(transaction.kind.as_str())
+        .bind(
+            transaction.classification
+                .unwrap_or(match transaction.kind {
+                    TransactionType::Income => TransactionClassification::Income,
+                    TransactionType::Expense => TransactionClassification::Expense,
+                })
+                .as_str(),
+        )
         .bind(transaction.amount.to_string())
         .bind(transaction.date.format("%Y-%m-%d").to_string())
         .bind(transaction.occurred_at.map(|value| value.format("%Y-%m-%dT%H:%M:%S").to_string()))
         .bind(transaction.category_id.map(|id| id.to_string()))
         .bind(transaction.debit_card_id.map(|id| id.to_string()))
+        .bind(transaction.related_transaction_id.map(|id| id.to_string()))
+        .bind(&transaction.source_bank)
+        .bind(&transaction.external_id)
         .bind(&transaction.description)
         .bind(transaction.recurrence.as_str())
         .bind(transaction.id.to_string())
@@ -259,6 +274,10 @@ impl<'a> FinanceRepository<'a> {
     }
 
     pub async fn delete_transaction(&self, id: Uuid) -> Result<(), DbError> {
+        sqlx::query("UPDATE transactions SET related_transaction_id = NULL WHERE related_transaction_id = ?")
+            .bind(id.to_string())
+            .execute(self.pool)
+            .await?;
         sqlx::query("DELETE FROM transactions WHERE id = ?")
             .bind(id.to_string())
             .execute(self.pool)
@@ -1102,7 +1121,7 @@ impl<'a> FinanceRepository<'a> {
     ) -> Result<(), DbError> {
         let mut database_transaction = self.pool.begin().await?;
         insert_transaction_record(&mut database_transaction, transaction_record).await?;
-        if transaction_record.kind == TransactionType::Income {
+        if transaction_record.classification == Some(TransactionClassification::Income) {
             apply_automatic_reserves(&mut database_transaction, transaction_record.amount).await?;
         }
 
@@ -1332,16 +1351,33 @@ async fn insert_transaction_record(
 ) -> Result<(), DbError> {
     sqlx::query(
         r#"INSERT INTO transactions
-           (id, kind, amount, date, occurred_at, category_id, debit_card_id, description, recurrence, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+           (id, kind, classification, amount, date, occurred_at, category_id, debit_card_id,
+            related_transaction_id, source_bank, external_id, description, recurrence, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
     )
     .bind(record.id.to_string())
     .bind(record.kind.as_str())
+    .bind(
+        record
+            .classification
+            .unwrap_or(match record.kind {
+                TransactionType::Income => TransactionClassification::Income,
+                TransactionType::Expense => TransactionClassification::Expense,
+            })
+            .as_str(),
+    )
     .bind(record.amount.to_string())
     .bind(record.date.format("%Y-%m-%d").to_string())
-    .bind(record.occurred_at.map(|value| value.format("%Y-%m-%dT%H:%M:%S").to_string()))
+    .bind(
+        record
+            .occurred_at
+            .map(|value| value.format("%Y-%m-%dT%H:%M:%S").to_string()),
+    )
     .bind(record.category_id.map(|id| id.to_string()))
     .bind(record.debit_card_id.map(|id| id.to_string()))
+    .bind(record.related_transaction_id.map(|id| id.to_string()))
+    .bind(&record.source_bank)
+    .bind(&record.external_id)
     .bind(&record.description)
     .bind(record.recurrence.as_str())
     .bind(record.created_at.to_rfc3339())
@@ -1532,17 +1568,25 @@ where
 fn row_to_transaction(row: sqlx::sqlite::SqliteRow) -> Result<Transaction, DbError> {
     let id: String = row.try_get("id")?;
     let kind: String = row.try_get("kind")?;
+    let classification: String = row.try_get("classification")?;
     let amount: String = row.try_get("amount")?;
     let date: String = row.try_get("date")?;
     let occurred_at: Option<String> = row.try_get("occurred_at")?;
     let category_id: Option<String> = row.try_get("category_id")?;
     let debit_card_id: Option<String> = row.try_get("debit_card_id")?;
+    let related_transaction_id: Option<String> = row.try_get("related_transaction_id")?;
+    let source_bank: Option<String> = row.try_get("source_bank")?;
+    let external_id: Option<String> = row.try_get("external_id")?;
     let created_at: String = row.try_get("created_at")?;
     let recurrence: String = row.try_get("recurrence")?;
 
     Ok(Transaction {
         id: Uuid::parse_str(&id).map_err(invalid)?,
         kind: TransactionType::parse(&kind).ok_or_else(|| DbError::InvalidData(kind.clone()))?,
+        classification: Some(
+            TransactionClassification::parse(&classification)
+                .ok_or_else(|| DbError::InvalidData(classification.clone()))?,
+        ),
         amount: Decimal::from_str(&amount).map_err(invalid)?,
         date: NaiveDate::parse_from_str(&date, "%Y-%m-%d").map_err(invalid)?,
         occurred_at: occurred_at
@@ -1556,6 +1600,11 @@ fn row_to_transaction(row: sqlx::sqlite::SqliteRow) -> Result<Transaction, DbErr
         debit_card_id: debit_card_id
             .map(|value| Uuid::parse_str(&value).map_err(invalid))
             .transpose()?,
+        related_transaction_id: related_transaction_id
+            .map(|value| Uuid::parse_str(&value).map_err(invalid))
+            .transpose()?,
+        source_bank,
+        external_id,
         description: row.try_get("description")?,
         recurrence: RecurrenceType::parse(&recurrence)
             .ok_or_else(|| DbError::InvalidData(recurrence.clone()))?,
@@ -1857,6 +1906,10 @@ mod tests {
             occurred_at: None,
             category_id: Some(income_category.id),
             debit_card_id: None,
+            classification: None,
+            related_transaction_id: None,
+            source_bank: None,
+            external_id: None,
             description: "Salário".into(),
             recurrence: RecurrenceType::Variable,
         })
@@ -1968,6 +2021,10 @@ mod tests {
             occurred_at: None,
             category_id: Some(category.id),
             debit_card_id: None,
+            classification: None,
+            related_transaction_id: None,
+            source_bank: None,
+            external_id: None,
             description: "Salário".into(),
             recurrence: RecurrenceType::Variable,
         })
@@ -2026,6 +2083,10 @@ mod tests {
             occurred_at: None,
             category_id: Some(category.id),
             debit_card_id: None,
+            classification: None,
+            related_transaction_id: None,
+            source_bank: None,
+            external_id: None,
             description: "Freelance".into(),
             recurrence: RecurrenceType::Variable,
         })
@@ -2186,6 +2247,10 @@ mod tests {
                     .and_hms_opt(12, 34, 56),
                 category_id: Some(income_category.id),
                 debit_card_id: None,
+                classification: None,
+                related_transaction_id: None,
+                source_bank: None,
+                external_id: None,
                 description: "Pix recebido".into(),
                 recurrence: RecurrenceType::Variable,
             })
@@ -2197,6 +2262,10 @@ mod tests {
                 occurred_at: None,
                 category_id: Some(expense_category.id),
                 debit_card_id: None,
+                classification: None,
+                related_transaction_id: None,
+                source_bank: None,
+                external_id: None,
                 description: "Pix enviado".into(),
                 recurrence: RecurrenceType::Variable,
             })
@@ -2241,6 +2310,10 @@ mod tests {
             occurred_at: None,
             category_id: Some(category.id),
             debit_card_id: None,
+            classification: None,
+            related_transaction_id: None,
+            source_bank: None,
+            external_id: None,
             description: "Compra".into(),
             recurrence: RecurrenceType::Variable,
         })
@@ -2251,6 +2324,106 @@ mod tests {
             .await
             .is_err());
         assert!(repository.list_transactions().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn statement_metadata_and_classification_survive_persistence_and_external_ids_are_unique()
+    {
+        let pool = test_pool().await;
+        let repository = FinanceRepository::new(&pool);
+        let categories = repository.list_categories().await.unwrap();
+        let income_category = categories
+            .iter()
+            .find(|item| item.kind == TransactionType::Income)
+            .unwrap();
+        let expense_category = categories
+            .iter()
+            .find(|item| item.kind == TransactionType::Expense)
+            .unwrap();
+        let purchase = Transaction::new(NewTransaction {
+            kind: TransactionType::Expense,
+            classification: Some(TransactionClassification::Expense),
+            amount: dec!(20),
+            date: NaiveDate::from_ymd_opt(2026, 8, 7).unwrap(),
+            occurred_at: None,
+            category_id: Some(expense_category.id),
+            debit_card_id: None,
+            related_transaction_id: None,
+            source_bank: Some("inter".into()),
+            external_id: Some("purchase-id".into()),
+            description: "Compra".into(),
+            recurrence: RecurrenceType::Variable,
+        })
+        .unwrap();
+        let refund = Transaction::new(NewTransaction {
+            kind: TransactionType::Income,
+            classification: Some(TransactionClassification::Refund),
+            amount: dec!(5),
+            date: NaiveDate::from_ymd_opt(2026, 8, 8).unwrap(),
+            occurred_at: None,
+            category_id: Some(income_category.id),
+            debit_card_id: None,
+            related_transaction_id: Some(purchase.id),
+            source_bank: Some("inter".into()),
+            external_id: Some("refund-id".into()),
+            description: "Reembolso".into(),
+            recurrence: RecurrenceType::Variable,
+        })
+        .unwrap();
+        let transfer = Transaction::new(NewTransaction {
+            kind: TransactionType::Income,
+            classification: Some(TransactionClassification::Transfer),
+            amount: dec!(100),
+            date: NaiveDate::from_ymd_opt(2026, 8, 9).unwrap(),
+            occurred_at: None,
+            category_id: Some(income_category.id),
+            debit_card_id: None,
+            related_transaction_id: None,
+            source_bank: Some("inter".into()),
+            external_id: Some("transfer-id".into()),
+            description: "Transferência recebida".into(),
+            recurrence: RecurrenceType::Variable,
+        })
+        .unwrap();
+
+        repository
+            .import_transactions(
+                &[purchase.clone(), refund.clone(), transfer.clone()],
+                Some(dec!(85)),
+            )
+            .await
+            .unwrap();
+
+        let stored = repository.list_transactions().await.unwrap();
+        assert_eq!(
+            repository.get_transaction(refund.id).await.unwrap(),
+            Some(refund.clone())
+        );
+        assert_eq!(
+            repository.get_transaction(transfer.id).await.unwrap(),
+            Some(transfer)
+        );
+        assert_eq!(stored.len(), 3);
+
+        let duplicate = Transaction::new(NewTransaction {
+            kind: TransactionType::Income,
+            classification: Some(TransactionClassification::Refund),
+            amount: dec!(5),
+            date: NaiveDate::from_ymd_opt(2026, 8, 10).unwrap(),
+            occurred_at: None,
+            category_id: Some(income_category.id),
+            debit_card_id: None,
+            related_transaction_id: Some(purchase.id),
+            source_bank: Some("inter".into()),
+            external_id: Some("refund-id".into()),
+            description: "Reembolso duplicado".into(),
+            recurrence: RecurrenceType::Variable,
+        })
+        .unwrap();
+        assert!(repository
+            .import_transactions(&[duplicate], None)
+            .await
+            .is_err());
     }
 
     #[tokio::test]
@@ -2269,6 +2442,10 @@ mod tests {
             occurred_at: None,
             category_id: Some(income_category.id),
             debit_card_id: None,
+            classification: None,
+            related_transaction_id: None,
+            source_bank: None,
+            external_id: None,
             description: "Salário restaurado".into(),
             recurrence: RecurrenceType::Variable,
         })

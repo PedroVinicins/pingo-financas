@@ -34,7 +34,7 @@ const expenseRules = computed(() => store.recurringRules
   .filter((rule) => rule.active && rule.kind === 'expense')
   .sort((a, b) => a.nextDueDate.localeCompare(b.nextDueDate)))
 const accountAnalysis = computed(() => analyzeAccount({
-  transactions: currentTransactions.value,
+  transactions: store.transactions,
   categories: store.categories,
   year: store.reportingYear,
   month: store.reportingMonth,
@@ -105,11 +105,12 @@ function categoryFor(id: string | null) { return store.categories.find((item) =>
       </div>
     </section>
 
-    <section class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <section class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
       <article class="pingo-card p-4"><div class="flex items-center gap-2 text-xs font-bold text-brand"><Flame :size="15" /> Gastou no período</div><p class="mt-2 truncate text-xl font-extrabold">{{ privateMoney(store.reportingExpenseCents) }}</p></article>
+      <article class="pingo-card p-4"><div class="flex items-center gap-2 text-xs font-bold text-brand"><ArrowDownLeft :size="15" /> Reembolsos</div><p class="mt-2 truncate text-xl font-extrabold">{{ privateMoney(store.reportingRefundCents) }}</p></article>
       <article class="pingo-card p-4"><div class="flex items-center gap-2 text-xs font-bold text-brand"><ShieldCheck :size="15" /> Economizou</div><p class="mt-2 truncate text-xl font-extrabold">{{ privateMoney(safeSavingsCents) }}</p></article>
       <article class="pingo-card p-4"><div class="flex items-center gap-2 text-xs font-bold text-brand"><PiggyBank :size="15" /> Nos porquinhos</div><p class="mt-2 truncate text-xl font-extrabold">{{ privateMoney(store.vaultTotalCents) }}</p></article>
-      <article class="pingo-card p-4"><div class="flex items-center gap-2 text-xs font-bold text-brand"><TrendingDown :size="15" /> Média diária</div><p class="mt-2 truncate text-xl font-extrabold">{{ privateMoney(store.dailySpendingAverageCents) }}</p></article>
+      <article class="pingo-card p-4"><div class="flex items-center gap-2 text-xs font-bold text-brand"><TrendingDown :size="15" /> Média diária</div><p class="mt-2 truncate text-xl font-extrabold">{{ privateMoney(store.reportingDailySpendingAverageCents) }}</p></article>
     </section>
 
     <section class="mt-5 overflow-hidden rounded-[1.75rem] border border-line bg-surface shadow-card">
@@ -141,7 +142,7 @@ function categoryFor(id: string | null) { return store.categories.find((item) =>
     </section>
 
     <section class="mt-5 rounded-[1.75rem] border border-line bg-surface p-5 shadow-card sm:p-6">
-      <div class="flex items-start justify-between gap-3"><div><p class="text-sm font-bold text-brand">Categorias conectadas</p><h3 class="text-xl font-black">De onde veio e para onde foi</h3><p class="mt-1 text-xs text-subtle">Receitas e gastos aparecem juntos, mantendo cada lançamento no tipo correto.</p></div><div class="grid size-11 place-items-center rounded-2xl bg-brand-soft text-brand"><ChartPie :size="21" /></div></div>
+      <div class="flex items-start justify-between gap-3"><div><p class="text-sm font-bold text-brand">Categorias conectadas</p><h3 class="text-xl font-black">De onde veio e para onde foi</h3><p class="mt-1 text-xs text-subtle">Reembolsos vinculados reduzem a categoria da compra; transferências ficam fora de renda e gastos.</p></div><div class="grid size-11 place-items-center rounded-2xl bg-brand-soft text-brand"><ChartPie :size="21" /></div></div>
       <div class="mt-5 grid gap-6 lg:grid-cols-2 lg:gap-8">
         <div>
           <h4 class="flex items-center gap-2 text-sm font-black text-emerald-600"><ArrowDownLeft :size="17" /> Categorias de entrada · {{ privateMoney(accountAnalysis.incomeCents) }}</h4>
@@ -154,7 +155,7 @@ function categoryFor(id: string | null) { return store.categories.find((item) =>
           <p v-else class="mt-4 rounded-2xl bg-muted p-4 text-sm text-subtle">Nenhuma entrada categorizada no período.</p>
         </div>
         <div>
-          <h4 class="flex items-center gap-2 text-sm font-black text-rose-600"><ArrowUpRight :size="17" /> Categorias de saída · {{ privateMoney(accountAnalysis.expenseCents) }}</h4>
+          <h4 class="flex items-center gap-2 text-sm font-black text-rose-600"><ArrowUpRight :size="17" /> Categorias de saída (brutas) · {{ privateMoney(accountAnalysis.expenseCents) }}</h4>
           <div v-if="expenseCategoryRows.length" class="mt-4 grid gap-4">
             <div v-for="row in expenseCategoryRows" :key="row.id">
               <div class="mb-2 flex min-w-0 items-center gap-2 text-sm"><CategoryIcon :category="categoryFor(row.categoryId)" kind="expense" :size="16" /><span class="min-w-0 flex-1 truncate font-bold">{{ row.name }} <small class="text-subtle">· {{ row.transactionCount }}x</small></span><span class="max-w-[48%] shrink-0 truncate text-right font-black" :title="`${privateMoney(row.amountCents)} · ${row.percentage.toFixed(0)}%`">{{ privateMoney(row.amountCents) }} · {{ row.percentage.toFixed(0) }}%</span></div>
